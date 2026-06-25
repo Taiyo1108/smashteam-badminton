@@ -5,6 +5,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { ChevronRight, Trophy, Play, Image as ImageIcon } from "lucide-react";
 import { useState, useEffect } from "react";
+import { API_URL } from "@/app/config";
 
 export default function Home() {
   // Mock data for display before backend is connected
@@ -54,7 +55,7 @@ export default function Home() {
 
   useEffect(() => {
     // Fetch Cover URL
-    fetch(`http://localhost:5000/api/settings?t=${Date.now()}`)
+    fetch(`${API_URL}/api/settings?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
         if (data && data.homepage_cover_url) {
@@ -64,7 +65,7 @@ export default function Home() {
       .catch(e => console.error("Error loading settings:", e));
 
     // Fetch Media Feed
-    fetch(`http://localhost:5000/api/media?t=${Date.now()}`)
+    fetch(`${API_URL}/api/media?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
@@ -87,7 +88,7 @@ export default function Home() {
 
   useEffect(() => {
     // Fetch Leaderboard based on Singles or Doubles type
-    fetch(`http://localhost:5000/api/users/leaderboard?type=${leaderboardType}&t=${Date.now()}`)
+    fetch(`${API_URL}/api/users/leaderboard?type=${leaderboardType}&t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {

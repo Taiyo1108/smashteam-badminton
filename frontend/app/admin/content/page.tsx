@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle } from "lucide-react";
+import { API_URL } from "@/app/config";
 
 export default function ContentManagementPage() {
   // States for Site settings (Cover Image)
@@ -45,7 +46,7 @@ export default function ContentManagementPage() {
   // Fetch all settings
   const fetchSettings = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/settings");
+      const res = await fetch(`${API_URL}/api/settings`);
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
@@ -59,7 +60,7 @@ export default function ContentManagementPage() {
   const fetchMediaPosts = async () => {
     setPostsLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/media");
+      const res = await fetch(`${API_URL}/api/media`);
       if (res.ok) {
         const data = await res.json();
         setMediaPosts(data);
@@ -96,7 +97,7 @@ export default function ContentManagementPage() {
       const formData = new FormData();
       formData.append("image", file);
 
-      const res = await fetch("http://localhost:5000/api/settings/upload-cover", {
+      const res = await fetch(`${API_URL}/api/settings/upload-cover`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -157,7 +158,7 @@ export default function ContentManagementPage() {
         formData.append("video_url", embedUrl);
       }
 
-      const res = await fetch("http://localhost:5000/api/media", {
+      const res = await fetch(`${API_URL}/api/media`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -196,7 +197,7 @@ export default function ContentManagementPage() {
 
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`http://localhost:5000/api/media/${postId}`, {
+      const res = await fetch(`${API_URL}/api/media/${postId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,

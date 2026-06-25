@@ -6,6 +6,7 @@ import { ArrowRight, ArrowLeft, CheckCircle2, QrCode, Loader2, MapPin, Calendar 
 import confetti from "canvas-confetti";
 import Link from "next/link";
 import { format } from "date-fns";
+import { API_URL } from "@/app/config";
 
 const levels = [
   { id: "Mới chơi", label: "Mới chơi", desc: "Chưa biết nhiều về kỹ thuật, muốn học hỏi thêm" },
@@ -25,7 +26,7 @@ export default function RegisterPage() {
   const [isLoadingSlots, setIsLoadingSlots] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/campaigns/active")
+    fetch(`${API_URL}/api/campaigns/active`)
       .then(res => res.json())
       .then(data => {
         if (data && data.slots) setSlots(data.slots);
@@ -78,7 +79,7 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     
     try {
-      const response = await fetch('http://localhost:5000/api/users/register', {
+      const response = await fetch(`${API_URL}/api/users/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

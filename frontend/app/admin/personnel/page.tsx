@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Search, CheckCircle2, XCircle, Loader2, MoreHorizontal } from "lucide-react";
 import { format } from "date-fns";
+import { API_URL } from "@/app/config";
 
 export default function PersonnelPage() {
   const [activeTab, setActiveTab] = useState<'candidates' | 'members'>('candidates');
@@ -21,7 +22,7 @@ export default function PersonnelPage() {
 
   useEffect(() => {
     // Fetch Slots for filter dropdown
-    fetch("http://localhost:5000/api/campaigns/active")
+    fetch(`${API_URL}/api/campaigns/active`)
       .then(res => res.json())
       .then(data => {
         if (data && data.slots) setSlots(data.slots);
@@ -40,7 +41,7 @@ export default function PersonnelPage() {
     setIsLoadingC(true);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`http://localhost:5000/api/users/candidates?search=${cSearch}&level=${cLevel}&slot_id=${cSlot}`, {
+      const res = await fetch(`${API_URL}/api/users/candidates?search=${cSearch}&level=${cLevel}&slot_id=${cSlot}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
@@ -57,7 +58,7 @@ export default function PersonnelPage() {
     setIsLoadingM(true);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch("http://localhost:5000/api/users/members", {
+      const res = await fetch(`${API_URL}/api/users/members`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) setMembers(await res.json());
@@ -68,7 +69,7 @@ export default function PersonnelPage() {
     if (!confirm("Xác nhận duyệt ứng viên này thành viên chính thức?")) return;
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`http://localhost:5000/api/users/${id}/approve`, {
+      const res = await fetch(`${API_URL}/api/users/${id}/approve`, {
         method: 'PUT',
         headers: { "Authorization": `Bearer ${token}` }
       });

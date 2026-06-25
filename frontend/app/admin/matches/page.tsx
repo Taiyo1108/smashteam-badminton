@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Swords, Trophy, Save, ArrowDownUp, AlertCircle, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import confetti from "canvas-confetti";
+import { API_URL } from "@/app/config";
 
 export default function MatchesPage() {
   const [members, setMembers] = useState<any[]>([]);
@@ -26,7 +27,7 @@ export default function MatchesPage() {
   const fetchMembers = async () => {
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch("http://localhost:5000/api/users/members", {
+      const res = await fetch(`${API_URL}/api/users/members`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -163,7 +164,7 @@ export default function MatchesPage() {
 
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch("http://localhost:5000/api/matches", {
+      const res = await fetch(`${API_URL}/api/matches`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

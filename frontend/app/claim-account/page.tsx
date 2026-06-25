@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, Lock, Phone, ShieldCheck, ArrowRight, UserCheck, AlertCircle, ArrowLeft } from "lucide-react";
+import { API_URL } from "@/app/config";
 
 export default function ClaimAccount() {
   const [step, setStep] = useState(1);
@@ -28,7 +29,7 @@ export default function ClaimAccount() {
     setError("");
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/claim-account/verify", {
+      const res = await fetch(`${API_URL}/api/auth/claim-account/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone_zalo: phone, verification_pin: pin })
@@ -67,7 +68,7 @@ export default function ClaimAccount() {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/claim-account/activate", {
+      const res = await fetch(`${API_URL}/api/auth/claim-account/activate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

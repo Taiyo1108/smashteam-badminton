@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Plus, Calendar, MapPin, Users, Edit, Trash2, Power, PowerOff, Save, X } from "lucide-react";
 import { format } from "date-fns";
+import { API_URL } from "@/app/config";
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -17,7 +18,7 @@ export default function CampaignsPage() {
   const fetchCampaigns = async () => {
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch("http://localhost:5000/api/campaigns", { headers: { "Authorization": `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/campaigns`, { headers: { "Authorization": `Bearer ${token}` } });
       if (res.ok) setCampaigns(await res.json());
     } catch (e) {}
   };
@@ -25,7 +26,7 @@ export default function CampaignsPage() {
   const fetchCampaignStats = async (id: string) => {
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`http://localhost:5000/api/campaigns/${id}/stats`, { headers: { "Authorization": `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/campaigns/${id}/stats`, { headers: { "Authorization": `Bearer ${token}` } });
       if (res.ok) setCampaignStats(await res.json());
     } catch (e) {}
   };
@@ -51,8 +52,8 @@ export default function CampaignsPage() {
     try {
       const token = localStorage.getItem("admin_token");
       const url = selectedCampaign && !isCreating 
-        ? `http://localhost:5000/api/campaigns/${selectedCampaign.id}` 
-        : `http://localhost:5000/api/campaigns`;
+        ? `${API_URL}/api/campaigns/${selectedCampaign.id}` 
+        : `${API_URL}/api/campaigns`;
       const method = selectedCampaign && !isCreating ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -79,7 +80,7 @@ export default function CampaignsPage() {
     if (!selectedCampaign) return;
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`http://localhost:5000/api/campaigns/${selectedCampaign.id}/slots`, {
+      const res = await fetch(`${API_URL}/api/campaigns/${selectedCampaign.id}/slots`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -98,7 +99,7 @@ export default function CampaignsPage() {
   const handleToggleSlot = async (slot: any) => {
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`http://localhost:5000/api/campaigns/slots/${slot.id}`, {
+      const res = await fetch(`${API_URL}/api/campaigns/slots/${slot.id}`, {
         method: "PUT",
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -116,7 +117,7 @@ export default function CampaignsPage() {
     if (!confirm("Bạn có chắc chắn muốn xóa ca casting này không?")) return;
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`http://localhost:5000/api/campaigns/slots/${slotId}`, {
+      const res = await fetch(`${API_URL}/api/campaigns/slots/${slotId}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });

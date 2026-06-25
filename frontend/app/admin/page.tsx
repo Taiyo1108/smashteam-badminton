@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Users, UserPlus, Trophy, Activity, Loader2 } from "lucide-react";
+import { API_URL } from "@/app/config";
 
 export default function AdminDashboard() {
   const [statsData, setStatsData] = useState<any>({
@@ -36,17 +37,17 @@ export default function AdminDashboard() {
       if (!token) return;
 
       // 1. Fetch Stats
-      const statsRes = await fetch("http://localhost:5000/api/users/stats", {
+      const statsRes = await fetch(`${API_URL}/api/users/stats`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const stats = statsRes.ok ? await statsRes.json() : null;
 
       // 2. Fetch Matches
-      const matchesRes = await fetch("http://localhost:5000/api/matches");
+      const matchesRes = await fetch(`${API_URL}/api/matches`);
       const matches = matchesRes.ok ? await matchesRes.json() : [];
 
       // 3. Fetch Candidates
-      const candidatesRes = await fetch("http://localhost:5000/api/users/candidates", {
+      const candidatesRes = await fetch(`${API_URL}/api/users/candidates`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const candidates = candidatesRes.ok ? await candidatesRes.json() : [];
