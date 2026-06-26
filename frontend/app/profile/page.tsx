@@ -24,7 +24,7 @@ export default function ProfilePage() {
   // Fetch dữ liệu từ API /api/profile/me
   const fetchProfileData = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("admin_token");
       if (!token) {
         router.push("/login");
         return;
@@ -37,7 +37,8 @@ export default function ProfilePage() {
       });
 
       if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem("token");
+        localStorage.removeItem("admin_token");
+        localStorage.removeItem("user_role");
         localStorage.removeItem("user");
         router.push("/login");
         return;
@@ -64,7 +65,8 @@ export default function ProfilePage() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
+    localStorage.removeItem("admin_token");
+    localStorage.removeItem("user_role");
     localStorage.removeItem("user");
     router.push("/login");
   };
@@ -74,7 +76,7 @@ export default function ProfilePage() {
     if (updatingRsvp) return;
     setUpdatingRsvp(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("admin_token");
       const res = await fetch(`${API_URL}/api/profile/rsvp`, {
         method: "POST",
         headers: {
@@ -102,7 +104,7 @@ export default function ProfilePage() {
     if (updatingNickname) return;
     setUpdatingNickname(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("admin_token");
       const res = await fetch(`${API_URL}/api/profile/nickname`, {
         method: "PUT",
         headers: {

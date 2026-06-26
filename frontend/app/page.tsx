@@ -23,6 +23,9 @@ export default function Home() {
     { id: 3, title: "Highlight Smash", type: "video", url: "https://www.youtube.com/embed/dQw4w9WgXcQ" }
   ]);
 
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState("");
+
   const [coverUrl, setCoverUrl] = useState("https://images.unsplash.com/photo-1599586120429-48281b6f0ece?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80");
   const [searchQuery, setSearchQuery] = useState("");
   const [leaderboardType, setLeaderboardType] = useState<"singles" | "doubles">("singles");
@@ -54,6 +57,14 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // Check login state
+    const token = localStorage.getItem("admin_token");
+    const role = localStorage.getItem("user_role");
+    if (token) {
+      setIsLoggedIn(true);
+      if (role) setUserRole(role);
+    }
+
     // Fetch Cover URL
     fetch(`${API_URL}/api/settings?t=${Date.now()}`)
       .then(res => res.json())
@@ -122,12 +133,27 @@ export default function Home() {
             </div>
             <span className="font-bold text-xl tracking-tight text-secondary">SmashTeam</span>
           </div>
-          <div className="flex gap-4">
-            <Link href="/register">
-              <button className="px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-medium transition-all transform hover:scale-105 shadow-md">
-                Gia nhập ngay
-              </button>
-            </Link>
+          <div className="flex gap-4 items-center">
+            {isLoggedIn ? (
+              <Link href={userRole === "admin" ? "/admin" : "/profile"}>
+                <button className="px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-medium transition-all transform hover:scale-105 shadow-md text-sm">
+                  {userRole === "admin" ? "Trang quản trị" : "Trang cá nhân"}
+                </button>
+              </Link>
+            ) : (
+              <>
+                <Link href="/login">
+                  <button className="px-4 py-2 text-secondary hover:text-primary transition-all font-semibold text-sm">
+                    Đăng nhập
+                  </button>
+                </Link>
+                <Link href="/register">
+                  <button className="px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-medium transition-all transform hover:scale-105 shadow-md text-sm">
+                    Gia nhập ngay
+                  </button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </nav>

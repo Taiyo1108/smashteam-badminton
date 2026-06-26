@@ -35,7 +35,7 @@ export default function UnifiedLogin() {
         if (data.user.role === 'admin') {
           router.push("/admin");
         } else {
-          router.push("/");
+          router.push("/profile");
         }
       } else {
         const errData = await res.json();
