@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { 
   Trophy, Flame, Calendar, Check, X, Sparkles, 
   Camera, Paintbrush, Shield, CalendarDays, Activity, 
-  MapPin, Clock, LogOut, Edit2, Home, Loader2
+  MapPin, Clock, LogOut, Edit2, Home, Loader2, Settings
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 
@@ -17,9 +17,40 @@ export default function ProfilePage() {
   const [playerData, setPlayerData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatingRsvp, setUpdatingRsvp] = useState(false);
-  const [isEditingNickname, setIsEditingNickname] = useState(false);
-  const [nicknameInput, setNicknameInput] = useState("");
-  const [updatingNickname, setUpdatingNickname] = useState(false);
+
+  // Settings Modal states
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"avatar" | "profile" | "password">("avatar");
+  
+  // Profile Form states
+  const [fullName, setFullName] = useState("");
+  const [nickname, setNickname] = useState("");
+  const [academicInfo, setAcademicInfo] = useState("");
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Avatar Upload states
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Password Change states
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Toast Notification state
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // Trigger Toast helper
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
 
   // Fetch dữ liệu từ API /api/profile/me
   const fetchProfileData = async () => {
@@ -50,7 +81,24 @@ export default function ProfilePage() {
 
       const data = await res.json();
       setPlayerData(data);
-      setNicknameInput(data.player.nickname || "");
+      
+      // Khởi tạo form fields
+      setFullName(data.player.full_name || "");
+      setNickname(data.player.nickname || "");
+      setAcademicInfo(data.player.academic_info || "");
+      
+      // Parse soft skills
+      let skills: string[] = [];
+      if (data.player.soft_skills) {
+        try {
+          skills = typeof data.player.soft_skills === "string"
+            ? JSON.parse(data.player.soft_skills)
+            : data.player.soft_skills;
+        } catch (e) {
+          skills = Array.isArray(data.player.soft_skills) ? data.player.soft_skills : [];
+        }
+      }
+      setSelectedSkills(skills);
       setError(null);
     } catch (err: any) {
       console.error(err);
@@ -90,40 +138,160 @@ export default function ProfilePage() {
         throw new Error("Lỗi khi cập nhật RSVP.");
       }
 
-      // Re-fetch data
+      showToast("Cập nhật lịch tập RSVP thành công!");
       await fetchProfileData();
     } catch (err: any) {
-      alert(err.message || "Đã xảy ra lỗi khi RSVP.");
+      showToast(err.message || "Lỗi RSVP.", "error");
     } finally {
       setUpdatingRsvp(false);
     }
   };
 
-  // Cập nhật Nickname
-  const handleSaveNickname = async () => {
-    if (updatingNickname) return;
-    setUpdatingNickname(true);
+  // Sửa Hồ sơ (Tab 2)
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSavingProfile) return;
+    setIsSavingProfile(true);
+
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/profile/nickname`, {
+      const res = await fetch(`${API_URL}/api/profile/update`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ nickname: nicknameInput.trim() })
+        body: JSON.stringify({
+          full_name: fullName,
+          nickname: nickname,
+          academic_info: academicInfo,
+          soft_skills: selectedSkills
+        })
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        throw new Error("Lỗi khi cập nhật biệt danh.");
+        throw new Error(data.error || "Lỗi khi cập nhật thông tin.");
       }
 
-      setIsEditingNickname(false);
+      showToast("Cập nhật thông tin hồ sơ thành công!");
       await fetchProfileData();
+      
+      // Đóng modal sau 1.5s
+      setTimeout(() => {
+        setIsSettingsModalOpen(false);
+      }, 1500);
     } catch (err: any) {
-      alert(err.message || "Đã xảy ra lỗi khi cập nhật biệt danh.");
+      showToast(err.message || "Lỗi cập nhật hồ sơ.", "error");
     } finally {
-      setUpdatingNickname(false);
+      setIsSavingProfile(false);
+    }
+  };
+
+  // Đổi Avatar (Tab 1)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setAvatarFile(file);
+      
+      // Tạo preview url
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUploadAvatar = async () => {
+    if (!avatarFile || isUploadingAvatar) return;
+    setIsUploadingAvatar(true);
+
+    try {
+      const token = localStorage.getItem("admin_token");
+      const formData = new FormData();
+      formData.append("avatar", avatarFile);
+
+      const res = await fetch(`${API_URL}/api/profile/upload-avatar`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Lỗi khi upload ảnh.");
+      }
+
+      showToast("Cập nhật ảnh đại diện thành công!");
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      await fetchProfileData();
+
+      setTimeout(() => {
+        setIsSettingsModalOpen(false);
+      }, 1500);
+    } catch (err: any) {
+      showToast(err.message || "Lỗi tải ảnh lên.", "error");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  // Đổi mật khẩu (Tab 3)
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isChangingPassword) return;
+
+    // Check validation trước khi submit
+    if (newPassword.length < 6 || newPassword !== confirmPassword) {
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/profile/change-password`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          old_password: oldPassword,
+          new_password: newPassword
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Lỗi khi đổi mật khẩu.");
+      }
+
+      showToast("Đổi mật khẩu tài khoản thành công!");
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      await fetchProfileData();
+
+      setTimeout(() => {
+        setIsSettingsModalOpen(false);
+      }, 1500);
+    } catch (err: any) {
+      showToast(err.message || "Lỗi đổi mật khẩu.", "error");
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  // Checkbox kỹ năng đóng góp
+  const handleSkillCheckboxChange = (skill: string) => {
+    if (selectedSkills.includes(skill)) {
+      setSelectedSkills(selectedSkills.filter(s => s !== skill));
+    } else {
+      setSelectedSkills([...selectedSkills, skill]);
     }
   };
 
@@ -179,7 +347,7 @@ export default function ProfilePage() {
     };
   };
 
-  // Loading FOUC Prevention Screen (Tím Neon)
+  // Loading Screen (FOUC Prevention)
   if (isLoading) {
     return (
       <div className="min-h-screen bg-smash-dark flex flex-col items-center justify-center text-white">
@@ -241,14 +409,31 @@ export default function ProfilePage() {
     if (s.includes("tổ chức") || s.includes("sự kiện") || s.includes("event")) {
       return { icon: <CalendarDays className="w-5 h-5" />, label: "Tổ chức sự kiện", color: "from-amber-500 to-orange-500" };
     }
-    if (s.includes("code") || s.includes("lập trình") || s.includes("dev") || s.includes("web")) {
+    if (s.includes("code") || s.includes("lập trình") || s.includes("dev") || s.includes("web") || s.includes("phát triển")) {
       return { icon: <Shield className="w-5 h-5" />, label: "Lập trình viên", color: "from-emerald-500 to-teal-500" };
     }
     return { icon: <Activity className="w-5 h-5" />, label: skill, color: "from-purple-500 to-smash-violet" };
   };
 
+  // Real-time password validations
+  const isPasswordLengthValid = newPassword.length >= 6;
+  const isPasswordMatchValid = newPassword === confirmPassword;
+
   return (
-    <main className="min-h-screen bg-smash-dark text-slate-100 flex flex-col">
+    <main className="min-h-screen bg-smash-dark text-slate-100 flex flex-col relative">
+      
+      {/* Toast Notification Popup */}
+      {toast && (
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg border backdrop-blur-md transition-all duration-300 ${
+          toast.type === "success" 
+            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)]" 
+            : "bg-rose-500/10 border-rose-500/30 text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.3)]"
+        }`}>
+          {toast.type === "success" ? <Check className="w-4 h-4 text-emerald-400" /> : <X className="w-4 h-4 text-rose-400" />}
+          <span className="text-xs font-bold tracking-wide uppercase">{toast.message}</span>
+        </div>
+      )}
+
       {/* Navigation Minimalist */}
       <nav className="w-full bg-slate-950/60 backdrop-blur-md border-b border-purple-950/40 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -288,6 +473,15 @@ export default function ProfilePage() {
             {/* Background glowing gradient overlay */}
             <div className="absolute top-0 right-0 w-36 h-36 bg-smash-purple/10 rounded-bl-full -z-0 pointer-events-none blur-xl"></div>
             
+            {/* Settings Button */}
+            <button
+              onClick={() => setIsSettingsModalOpen(true)}
+              className="absolute top-4 right-4 p-2 rounded-xl bg-slate-900/60 border border-purple-950/30 text-slate-400 hover:text-smash-violet hover:border-smash-violet/50 hover:scale-115 active:scale-95 transition-all z-20 cursor-pointer shadow-sm"
+              title="Thiết lập tài khoản"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
             {/* Rank badge top header */}
             <div className="flex justify-between items-start relative z-10 mb-6">
               <span className={`text-[10px] uppercase font-black tracking-widest px-3 py-1 rounded-full ${rank.badgeClass}`}>
@@ -305,45 +499,27 @@ export default function ProfilePage() {
 
             {/* Avatar & Player Name */}
             <div className="flex flex-col items-center text-center relative z-10 mb-6">
-              <div className={`w-24 h-24 rounded-full flex items-center justify-center bg-purple-950/40 text-smash-violet font-black text-3xl mb-4 border-2 border-smash-violet shadow-[0_0_15px_rgba(157,78,221,0.3)]`}>
-                {player.full_name.substring(0, 2).toUpperCase()}
+              {/* Rounded image avatar with ELO Glow */}
+              <div className={`w-24 h-24 rounded-full overflow-hidden flex items-center justify-center bg-purple-950/40 text-smash-violet font-black text-3xl mb-4 border-2 border-smash-violet shadow-[0_0_15px_rgba(157,78,221,0.3)] relative`}>
+                {player.avatar_url ? (
+                  <Image
+                    src={player.avatar_url}
+                    alt={player.full_name}
+                    fill
+                    className="object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  player.full_name.substring(0, 2).toUpperCase()
+                )}
               </div>
               
               <h2 className="text-2xl font-black text-white tracking-wide">{player.full_name}</h2>
               
-              {/* Nickname Editor */}
-              <div className="flex items-center gap-2 mt-2 text-slate-400">
-                {isEditingNickname ? (
-                  <div className="flex items-center gap-1 bg-slate-900 border border-purple-950/60 rounded-lg px-2 py-1">
-                    <input
-                      type="text"
-                      value={nicknameInput}
-                      onChange={(e) => setNicknameInput(e.target.value)}
-                      className="bg-transparent text-xs text-white outline-none border-none max-w-[120px]"
-                      placeholder="Biệt danh..."
-                      maxLength={15}
-                    />
-                    <button onClick={handleSaveNickname} disabled={updatingNickname} className="text-emerald-400 hover:text-emerald-300">
-                      {updatingNickname ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                    </button>
-                    <button onClick={() => setIsEditingNickname(false)} className="text-rose-400 hover:text-rose-300">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 group">
-                    <span className="text-sm font-medium italic">
-                      {player.nickname ? `"${player.nickname}"` : "Chưa đặt biệt danh"}
-                    </span>
-                    <button 
-                      onClick={() => setIsEditingNickname(true)} 
-                      className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-smash-violet transition-opacity"
-                      title="Sửa biệt danh"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
+              <div className="flex items-center gap-1.5 mt-2 text-slate-400">
+                <span className="text-sm font-medium italic">
+                  {player.nickname ? `"${player.nickname}"` : "Chưa đặt biệt danh"}
+                </span>
               </div>
             </div>
 
@@ -376,9 +552,10 @@ export default function ProfilePage() {
                   style={{ width: `${progressPercent}%` }}
                 ></div>
               </div>
-              <p className="text-[9px] text-slate-500 text-right mt-1.5">
-                Cần thêm {rank.nextElo - maxElo} điểm để nâng cấp Rank
-              </p>
+              <div className="flex justify-between mt-1.5 text-[9px] text-slate-500">
+                <span>Học vấn: {player.academic_info || "Chưa đặt"}</span>
+                <span>Cần thêm {rank.nextElo - maxElo} điểm</span>
+              </div>
             </div>
           </div>
 
@@ -408,7 +585,7 @@ export default function ProfilePage() {
                   <Trophy className="w-5 h-5" />
                 </div>
                 <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Thành viên tích cực</span>
-                <p className="text-[9px] text-slate-500 mt-1 max-w-[150px]">Hãy tiếp tục tham gia tích cực để tích lũy huy hiệu đóng góp nhé!</p>
+                <p className="text-[9px] text-slate-500 mt-1 max-w-[150px]">Hãy tích cực tham gia CLB để nhận các huy hiệu đóng góp nhé!</p>
               </div>
             )}
           </div>
@@ -455,7 +632,7 @@ export default function ProfilePage() {
                   <button
                     onClick={() => handleRsvp(upcomingSession.id, "going")}
                     disabled={updatingRsvp}
-                    className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 ${
+                    className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
                       upcomingSession.rsvp_status === "going"
                         ? "bg-smash-purple text-white shadow-[0_0_15px_rgba(122,34,224,0.6)] border border-smash-violet/50"
                         : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-purple-950/50"
@@ -466,7 +643,7 @@ export default function ProfilePage() {
                   <button
                     onClick={() => handleRsvp(upcomingSession.id, "absent")}
                     disabled={updatingRsvp}
-                    className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 ${
+                    className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer ${
                       upcomingSession.rsvp_status === "absent"
                         ? "bg-slate-700 text-white"
                         : "bg-slate-900 hover:bg-slate-800 text-slate-400 border border-purple-950/50"
@@ -550,7 +727,7 @@ export default function ProfilePage() {
                   Hãy đăng ký tham gia giao đấu xếp hạng (Đơn/Đôi) tại câu lạc bộ để kích hoạt thẻ người chơi ELO của bạn và ghi danh trên bảng xếp hạng của SMASH TEAM!
                 </p>
                 <Link href="/">
-                  <button className="flex items-center gap-1.5 px-6 py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-full shadow-md active:scale-95 transition-all">
+                  <button className="flex items-center gap-1.5 px-6 py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-full shadow-md active:scale-95 transition-all cursor-pointer">
                     Xem Bảng Xếp Hạng CLB <Clock className="w-3.5 h-3.5" />
                   </button>
                 </Link>
@@ -559,6 +736,267 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* SETTINGS / CONFIGURATION MODAL (Glassmorphism & Dark Theme) */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-slate-950/95 border border-purple-900/50 rounded-3xl p-6 shadow-[0_0_40px_rgba(122,34,224,0.4)] relative flex flex-col max-h-[90vh] overflow-y-auto">
+            
+            {/* Close button */}
+            <button
+              onClick={() => setIsSettingsModalOpen(false)}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Title */}
+            <h3 className="text-xl font-black text-white mb-6 tracking-wide flex items-center gap-2">
+              <Settings className="w-5 h-5 text-smash-violet animate-spin-hover" /> Thiết lập Tài khoản
+            </h3>
+
+            {/* Tabs Selector */}
+            <div className="flex border-b border-purple-950/60 mb-6 bg-slate-900/40 p-1 rounded-xl">
+              <button
+                onClick={() => setActiveTab("avatar")}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  activeTab === "avatar"
+                    ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Đổi Avatar
+              </button>
+              <button
+                onClick={() => setActiveTab("profile")}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  activeTab === "profile"
+                    ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Hồ sơ cá nhân
+              </button>
+              <button
+                onClick={() => setActiveTab("password")}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  activeTab === "password"
+                    ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Đổi mật khẩu
+              </button>
+            </div>
+
+            {/* TAB CONTENTS */}
+            {/* 1. Tab Avatar */}
+            {activeTab === "avatar" && (
+              <div className="space-y-6 flex flex-col items-center py-4">
+                {/* Preview Circle */}
+                <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-smash-violet shadow-[0_0_20px_rgba(157,78,221,0.4)] relative bg-slate-900 flex items-center justify-center">
+                  {avatarPreview ? (
+                    <Image src={avatarPreview} alt="Avatar Preview" fill className="object-cover" />
+                  ) : player.avatar_url ? (
+                    <Image src={player.avatar_url} alt="Current Avatar" fill className="object-cover" unoptimized />
+                  ) : (
+                    <Trophy className="w-12 h-12 text-slate-700" />
+                  )}
+                </div>
+
+                <div className="w-full text-center">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-purple-950/50 rounded-xl font-bold text-xs transition-all cursor-pointer active:scale-95"
+                  >
+                    Chọn file ảnh đại diện
+                  </button>
+                  <p className="text-[10px] text-slate-500 mt-2">Định dạng hỗ trợ: JPG, PNG, WEBP. Tối đa 5MB.</p>
+                </div>
+
+                {avatarFile && (
+                  <button
+                    onClick={handleUploadAvatar}
+                    disabled={isUploadingAvatar}
+                    className="w-full py-3 bg-smash-purple text-white rounded-xl font-bold text-xs hover:bg-smash-violet transition-all shadow-md shadow-smash-purple/35 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    {isUploadingAvatar ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Đang tải ảnh lên Cloudinary...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" /> Xác nhận Cập nhật Avatar
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* 2. Tab Profile */}
+            {activeTab === "profile" && (
+              <form onSubmit={handleUpdateProfile} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Họ và tên</label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-900 border border-purple-950/60 rounded-xl text-white outline-none focus:border-smash-violet focus:ring-1 focus:ring-smash-violet transition-all text-xs"
+                    placeholder="Nguyễn Văn A"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Biệt danh (Nickname)</label>
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-900 border border-purple-950/60 rounded-xl text-white outline-none focus:border-smash-violet focus:ring-1 focus:ring-smash-violet transition-all text-xs"
+                    placeholder="Sấm sét, Vua cọ..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Trường học / Học vấn</label>
+                  <input
+                    type="text"
+                    value={academicInfo}
+                    onChange={(e) => setAcademicInfo(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-900 border border-purple-950/60 rounded-xl text-white outline-none focus:border-smash-violet focus:ring-1 focus:ring-smash-violet transition-all text-xs"
+                    placeholder="ĐH Bách Khoa, THPT A..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Kỹ năng đóng góp cho CLB</label>
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    {[
+                      { key: "Chụp ảnh/Media", label: "Media/Chụp ảnh" },
+                      { key: "Thiết kế/Design", label: "Design/Thiết kế" },
+                      { key: "Tổ chức sự kiện/Event", label: "Event/Tổ chức" },
+                      { key: "Lập trình viên/Dev", label: "Lập trình viên/Dev" }
+                    ].map(item => (
+                      <label 
+                        key={item.key} 
+                        className={`flex items-center gap-2 p-3 rounded-xl border transition-all cursor-pointer text-xs ${
+                          selectedSkills.includes(item.key)
+                            ? "bg-smash-purple/20 border-smash-violet text-white"
+                            : "bg-slate-900/60 border-purple-950/30 text-slate-400 hover:border-purple-950/60"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedSkills.includes(item.key)}
+                          onChange={() => handleSkillCheckboxChange(item.key)}
+                          className="hidden"
+                        />
+                        <span>{item.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="w-full py-3 bg-smash-purple text-white rounded-xl font-bold text-xs hover:bg-smash-violet transition-all shadow-md shadow-smash-purple/35 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 mt-6"
+                >
+                  {isSavingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Lưu thay đổi hồ sơ
+                </button>
+              </form>
+            )}
+
+            {/* 3. Tab Password */}
+            {activeTab === "password" && (
+              <form onSubmit={handleChangePassword} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu cũ</label>
+                  <input
+                    type="password"
+                    required
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-900 border border-purple-950/60 rounded-xl text-white outline-none focus:border-smash-violet focus:ring-1 focus:ring-smash-violet transition-all text-xs animate-none"
+                    placeholder="••••••••"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu mới</label>
+                  <input
+                    type="password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className={`w-full px-4 py-3 bg-slate-900 border rounded-xl text-white outline-none focus:ring-1 focus:ring-smash-violet transition-all text-xs ${
+                      newPassword ? (isPasswordLengthValid ? "border-emerald-500/50" : "border-rose-500/50") : "border-purple-950/60"
+                    }`}
+                    placeholder="••••••••"
+                  />
+                  {/* Real-time Indicator for new password */}
+                  {newPassword && (
+                    <p className={`text-[10px] font-bold mt-1.5 flex items-center gap-1 ${
+                      isPasswordLengthValid ? "text-emerald-400" : "text-rose-400"
+                    }`}>
+                      {isPasswordLengthValid ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                      Mật khẩu phải chứa ít nhất 6 ký tự
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Xác nhận mật khẩu mới</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`w-full px-4 py-3 bg-slate-900 border rounded-xl text-white outline-none focus:ring-1 focus:ring-smash-violet transition-all text-xs ${
+                      confirmPassword ? (isPasswordMatchValid ? "border-emerald-500/50" : "border-rose-500/50") : "border-purple-950/60"
+                    }`}
+                    placeholder="••••••••"
+                  />
+                  {/* Real-time Indicator for matching passwords */}
+                  {confirmPassword && (
+                    <p className={`text-[10px] font-bold mt-1.5 flex items-center gap-1 ${
+                      isPasswordMatchValid ? "text-emerald-400" : "text-rose-400"
+                    }`}>
+                      {isPasswordMatchValid ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                      Mật khẩu xác nhận không khớp
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isChangingPassword || !oldPassword || !isPasswordLengthValid || !isPasswordMatchValid}
+                  className="w-full py-3 bg-smash-purple text-white rounded-xl font-bold text-xs hover:bg-smash-violet transition-all shadow-md shadow-smash-purple/35 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+                >
+                  {isChangingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Đổi mật khẩu tài khoản
+                </button>
+              </form>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      <footer className="bg-slate-950/60 border-t border-purple-950/20 py-8 text-center text-slate-500 text-xs">
+        <p>© 2026 SmashTeam Badminton Club. All rights reserved.</p>
+      </footer>
     </main>
   );
 }
