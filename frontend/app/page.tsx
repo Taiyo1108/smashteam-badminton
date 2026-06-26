@@ -112,8 +112,13 @@ export default function Home() {
       <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-bold text-white shadow-lg">
-              S
+            <div className="relative w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center shadow-[0_0_10px_rgba(122,34,224,0.3)] border border-smash-purple/20">
+              <Image
+                src="/logo.png"
+                alt="Smash Team Logo"
+                fill
+                className="object-cover"
+              />
             </div>
             <span className="font-bold text-xl tracking-tight text-secondary">SmashTeam</span>
           </div>
