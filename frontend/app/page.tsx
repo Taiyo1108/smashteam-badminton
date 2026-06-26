@@ -163,7 +163,7 @@ export default function Home() {
             transition={{ duration: 0.5, delay: 0.4 }}
           >
             <Link href="/register">
-              <button className="group relative px-8 py-4 bg-primary text-white text-lg font-bold rounded-full overflow-hidden shadow-[0_0_40px_rgba(234,179,8,0.4)] hover:shadow-[0_0_60px_rgba(234,179,8,0.6)] transition-all">
+              <button className="group relative px-8 py-4 bg-primary text-white text-lg font-bold rounded-full overflow-hidden shadow-[0_0_40px_rgba(122,34,224,0.4)] hover:shadow-[0_0_60px_rgba(157,78,221,0.6)] transition-all">
                 <span className="relative z-10 flex items-center gap-2">
                   Trở thành Thành viên <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </span>
@@ -264,12 +264,12 @@ export default function Home() {
               <div className="grid grid-cols-3 gap-2 items-end mb-6 pt-4 pb-4 border-b border-slate-100 relative z-10">
                 {/* 2nd Place */}
                 <div className="flex flex-col items-center">
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-slate-300 shadow-sm flex items-center justify-center bg-slate-100 text-slate-600 font-bold text-sm">
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-smash-purple/60 shadow-[0_0_15px_rgba(122,34,224,0.4)] flex items-center justify-center bg-purple-50 text-smash-purple/80 font-bold text-sm">
                     {leaderboard[1].full_name.substring(0, 2).toUpperCase()}
                   </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase mt-1">2nd</span>
+                  <span className="text-[10px] font-black text-smash-purple/80 uppercase mt-1">2nd</span>
                   <p className="text-xs font-bold text-secondary truncate max-w-[80px] text-center">{leaderboard[1].full_name}</p>
-                  <p className="text-xs font-black text-slate-600">{leaderboard[1].elo_score}</p>
+                  <p className="text-xs font-black text-smash-purple/95">{leaderboard[1].elo_score}</p>
                   <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded mt-1 scale-90 ${getRankBadgeClass(leaderboard[1].rank_name)}`}>
                     {leaderboard[1].rank_name}
                   </span>
@@ -279,17 +279,17 @@ export default function Home() {
                 <div className="flex flex-col items-center transform -translate-y-2 scale-105">
                   <div className="relative">
                     {/* Trophy/Crown icon */}
-                    <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-amber-500 animate-bounce">
-                      <Trophy className="w-5 h-5 fill-amber-500" />
+                    <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-smash-violet fill-smash-violet animate-bounce">
+                      <Trophy className="w-5 h-5 fill-smash-violet" />
                     </div>
                     {/* Glowing effect */}
-                    <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-amber-400 shadow-[0_0_20px_rgba(234,179,8,0.6)] flex items-center justify-center bg-amber-50 text-amber-700 font-black text-lg">
+                    <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-smash-violet shadow-[0_0_25px_rgba(157,78,221,0.7)] flex items-center justify-center bg-purple-50 text-smash-purple font-black text-lg">
                       {leaderboard[0].full_name.substring(0, 2).toUpperCase()}
                     </div>
                   </div>
-                  <span className="text-[10px] font-black text-amber-500 uppercase mt-1">1st</span>
+                  <span className="text-[10px] font-black text-smash-violet uppercase mt-1">1st</span>
                   <p className="text-xs font-black text-secondary truncate max-w-[90px] text-center">{leaderboard[0].full_name}</p>
-                  <p className="text-sm font-black text-primary">{leaderboard[0].elo_score}</p>
+                  <p className="text-sm font-black text-smash-purple">{leaderboard[0].elo_score}</p>
                   <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded mt-1 ${getRankBadgeClass(leaderboard[0].rank_name)}`}>
                     {leaderboard[0].rank_name}
                   </span>
@@ -297,12 +297,12 @@ export default function Home() {
 
                 {/* 3rd Place */}
                 <div className="flex flex-col items-center">
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-orange-300 shadow-sm flex items-center justify-center bg-orange-50 text-orange-700 font-bold text-sm">
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-smash-purple/30 shadow-[0_0_10px_rgba(122,34,224,0.2)] flex items-center justify-center bg-purple-50/50 text-smash-purple/70 font-bold text-sm">
                     {leaderboard[2].full_name.substring(0, 2).toUpperCase()}
                   </div>
-                  <span className="text-[10px] font-black text-orange-400 uppercase mt-1">3rd</span>
+                  <span className="text-[10px] font-black text-smash-purple/60 uppercase mt-1">3rd</span>
                   <p className="text-xs font-bold text-secondary truncate max-w-[80px] text-center">{leaderboard[2].full_name}</p>
-                  <p className="text-xs font-black text-slate-600">{leaderboard[2].elo_score}</p>
+                  <p className="text-xs font-black text-smash-purple/70">{leaderboard[2].elo_score}</p>
                   <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded mt-1 scale-90 ${getRankBadgeClass(leaderboard[2].rank_name)}`}>
                     {leaderboard[2].rank_name}
                   </span>
@@ -330,9 +330,9 @@ export default function Home() {
                   <div key={user.id} className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 border border-slate-100/30 transition-colors group">
                     <div className="flex items-center gap-4">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0
-                        ${overallIndex === 0 ? 'bg-yellow-100 text-yellow-600' : 
-                          overallIndex === 1 ? 'bg-slate-200 text-slate-600' : 
-                          overallIndex === 2 ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-400'}`}
+                        ${overallIndex === 0 ? 'bg-purple-100 text-smash-purple' : 
+                          overallIndex === 1 ? 'bg-purple-50 text-smash-purple/80' : 
+                          overallIndex === 2 ? 'bg-purple-50/50 text-smash-purple/60' : 'bg-slate-100 text-slate-400'}`}
                       >
                         {overallIndex + 1}
                       </div>

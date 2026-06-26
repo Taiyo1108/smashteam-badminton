@@ -1,18 +1,23 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #eab308; /* yellow-500 */
-  --color-primary-hover: #ca8a04; /* yellow-600 */
-  --color-secondary: #1e293b; /* slate-800 */
+  --color-primary: #7A22E0; /* Electric Purple */
+  --color-primary-hover: #9D4EDD; /* Neon Purple */
+  --color-secondary: #0c0a1a; /* Deep Indigo Black */
   --color-background: #ffffff;
-  --color-foreground: #0f172a;
+  --color-foreground: #0c0a1a;
+  
+  --color-smash-purple: #7A22E0;
+  --color-smash-violet: #9D4EDD;
+  --color-smash-dark: #0c0a1a;
+  --color-smash-light: #f8fafc;
   
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {
-  --background: #f8fafc; /* slate-50 */
-  --foreground: #0f172a; /* slate-900 */
+  --background: #f8fafc; /* Silver white */
+  --foreground: #0c0a1a; /* Deep Indigo Black */
 }
 
 body {
@@ -28,9 +33,32 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #c084fc; /* purple-400 */
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #9D4EDD; /* Neon Purple */
 }
+
+/* Soundwave Animation Keyframes */
+@keyframes soundwave {
+  0%, 100% {
+    height: 4px;
+  }
+  50% {
+    height: 12px;
+  }
+}
+
+.animate-soundwave-1 {
+  animation: soundwave 0.8s ease-in-out infinite;
+}
+
+.animate-soundwave-2 {
+  animation: soundwave 0.5s ease-in-out infinite 0.15s;
+}
+
+.animate-soundwave-3 {
+  animation: soundwave 0.7s ease-in-out infinite 0.3s;
+}
+
