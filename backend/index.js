@@ -8,6 +8,8 @@ const mediaRoutes = require('./routes/media');
 const matchRoutes = require('./routes/matches');
 const campaignRoutes = require('./routes/campaigns');
 const settingsRoutes = require('./routes/settings');
+const profileRoutes = require('./routes/profile');
+const sessionRoutes = require('./routes/sessions');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -24,6 +26,8 @@ app.use('/api/media', mediaRoutes);
 app.use('/api/matches', matchRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 // Base route
 app.get('/', (req, res) => {
