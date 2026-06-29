@@ -225,6 +225,8 @@ router.get('/stats', authenticateToken, isAdmin, async (req, res) => {
     console.error('Error fetching dashboard stats:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
 // DELETE /api/users/:id - Xóa/Loại bỏ user vĩnh viễn (Requires Admin)
 router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
