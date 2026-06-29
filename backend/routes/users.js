@@ -110,7 +110,8 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
 router.get('/members', authenticateToken, isAdmin, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT id, full_name, badminton_level, 
+      `SELECT id, full_name, phone_zalo, badminton_level, status, is_blocked, 
+              hand_preference, play_style, joined_at, soft_skills, role,
               elo_singles, elo_doubles, 
               matches_singles, matches_doubles, 
               streak_singles, max_streak_singles, 

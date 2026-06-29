@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, CheckCircle2, XCircle, Loader2, MoreHorizontal } from "lucide-react";
+import { Search, CheckCircle2, Loader2, MoreHorizontal, X, ShieldAlert, Award, Ban, Unlock, Phone, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
+
+const softSkillsList = [
+  "Chụp ảnh",
+  "Quay dựng video",
+  "Thiết kế",
+  "Hỗ trợ chạy giải"
+];
 
 export default function PersonnelPage() {
   const [activeTab, setActiveTab] = useState<'candidates' | 'members'>('candidates');
@@ -16,9 +23,32 @@ export default function PersonnelPage() {
   const [isLoadingC, setIsLoadingC] = useState(false);
   const [slots, setSlots] = useState<any[]>([]);
 
-  // States cho Members (có thể dùng chung state nhưng tách ra cho dễ quản lý)
+  // States cho Members
   const [members, setMembers] = useState<any[]>([]);
   const [isLoadingM, setIsLoadingM] = useState(false);
+  const [mSearch, setMSearch] = useState("");
+  const [mLevel, setMLevel] = useState("all");
+  const [mStatus, setMStatus] = useState("all");
+  const [mSkill, setMSkill] = useState("all");
+
+  // Modal Thao tác nhanh (Quick Actions)
+  const [showActionsModal, setShowActionsModal] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [quickRole, setQuickRole] = useState("member");
+  const [quickStatus, setQuickStatus] = useState("active");
+  const [eloType, setEloType] = useState<"singles" | "doubles">("singles");
+  const [eloAmount, setEloAmount] = useState("");
+  const [eloReason, setEloReason] = useState("");
+  const [isUpdatingElo, setIsUpdatingElo] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+
+  // Modal Chuyên Cần (Attendance Stats)
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceUser, setAttendanceUser] = useState<any>(null);
+  const [attendanceStats, setAttendanceStats] = useState<any>(null);
+  const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
+  const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
 
   useEffect(() => {
     // Fetch Slots for filter dropdown
@@ -61,7 +91,9 @@ export default function PersonnelPage() {
       const res = await fetch(`${API_URL}/api/users/members`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
-      if (res.ok) setMembers(await res.json());
+      if (res.ok) {
+        setMembers(await res.json());
+      }
     } catch (e) {} finally { setIsLoadingM(false); }
   };
 
@@ -78,6 +110,166 @@ export default function PersonnelPage() {
       }
     } catch (e) {}
   };
+
+  // Quick Action functions
+  const handleUpdateStatusBlock = async (memberId: string, status: string, isBlocked: boolean) => {
+    setIsUpdatingStatus(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/users/${memberId}/status-block`, {
+        method: 'PUT',
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status, is_blocked: isBlocked })
+      });
+      if (res.ok) {
+        alert("Cập nhật trạng thái/khóa tài khoản thành công!");
+        fetchMembers();
+        if (selectedMember && selectedMember.id === memberId) {
+          setSelectedMember((prev: any) => ({ ...prev, status, is_blocked: isBlocked }));
+        }
+      } else {
+        const data = await res.json();
+        alert(data.error || "Lỗi khi cập nhật.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleAdjustElo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!eloAmount || isNaN(Number(eloAmount))) {
+      alert("Vui lòng nhập số điểm ELO hợp lệ.");
+      return;
+    }
+    setIsUpdatingElo(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/users/${selectedMember.id}/adjust-elo`, {
+        method: 'PUT',
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ type: eloType, amount: Number(eloAmount), reason: eloReason })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message || "Cập nhật Elo thành công!");
+        setEloAmount("");
+        setEloReason("");
+        fetchMembers();
+        if (selectedMember) {
+          setSelectedMember((prev: any) => ({
+            ...prev,
+            elo_singles: eloType === 'singles' ? prev.elo_singles + Number(eloAmount) : prev.elo_singles,
+            elo_doubles: eloType === 'doubles' ? prev.elo_doubles + Number(eloAmount) : prev.elo_doubles
+          }));
+        }
+      } else {
+        const data = await res.json();
+        alert(data.error || "Lỗi khi cập nhật ELO.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    } finally {
+      setIsUpdatingElo(false);
+    }
+  };
+
+  const handleUpdateRole = async (memberId: string, role: string) => {
+    setIsUpdatingRole(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/users/${memberId}/role`, {
+        method: 'PUT',
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ role })
+      });
+      if (res.ok) {
+        alert("Cập nhật vai trò thành công!");
+        fetchMembers();
+        if (selectedMember && selectedMember.id === memberId) {
+          setSelectedMember((prev: any) => ({ ...prev, role }));
+        }
+      } else {
+        const data = await res.json();
+        alert(data.error || "Lỗi khi cập nhật vai trò.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    } finally {
+      setIsUpdatingRole(false);
+    }
+  };
+
+  const openAttendanceModal = async (member: any) => {
+    setAttendanceUser(member);
+    setAttendanceStats(null);
+    setAttendanceHistory([]);
+    setShowAttendanceModal(true);
+    setIsLoadingAttendance(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/users/${member.id}/attendance-stats`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAttendanceStats(data.stats);
+        setAttendanceHistory(data.history);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingAttendance(false);
+    }
+  };
+
+  const openActionsModal = (member: any) => {
+    setSelectedMember(member);
+    setQuickRole(member.role);
+    setQuickStatus(member.status || "active");
+    setEloType("singles");
+    setEloAmount("");
+    setEloReason("");
+    setShowActionsModal(true);
+  };
+
+  // Client-side filtering for Members
+  const filteredMembers = members.filter(m => {
+    if (mSearch) {
+      const s = mSearch.toLowerCase();
+      const matchName = m.full_name?.toLowerCase().includes(s);
+      const matchPhone = m.phone_zalo?.includes(s);
+      if (!matchName && !matchPhone) return false;
+    }
+    if (mLevel !== "all") {
+      if (m.badminton_level !== mLevel) return false;
+    }
+    if (mStatus !== "all") {
+      const currentStatus = m.status || "active";
+      if (currentStatus !== mStatus) return false;
+    }
+    if (mSkill !== "all") {
+      let skillsArray = [];
+      if (typeof m.soft_skills === 'string') {
+        try { skillsArray = JSON.parse(m.soft_skills); } catch(e) {}
+      } else if (Array.isArray(m.soft_skills)) {
+        skillsArray = m.soft_skills;
+      }
+      if (!skillsArray.includes(mSkill)) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -104,6 +296,7 @@ export default function PersonnelPage() {
         </button>
       </div>
 
+      {/* CANDIDATES TAB */}
       {activeTab === 'candidates' && (
         <div className="space-y-4">
           {/* Filter Bar */}
@@ -177,26 +370,373 @@ export default function PersonnelPage() {
         </div>
       )}
 
+      {/* MEMBERS TAB */}
       {activeTab === 'members' && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden min-h-[300px]">
-           <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b">
-              <tr>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Thành viên</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Elo Score</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Số trận</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {members.map(m => (
-                <tr key={m.id}>
-                  <td className="p-4 font-bold text-secondary">{m.full_name} <span className="text-xs text-slate-400 font-normal">({m.badminton_level})</span></td>
-                  <td className="p-4 font-bold text-primary">{m.elo_score}</td>
-                  <td className="p-4 text-sm">{m.total_matches}</td>
-                </tr>
+        <div className="space-y-4">
+          {/* Smart Filter Bar */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-center shadow-sm">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" placeholder="Tìm tên, SĐT thành viên..." 
+                value={mSearch} onChange={e => setMSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none"
+              />
+            </div>
+            <select value={mLevel} onChange={e => setMLevel(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[140px]">
+              <option value="all">Mọi trình độ</option>
+              <option value="Mới chơi">Mới chơi</option>
+              <option value="Trung bình">Trung bình</option>
+              <option value="Khá/Giỏi">Khá/Giỏi</option>
+            </select>
+            <select value={mStatus} onChange={e => setMStatus(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[140px]">
+              <option value="all">Mọi trạng thái</option>
+              <option value="active">Hoạt động (Active)</option>
+              <option value="inactive">Tạm nghỉ (Inactive)</option>
+              <option value="left">Đã rời CLB (Left)</option>
+            </select>
+            <select value={mSkill} onChange={e => setMSkill(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[180px]">
+              <option value="all">Mọi kỹ năng mềm</option>
+              {softSkillsList.map(skill => (
+                <option key={skill} value={skill}>{skill}</option>
               ))}
-            </tbody>
-          </table>
+            </select>
+          </div>
+
+          {/* Smart Table members */}
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden min-h-[300px] relative">
+            {isLoadingM ? (
+              <div className="absolute inset-0 flex items-center justify-center text-primary"><Loader2 className="animate-spin" /></div>
+            ) : filteredMembers.length === 0 ? (
+              <div className="p-10 text-center text-slate-500">Không tìm thấy thành viên nào khớp điều kiện.</div>
+            ) : (
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b">
+                  <tr>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Thành viên</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trình độ & Lối chơi</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Elo Score</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trạng thái</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase text-center">Thống kê</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredMembers.map(m => {
+                    const isBlocked = m.is_blocked;
+                    const status = m.status || "active";
+                    const isCurrentAdmin = m.role === "admin";
+                    
+                    return (
+                      <tr key={m.id} className="hover:bg-slate-50">
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div>
+                              <p className="font-bold text-secondary flex items-center gap-1.5">
+                                {m.full_name}
+                                {isCurrentAdmin && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">Admin</span>}
+                              </p>
+                              <p className="text-xs text-slate-400 flex items-center gap-1">
+                                <Phone className="w-3 h-3 text-slate-400" /> {m.phone_zalo}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-sm font-semibold text-slate-700">{m.badminton_level}</p>
+                          <p className="text-xs text-slate-400">
+                            {m.hand_preference ? `Tay ${m.hand_preference === 'Right' ? 'Thuận' : 'Trái'}` : "Chưa chọn tay"} • {m.play_style || "Chưa chọn lối chơi"}
+                          </p>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex gap-2">
+                            <span className="text-xs font-bold px-2 py-1 bg-purple-50 text-purple-700 border border-purple-100 rounded">
+                              Đơn: {m.elo_singles ?? 1000}
+                            </span>
+                            <span className="text-xs font-bold px-2 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded">
+                              Đôi: {m.elo_doubles ?? 1000}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-col gap-1 items-start">
+                            {status === "active" ? (
+                              <span className="text-[11px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full">Hoạt động</span>
+                            ) : status === "inactive" ? (
+                              <span className="text-[11px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-full">Tạm nghỉ</span>
+                            ) : (
+                              <span className="text-[11px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-full">Đã rời CLB</span>
+                            )}
+                            
+                            {isBlocked && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 bg-red-100 text-red-600 rounded-full flex items-center gap-1">
+                                <Ban className="w-2.5 h-2.5" /> Đã Khóa
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4 text-center">
+                          <button 
+                            onClick={() => openAttendanceModal(m)}
+                            className="text-xs font-bold px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors"
+                          >
+                            Chuyên cần
+                          </button>
+                        </td>
+                        <td className="p-4 text-right">
+                          <button 
+                            onClick={() => openActionsModal(m)} 
+                            className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+                          >
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL THAO TÁC NHANH (QUICK ACTIONS) */}
+      {showActionsModal && selectedMember && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100">
+            {/* Header */}
+            <div className="bg-slate-950 p-6 text-white flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-xl">Thao tác nhanh</h3>
+                <p className="text-xs text-slate-400 mt-1">Thành viên: {selectedMember.full_name} ({selectedMember.phone_zalo})</p>
+              </div>
+              <button 
+                onClick={() => setShowActionsModal(false)}
+                className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+              
+              {/* 1. Đổi vai trò (Role) */}
+              <div className="pb-6 border-b border-slate-100">
+                <h4 className="font-bold text-sm text-secondary mb-3 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-primary" /> Quyền hạn (Role)
+                </h4>
+                <div className="flex items-center gap-3">
+                  <select 
+                    value={quickRole} 
+                    onChange={e => setQuickRole(e.target.value)} 
+                    className="p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none flex-1"
+                  >
+                    <option value="member">Thành viên chính thức (Member)</option>
+                    <option value="admin">Quản trị viên (Admin)</option>
+                    <option value="candidate">Ứng viên Casting (Candidate)</option>
+                  </select>
+                  <button 
+                    onClick={() => handleUpdateRole(selectedMember.id, quickRole)}
+                    disabled={isUpdatingRole}
+                    className="px-4 py-2.5 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-bold text-sm rounded-lg transition-colors"
+                  >
+                    {isUpdatingRole ? "Lưu..." : "Cập nhật"}
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Điều chỉnh Elo */}
+              <div className="pb-6 border-b border-slate-100">
+                <h4 className="font-bold text-sm text-secondary mb-3 flex items-center gap-1.5">
+                  <Award className="w-4 h-4 text-purple-600" /> Điều chỉnh điểm Elo
+                </h4>
+                <form onSubmit={handleAdjustElo} className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">Loại ELO</label>
+                      <select 
+                        value={eloType} 
+                        onChange={e => setEloType(e.target.value as any)} 
+                        className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                      >
+                        <option value="singles">Điểm Đơn (Singles)</option>
+                        <option value="doubles">Điểm Đôi (Doubles)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">Điểm điều chỉnh (vd: +15, -10)</label>
+                      <input 
+                        type="text" 
+                        placeholder="+/- Điểm"
+                        value={eloAmount} 
+                        onChange={e => setEloAmount(e.target.value)} 
+                        className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">Lý do điều chỉnh</label>
+                    <input 
+                      type="text" 
+                      placeholder="Nhập lý do điều chỉnh..."
+                      value={eloReason} 
+                      onChange={e => setEloReason(e.target.value)} 
+                      className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                      required
+                    />
+                  </div>
+                  <button 
+                    type="submit"
+                    disabled={isUpdatingElo}
+                    className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-1"
+                  >
+                    {isUpdatingElo ? "Đang xử lý..." : "Cập nhật Elo"}
+                  </button>
+                </form>
+              </div>
+
+              {/* 3. Trạng thái & Khóa tài khoản */}
+              <div>
+                <h4 className="font-bold text-sm text-secondary mb-3 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-indigo-600" /> Trạng thái hoạt động & Bảo mật
+                </h4>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-3 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <span className="text-sm font-semibold text-slate-600">Trạng thái CLB</span>
+                    <select 
+                      value={quickStatus} 
+                      onChange={e => setQuickStatus(e.target.value)}
+                      className="p-2 text-sm border rounded focus:ring-1 focus:ring-primary outline-none bg-white min-w-[120px]"
+                    >
+                      <option value="active">Hoạt động</option>
+                      <option value="inactive">Tạm nghỉ</option>
+                      <option value="left">Đã rời CLB</option>
+                    </select>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleUpdateStatusBlock(selectedMember.id, quickStatus, selectedMember.is_blocked)}
+                      disabled={isUpdatingStatus}
+                      className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-sm font-bold rounded-lg transition-colors"
+                    >
+                      Lưu trạng thái CLB
+                    </button>
+
+                    {selectedMember.is_blocked ? (
+                      <button
+                        onClick={() => handleUpdateStatusBlock(selectedMember.id, quickStatus, false)}
+                        disabled={isUpdatingStatus}
+                        className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Unlock className="w-4 h-4" /> Mở khóa tài khoản
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (confirm("Khóa tài khoản sẽ chặn không cho người dùng này đăng nhập vào hệ thống ở các lần sau. Xác nhận khóa?")) {
+                            handleUpdateStatusBlock(selectedMember.id, quickStatus, true);
+                          }
+                        }}
+                        disabled={isUpdatingStatus}
+                        className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Ban className="w-4 h-4" /> Khóa tài khoản
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL THỐNG KÊ CHUYÊN CẦN */}
+      {showAttendanceModal && attendanceUser && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100">
+            {/* Header */}
+            <div className="bg-indigo-950 p-6 text-white flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-xl">Thống kê Chuyên cần</h3>
+                <p className="text-xs text-indigo-300 mt-1">Hội viên: {attendanceUser.full_name}</p>
+              </div>
+              <button 
+                onClick={() => setShowAttendanceModal(false)}
+                className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              {isLoadingAttendance ? (
+                <div className="py-20 flex justify-center text-primary"><Loader2 className="animate-spin w-8 h-8" /></div>
+              ) : !attendanceStats ? (
+                <div className="py-10 text-center text-slate-500">Không có dữ liệu chuyên cần cho hội viên này.</div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Stats Overview */}
+                  <div className="grid grid-cols-2 gap-4 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                    <div className="col-span-2 text-center py-2">
+                      <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Tỷ lệ Chuyên cần</p>
+                      <h4 className="text-4xl font-extrabold text-indigo-700 mt-1">{attendanceStats.attendance_rate}%</h4>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border border-indigo-50 text-center shadow-sm">
+                      <p className="text-xs text-slate-400 font-bold">Tham gia</p>
+                      <p className="text-lg font-bold text-emerald-600 mt-0.5">{attendanceStats.attended_sessions} buổi</p>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border border-indigo-50 text-center shadow-sm">
+                      <p className="text-xs text-slate-400 font-bold">Vắng</p>
+                      <p className="text-lg font-bold text-red-600 mt-0.5">{attendanceStats.absent_sessions} buổi</p>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border border-indigo-50 text-center shadow-sm col-span-2">
+                      <p className="text-xs text-slate-400 font-bold">Chưa RSVP / Không rõ</p>
+                      <p className="text-sm font-semibold text-slate-500 mt-0.5">{attendanceStats.no_rsvp_sessions} buổi tập</p>
+                    </div>
+                  </div>
+
+                  {/* History Details */}
+                  <div>
+                    <h4 className="font-bold text-sm text-secondary mb-3">Lịch sử điểm danh</h4>
+                    {attendanceHistory.length === 0 ? (
+                      <p className="text-xs text-slate-500 text-center py-4 bg-slate-50 border rounded-lg">Chưa có lịch sử buổi tập nào trong hệ thống.</p>
+                    ) : (
+                      <div className="space-y-2.5 max-h-[250px] overflow-y-auto pr-1">
+                        {attendanceHistory.map((item, index) => {
+                          const status = item.attendance_status;
+                          return (
+                            <div key={index} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-lg hover:border-slate-200 transition-colors shadow-sm">
+                              <div>
+                                <p className="text-xs font-bold text-secondary line-clamp-1">{item.title}</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                  {format(new Date(item.date_time), "HH:mm dd/MM/yyyy")}
+                                </p>
+                              </div>
+                              <div>
+                                {status === 'going' ? (
+                                  <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-1 rounded">Tham gia</span>
+                                ) : status === 'absent' ? (
+                                  <span className="text-[10px] font-bold bg-red-50 text-red-700 border border-red-100 px-2 py-1 rounded">Vắng mặt</span>
+                                ) : (
+                                  <span className="text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 px-2 py-1 rounded">Chưa RSVP</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

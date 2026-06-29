@@ -21,6 +21,11 @@ router.post('/login', async (req, res) => {
 
     const user = userResult.rows[0];
 
+    // Check if user is blocked
+    if (user.is_blocked) {
+      return res.status(403).json({ error: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Ban chủ nhiệm.' });
+    }
+
     // Check if account has password set (activated)
     if (!user.password_hash) {
       return res.status(403).json({ error: 'Tài khoản thành viên chưa được kích hoạt. Vui lòng kích hoạt tài khoản của bạn trước.' });

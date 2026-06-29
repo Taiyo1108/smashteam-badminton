@@ -10,6 +10,7 @@ const campaignRoutes = require('./routes/campaigns');
 const settingsRoutes = require('./routes/settings');
 const profileRoutes = require('./routes/profile');
 const sessionRoutes = require('./routes/sessions');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -28,6 +29,7 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Base route
 app.get('/', (req, res) => {
