@@ -123,13 +123,16 @@ export default function RegisterPage() {
         }),
       });
 
-      if (!response.ok) throw new Error('Lỗi khi đăng ký');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Lỗi khi đăng ký');
+      }
 
       setIsSubmitting(false);
       setIsSuccess(true);
       confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#eab308', '#ca8a04', '#1e293b', '#ffffff'] });
-    } catch (error) {
-      alert('Đã có lỗi xảy ra. Vui lòng thử lại sau.');
+    } catch (error: any) {
+      alert(error.message || 'Đã có lỗi xảy ra. Vui lòng thử lại sau.');
       setIsSubmitting(false);
     }
   };
