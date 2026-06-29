@@ -151,7 +151,7 @@ export default function PersonnelPage() {
                     <tr key={c.id} className="hover:bg-slate-50">
                       <td className="p-4">
                         <p className="font-bold text-secondary">{c.full_name}</p>
-                        <p className="text-xs text-slate-500">{c.phone_zalo} • {c.academic_info}</p>
+                        <p className="text-xs text-slate-500">{c.phone_zalo} • {c.gender ? `${c.gender} • ` : ""}{c.academic_info}</p>
                       </td>
                       <td className="p-4">
                         {c.casting_time ? (

@@ -6,12 +6,12 @@ const { authenticateToken, isAdmin } = require('../middleware/auth');
 // POST /api/users/register - Đăng ký candidate mới
 router.post('/register', async (req, res) => {
   try {
-    const { full_name, phone_zalo, academic_info, badminton_level, soft_skills, casting_slot_id } = req.body;
+    const { full_name, phone_zalo, academic_info, badminton_level, soft_skills, casting_slot_id, gender } = req.body;
     
     const result = await db.query(
-      `INSERT INTO users (full_name, phone_zalo, academic_info, badminton_level, soft_skills, role, casting_slot_id)
-       VALUES ($1, $2, $3, $4, $5, 'candidate', $6) RETURNING id, full_name, role`,
-      [full_name, phone_zalo, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id]
+      `INSERT INTO users (full_name, phone_zalo, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender)
+       VALUES ($1, $2, $3, $4, $5, 'candidate', $6, $7) RETURNING id, full_name, role`,
+      [full_name, phone_zalo, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id, gender]
     );
     
     res.status(201).json(result.rows[0]);
@@ -69,7 +69,7 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
     const { search, level, slot_id } = req.query;
     
     let query = `
-      SELECT u.id, u.full_name, u.phone_zalo, u.academic_info, u.badminton_level, u.soft_skills, u.created_at, 
+      SELECT u.id, u.full_name, u.gender, u.phone_zalo, u.academic_info, u.badminton_level, u.soft_skills, u.created_at, 
              u.casting_slot_id, c.casting_time, c.location 
       FROM users u
       LEFT JOIN casting_slots c ON u.casting_slot_id = c.id

@@ -14,6 +14,7 @@ CREATE TABLE users (
     total_matches INTEGER DEFAULT 0,
     win_rate DECIMAL(5, 2) DEFAULT 0.0,
     password_hash VARCHAR(255), -- For admin login
+    gender VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft, CheckCircle2, QrCode, Loader2, MapPin, Calendar } from "lucide-react";
+import { ArrowRight, ArrowLeft, CheckCircle2, QrCode, Loader2, MapPin, Calendar, AlertCircle } from "lucide-react";
 import confetti from "canvas-confetti";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -34,15 +34,38 @@ export default function RegisterPage() {
       .finally(() => setIsLoadingSlots(false));
   }, []);
 
+  const [phoneError, setPhoneError] = useState("");
   const [formData, setFormData] = useState({
     fullName: "",
     phoneZalo: "",
+    gender: "",
     university: "",
     courseYear: "",
     level: "",
     selectedSkills: [] as string[],
     selectedSlot: ""
   });
+
+  const validatePhone = (value: string) => {
+    if (!value) {
+      setPhoneError("");
+      return;
+    }
+    const hasNonDigits = /[^\d]/.test(value);
+    if (hasNonDigits) {
+      setPhoneError("Số điện thoại chỉ được chứa các chữ số (0-9).");
+      return;
+    }
+    if (!value.startsWith("0")) {
+      setPhoneError("Số điện thoại phải bắt đầu bằng chữ số 0.");
+      return;
+    }
+    if (value.length !== 10) {
+      setPhoneError(`Số điện thoại phải có đúng 10 chữ số (hiện tại: ${value.length} số).`);
+      return;
+    }
+    setPhoneError("");
+  };
 
   const updateForm = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -58,9 +81,16 @@ export default function RegisterPage() {
   };
 
   const nextStep = () => {
-    if (step === 1 && (!formData.fullName || !formData.phoneZalo)) {
-      alert("Vui lòng điền đủ họ tên và số điện thoại.");
-      return;
+    if (step === 1) {
+      if (!formData.fullName || !formData.phoneZalo || !formData.gender) {
+        alert("Vui lòng điền đầy đủ Họ tên, Số điện thoại và Giới tính.");
+        return;
+      }
+      const phoneRegex = /^0\d{9}$/;
+      if (!phoneRegex.test(formData.phoneZalo)) {
+        alert("Số điện thoại không đúng định dạng (phải có 10 chữ số và bắt đầu bằng số 0).");
+        return;
+      }
     }
     if (step === 2 && (!formData.university || !formData.level)) {
       alert("Vui lòng chọn trường và trình độ.");
@@ -88,7 +118,8 @@ export default function RegisterPage() {
           academic_info: `${formData.university} - ${formData.courseYear}`,
           badminton_level: formData.level,
           soft_skills: formData.selectedSkills,
-          casting_slot_id: formData.selectedSlot
+          casting_slot_id: formData.selectedSlot,
+          gender: formData.gender
         }),
       });
 
@@ -161,10 +192,43 @@ export default function RegisterPage() {
                       <input 
                         type="tel" 
                         placeholder="09..."
-                        className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800"
+                        className={`w-full px-5 py-4 rounded-xl border outline-none transition-all text-slate-800 ${
+                          phoneError 
+                            ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100" 
+                            : "border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        }`}
                         value={formData.phoneZalo}
-                        onChange={(e) => updateForm("phoneZalo", e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateForm("phoneZalo", val);
+                          validatePhone(val);
+                        }}
                       />
+                      {phoneError && (
+                        <p className="text-xs text-red-500 mt-2 font-medium flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{phoneError}</span>
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-600 mb-2">Giới tính</label>
+                      <div className="flex gap-4">
+                        {["Nam", "Nữ", "Khác"].map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() => updateForm("gender", g)}
+                            className={`flex-1 py-3.5 text-sm font-bold border-2 rounded-xl transition-all ${
+                              formData.gender === g
+                                ? "border-primary bg-primary/5 text-primary shadow-sm scale-[1.02]"
+                                : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                            }`}
+                          >
+                            {g}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </motion.div>
                 )}

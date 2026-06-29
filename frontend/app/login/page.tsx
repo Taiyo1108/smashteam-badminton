@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Lock, Phone, ArrowRight } from "lucide-react";
+import { Lock, Phone, ArrowRight, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { API_URL } from "@/app/config";
 
 export default function UnifiedLogin() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -93,13 +94,20 @@ export default function UnifiedLogin() {
                 <Lock className="h-5 w-5 text-slate-400" />
               </div>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none"
+                className="block w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none"
                 placeholder="••••••••"
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
             </div>
           </div>
 
@@ -113,15 +121,29 @@ export default function UnifiedLogin() {
           </button>
         </form>
 
-        <div className="text-center mt-6 pt-4 border-t border-slate-100">
+        <div className="text-center mt-6 pt-4 border-t border-slate-100 flex flex-col gap-3">
           <Link
             href="/claim-account"
             className="text-sm font-semibold text-primary hover:text-primary-hover transition-colors"
           >
             Bạn là thành viên cũ? Kích hoạt tài khoản tại đây
           </Link>
+          <Link
+            href="/"
+            className="text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors flex items-center justify-center gap-1"
+          >
+            <ArrowLeft className="w-4 h-4" /> Quay về Trang chủ
+          </Link>
         </div>
       </div>
+      
+      {/* Absolute top-left back link */}
+      <Link 
+        href="/" 
+        className="absolute top-6 left-6 flex items-center gap-2 text-white/80 hover:text-white font-semibold transition-colors z-20"
+      >
+        <ArrowLeft className="w-4 h-4" /> Quay về Trang chủ
+      </Link>
     </div>
   );
 }
