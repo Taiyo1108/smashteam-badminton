@@ -26,7 +26,7 @@ export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState("");
 
-  const [coverUrl, setCoverUrl] = useState("https://images.unsplash.com/photo-1599586120429-48281b6f0ece?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80");
+  const [coverUrl, setCoverUrl] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [leaderboardType, setLeaderboardType] = useState<"singles" | "doubles">("singles");
 
@@ -65,12 +65,19 @@ export default function Home() {
       if (role) setUserRole(role);
     }
 
+    // Check local storage immediately on client mount to prevent flash of empty screen
+    const cachedCover = localStorage.getItem("homepage_cover_url");
+    if (cachedCover) {
+      setCoverUrl(cachedCover);
+    }
+
     // Fetch Cover URL
     fetch(`${API_URL}/api/settings?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
         if (data && data.homepage_cover_url) {
           setCoverUrl(data.homepage_cover_url);
+          localStorage.setItem("homepage_cover_url", data.homepage_cover_url);
         }
       })
       .catch(e => console.error("Error loading settings:", e));
@@ -161,13 +168,23 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative h-screen flex items-center justify-center overflow-hidden bg-slate-900">
         <div className="absolute inset-0 z-0">
-          <Image
-            src={coverUrl}
-            alt="Badminton Hero"
-            fill
-            className="object-cover opacity-40"
-            priority
-          />
+          {coverUrl && (
+            <motion.div
+              key={coverUrl}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.4 }}
+              transition={{ duration: 0.8 }}
+              className="absolute inset-0"
+            >
+              <Image
+                src={coverUrl}
+                alt="Badminton Hero"
+                fill
+                className="object-cover"
+                priority
+              />
+            </motion.div>
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
         </div>
 
