@@ -1137,40 +1137,47 @@ export default function ProfilePage() {
 
               return (
                 <div className="space-y-6">
-                  {/* Stats & Filters Summary Block */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-900/60 p-5 rounded-2xl border border-purple-950/20 items-center">
-                    <div className="text-center sm:text-left space-y-1">
-                      <span className="text-[10px] uppercase font-black tracking-widest text-slate-500">Hiệu số tổng quan</span>
-                      <p className="text-xs text-slate-300 font-medium">
-                        Tổng số trận: <span className="text-white font-extrabold">{totalMatchesCount}</span>
-                      </p>
-                      <p className="text-xs text-slate-300 font-medium">
-                        Tỷ lệ thắng: <span className="text-emerald-400 font-extrabold">{winRate}%</span>
-                      </p>
+                  {/* Title & Dropdown Filter Row */}
+                  <div className="flex items-center justify-between gap-4">
+                    <h4 className="text-xs uppercase font-black tracking-widest text-slate-400 flex items-center gap-1.5">
+                      <Trophy className="w-3.5 h-3.5 text-smash-violet" /> Hiệu số thi đấu
+                    </h4>
+                    
+                    <select
+                      value={matchFilter}
+                      onChange={(e) => setMatchFilter(e.target.value as any)}
+                      className="text-xs font-bold bg-slate-900 border border-purple-950/40 text-slate-300 rounded-xl px-3 py-1.5 focus:ring-1 focus:ring-primary outline-none cursor-pointer"
+                    >
+                      <option value="all">Tất cả thời gian</option>
+                      <option value="month">Trong tháng này</option>
+                      <option value="week">Trong tuần này</option>
+                    </select>
+                  </div>
+
+                  {/* 3 Prominent Stats Cards */}
+                  <div className="grid grid-cols-3 gap-3">
+                    {/* Card 1: Total matches */}
+                    <div className="bg-slate-900/40 border border-purple-950/20 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
+                      <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Tổng Trận</span>
+                      <span className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight">{totalMatchesCount}</span>
                     </div>
 
-                    {/* Filter Segmented Control */}
-                    <div className="sm:col-span-2 flex justify-center sm:justify-end gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-purple-950/30">
-                      {[
-                        { id: "all", label: "Tất cả" },
-                        { id: "month", label: "Trong tháng" },
-                        { id: "week", label: "Trong tuần" }
-                      ].map((btn) => {
-                        const active = matchFilter === btn.id;
-                        return (
-                          <button
-                            key={btn.id}
-                            onClick={() => setMatchFilter(btn.id as any)}
-                            className={`px-4 py-2 text-[10px] font-black uppercase rounded-lg transition-all cursor-pointer ${
-                              active
-                                ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
-                                : "text-slate-400 hover:text-white"
-                            }`}
-                          >
-                            {btn.label}
-                          </button>
-                        );
-                      })}
+                    {/* Card 2: Winrate */}
+                    <div className="bg-slate-900/40 border border-purple-950/20 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
+                      <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Tỷ Lệ Thắng</span>
+                      <span className={`text-xl sm:text-2xl font-black font-mono tracking-tight ${winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {winRate}%
+                      </span>
+                    </div>
+
+                    {/* Card 3: Wins / Losses */}
+                    <div className="bg-slate-900/40 border border-purple-950/20 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
+                      <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Thắng / Bại</span>
+                      <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-slate-300">
+                        <span className="text-emerald-400">{wonMatchesCount}</span>
+                        <span className="text-slate-600 px-0.5">/</span>
+                        <span className="text-rose-400">{totalMatchesCount - wonMatchesCount}</span>
+                      </span>
                     </div>
                   </div>
 
