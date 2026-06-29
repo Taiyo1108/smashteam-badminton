@@ -27,6 +27,7 @@ export default function ProfilePage() {
   const [isPremiumPass, setIsPremiumPass] = useState(false);
   const [inventory, setInventory] = useState<any[]>([]);
   const [activeGamTab, setActiveGamTab] = useState<"quests" | "smashpass" | "inventory" | "matches">("quests");
+  const [matchFilter, setMatchFilter] = useState<"all" | "month" | "week">("all");
   
   const [claimingQuestId, setClaimingQuestId] = useState<number | null>(null);
   const [claimingPassLevel, setClaimingPassLevel] = useState<number | null>(null);
@@ -777,6 +778,7 @@ export default function ProfilePage() {
         <div className="lg:col-span-2 space-y-8">
           
           {/* RSVP WIDGET */}
+          {false && (
           <div className="rounded-3xl bg-slate-950/80 backdrop-blur-md border border-purple-950/40 p-6 relative overflow-hidden shadow-sm">
             <div className="absolute top-0 right-0 w-24 h-24 bg-smash-purple/5 rounded-bl-full pointer-events-none"></div>
             
@@ -841,6 +843,7 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
+          )}
 
           {/* SMASHPASS GAMIFICATION PORTAL */}
           <div className="rounded-3xl bg-slate-950/80 backdrop-blur-md border border-purple-950/40 p-6 shadow-sm">
@@ -870,61 +873,91 @@ export default function ProfilePage() {
             </div>
 
             {/* TAB CONTENT: QUESTS */}
-            {activeGamTab === "quests" && (
-              <div className="space-y-4">
-                {quests.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500 text-sm">Không có nhiệm vụ khả dụng.</div>
-                ) : (
-                  quests.map((q: any) => {
-                    const isDone = q.current_count >= q.target_count;
-                    const pct = Math.min(100, (q.current_count / q.target_count) * 100);
-                    
-                    return (
-                      <div key={q.id} className="p-4 rounded-2xl bg-slate-900/40 border border-purple-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-purple-900/30 transition-all">
-                        <div className="flex-1 space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                              q.quest_type === 'daily'
-                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                : q.quest_type === 'weekly'
-                                ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                                : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                            }`}>
-                              {q.quest_type === 'daily' ? 'Hàng ngày' : q.quest_type === 'weekly' ? 'Hàng tuần' : 'Mùa giải'}
-                            </span>
-                            <span className="text-[10px] text-slate-500">
-                              Phần thưởng: <span className="text-emerald-400">+{q.xp_reward} XP</span> • <span className="text-amber-400">+{q.coin_reward} Xu</span>
-                            </span>
-                          </div>
-                          <h4 className="text-sm font-bold text-white tracking-wide">{q.title}</h4>
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-purple-950/30">
-                              <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+            {activeGamTab === "quests" && (() => {
+              const sortedQuests = [...quests].sort((a: any, b: any) => {
+                // 1. Đã nhận quà cho xuống cuối cùng
+                if (a.is_claimed && !b.is_claimed) return 1;
+                if (!a.is_claimed && b.is_claimed) return -1;
+
+                // Nếu cả hai đều chưa nhận quà (hoặc cả hai đã nhận, nhưng quan trọng nhất là chưa nhận)
+                if (!a.is_claimed && !b.is_claimed) {
+                  const aDone = a.current_count >= a.target_count;
+                  const bDone = b.current_count >= b.target_count;
+                  // Đã hoàn thành (chưa nhận quà) cho lên đầu
+                  if (aDone && !bDone) return -1;
+                  if (!aDone && bDone) return 1;
+                }
+
+                // 2. Sắp xếp theo chu kỳ ngắn hạn lên trên (daily > weekly > monthly > seasonal)
+                const typeWeight: Record<string, number> = {
+                  daily: 1,
+                  weekly: 2,
+                  monthly: 3,
+                  seasonal: 4
+                };
+                const wA = typeWeight[a.quest_type] || 5;
+                const wB = typeWeight[b.quest_type] || 5;
+                return wA - wB;
+              });
+
+              return (
+                <div className="space-y-4">
+                  {sortedQuests.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500 text-sm">Không có nhiệm vụ khả dụng.</div>
+                  ) : (
+                    sortedQuests.map((q: any) => {
+                      const isDone = q.current_count >= q.target_count;
+                      const pct = Math.min(100, (q.current_count / q.target_count) * 100);
+                      
+                      return (
+                        <div key={q.id} className="p-4 rounded-2xl bg-slate-900/40 border border-purple-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-purple-900/30 transition-all">
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                                q.quest_type === 'daily'
+                                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                  : q.quest_type === 'weekly'
+                                  ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                  : q.quest_type === 'monthly'
+                                  ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                                  : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                              }`}>
+                                {q.quest_type === 'daily' ? 'Hàng ngày' : q.quest_type === 'weekly' ? 'Hàng tuần' : q.quest_type === 'monthly' ? 'Hàng tháng' : 'Mùa giải'}
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                Phần thưởng: <span className="text-emerald-400">+{q.xp_reward} XP</span> • <span className="text-amber-400">+{q.coin_reward} Xu</span>
+                              </span>
                             </div>
-                            <span className="text-xs font-mono font-bold text-slate-400 shrink-0">{q.current_count}/{q.target_count}</span>
+                            <h4 className="text-sm font-bold text-white tracking-wide">{q.title}</h4>
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-purple-950/30">
+                                <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                              </div>
+                              <span className="text-xs font-mono font-bold text-slate-400 shrink-0">{q.current_count}/{q.target_count}</span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center justify-end">
+                            {q.is_claimed ? (
+                              <span className="text-xs font-bold text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">Đã nhận</span>
+                            ) : isDone ? (
+                              <button
+                                onClick={() => handleClaimQuest(q.id)}
+                                disabled={claimingQuestId === q.id}
+                                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-lg shadow-lg shadow-emerald-600/30 cursor-pointer animate-pulse active:scale-95 transition-transform"
+                              >
+                                {claimingQuestId === q.id ? "Đang nhận..." : "Nhận Quà"}
+                              </button>
+                            ) : (
+                              <span className="text-xs font-bold text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-purple-950/30">Đang làm</span>
+                            )}
                           </div>
                         </div>
-                        <div className="shrink-0 flex items-center justify-end">
-                          {q.is_claimed ? (
-                            <span className="text-xs font-bold text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">Đã nhận</span>
-                          ) : isDone ? (
-                            <button
-                              onClick={() => handleClaimQuest(q.id)}
-                              disabled={claimingQuestId === q.id}
-                              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-lg shadow-lg shadow-emerald-600/30 cursor-pointer animate-pulse active:scale-95 transition-transform"
-                            >
-                              {claimingQuestId === q.id ? "Đang nhận..." : "Nhận Quà"}
-                            </button>
-                          ) : (
-                            <span className="text-xs font-bold text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-purple-950/30">Đang làm</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
+                      );
+                    })
+                  )}
+                </div>
+              );
+            })()}
 
             {/* TAB CONTENT: SMASHPASS */}
             {activeGamTab === "smashpass" && (
@@ -1081,70 +1114,124 @@ export default function ProfilePage() {
             )}
 
             {/* TAB CONTENT: MATCHES */}
-            {activeGamTab === "matches" && (
-              <div className="space-y-4">
-                {matches.length > 0 ? (
-                  <div className="space-y-4">
-                    {matches.map((m: any) => (
-                      <div key={m.id} className="p-4 rounded-2xl bg-slate-900/40 border border-purple-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-smash-purple/20 transition-all">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                              m.isDoubles 
-                                ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" 
-                                : "bg-purple-500/10 text-smash-violet border border-smash-purple/20"
-                            }`}>
-                              {m.isDoubles ? "Đôi" : "Đơn"}
+            {activeGamTab === "matches" && (() => {
+              const filteredMatches = matches.filter((m: any) => {
+                if (matchFilter === "all") return true;
+                const matchDate = new Date(m.created_at);
+                const now = new Date();
+                if (matchFilter === "month") {
+                  return matchDate.getMonth() === now.getMonth() && matchDate.getFullYear() === now.getFullYear();
+                }
+                if (matchFilter === "week") {
+                  // Check if within the last 7 days
+                  const diffTime = Math.abs(now.getTime() - matchDate.getTime());
+                  const diffDays = diffTime / (1000 * 60 * 60 * 24);
+                  return diffDays <= 7;
+                }
+                return true;
+              });
+
+              const totalMatchesCount = filteredMatches.length;
+              const wonMatchesCount = filteredMatches.filter((m: any) => m.won).length;
+              const winRate = totalMatchesCount > 0 ? Math.round((wonMatchesCount / totalMatchesCount) * 100) : 0;
+
+              return (
+                <div className="space-y-6">
+                  {/* Stats & Filters Summary Block */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-900/60 p-5 rounded-2xl border border-purple-950/20 items-center">
+                    <div className="text-center sm:text-left space-y-1">
+                      <span className="text-[10px] uppercase font-black tracking-widest text-slate-500">Hiệu số tổng quan</span>
+                      <p className="text-xs text-slate-300 font-medium">
+                        Tổng số trận: <span className="text-white font-extrabold">{totalMatchesCount}</span>
+                      </p>
+                      <p className="text-xs text-slate-300 font-medium">
+                        Tỷ lệ thắng: <span className="text-emerald-400 font-extrabold">{winRate}%</span>
+                      </p>
+                    </div>
+
+                    {/* Filter Segmented Control */}
+                    <div className="sm:col-span-2 flex justify-center sm:justify-end gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-purple-950/30">
+                      {[
+                        { id: "all", label: "Tất cả" },
+                        { id: "month", label: "Trong tháng" },
+                        { id: "week", label: "Trong tuần" }
+                      ].map((btn) => {
+                        const active = matchFilter === btn.id;
+                        return (
+                          <button
+                            key={btn.id}
+                            onClick={() => setMatchFilter(btn.id as any)}
+                            className={`px-4 py-2 text-[10px] font-black uppercase rounded-lg transition-all cursor-pointer ${
+                              active
+                                ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
+                                : "text-slate-400 hover:text-white"
+                            }`}
+                          >
+                            {btn.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {filteredMatches.length > 0 ? (
+                    <div className="space-y-4">
+                      {filteredMatches.map((m: any) => (
+                        <div key={m.id} className="p-4 rounded-2xl bg-slate-900/40 border border-purple-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-smash-purple/20 transition-all">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                                m.isDoubles 
+                                  ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" 
+                                  : "bg-purple-500/10 text-smash-violet border border-smash-purple/20"
+                              }`}>
+                                {m.isDoubles ? "Đôi" : "Đơn"}
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                {new Date(m.created_at).toLocaleDateString("vi-VN")}
+                              </span>
+                            </div>
+                            <p className="text-sm font-bold text-white">
+                              đối thủ: <span className="text-slate-300">{m.opponent}</span>
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-10">
+                            <span className="font-extrabold text-base text-slate-300 tracking-wider font-mono">
+                              {m.score}
                             </span>
-                            <span className="text-[10px] text-slate-500">
-                              {new Date(m.created_at).toLocaleDateString("vi-VN")}
+                            
+                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full text-center min-w-[70px] ${
+                              m.won
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
+                                : "bg-rose-500/10 text-rose-400 border border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
+                            }`}>
+                              {m.won ? "Thắng" : "Thua"}
+                            </span>
+
+                            <span className={`text-sm font-black tracking-wide min-w-[65px] text-right ${
+                              m.eloChange >= 0 ? "text-emerald-400" : "text-rose-400"
+                            }`}>
+                              {m.eloChange >= 0 ? `+${m.eloChange}` : m.eloChange} ELO
                             </span>
                           </div>
-                          <p className="text-sm font-bold text-white">
-                            đối thủ: <span className="text-slate-300">{m.opponent}</span>
-                          </p>
                         </div>
-
-                        <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-10">
-                          <span className="font-extrabold text-base text-slate-300 tracking-wider font-mono">
-                            {m.score}
-                          </span>
-                          
-                          <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full text-center min-w-[70px] ${
-                            m.won
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                              : "bg-rose-500/10 text-rose-400 border border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
-                          }`}>
-                            {m.won ? "Thắng" : "Thua"}
-                          </span>
-
-                          <span className={`text-sm font-black tracking-wide min-w-[65px] text-right ${
-                            m.eloChange >= 0 ? "text-emerald-400" : "text-rose-400"
-                          }`}>
-                            {m.eloChange >= 0 ? `+${m.eloChange}` : m.eloChange} ELO
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-10 rounded-2xl bg-slate-900/30 border border-dashed border-purple-950/20 text-center">
-                    <div className="w-12 h-12 rounded-full bg-purple-950/50 text-smash-violet flex items-center justify-center mb-4 border border-purple-950/50 shadow-inner animate-pulse">
-                      <Trophy className="w-6 h-6" />
+                      ))}
                     </div>
-                    <h4 className="text-white font-bold text-base mb-1.5">Bạn chưa tham gia trận đấu xếp hạng nào</h4>
-                    <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
-                      Hãy đăng ký tham gia giao đấu xếp hạng (Đơn/Đôi) tại câu lạc bộ để kích hoạt thẻ người chơi ELO của bạn và ghi danh trên bảng xếp hạng của SMASH TEAM!
-                    </p>
-                    <Link href="/">
-                      <button className="flex items-center gap-1.5 px-6 py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-full shadow-md active:scale-95 transition-all cursor-pointer">
-                        Xem Bảng Xếp Hạng CLB <Clock className="w-3.5 h-3.5" />
-                      </button>
-                    </Link>
-                  </div>
-                )}
-              </div>
-            )}
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-10 rounded-2xl bg-slate-900/30 border border-dashed border-purple-950/20 text-center">
+                      <div className="w-12 h-12 rounded-full bg-purple-950/50 text-smash-violet flex items-center justify-center mb-4 border border-purple-950/50 shadow-inner animate-pulse">
+                        <Trophy className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-white font-bold text-base mb-1.5">Không tìm thấy trận đấu nào</h4>
+                      <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
+                        Không có trận đấu nào được ghi nhận trong khoảng thời gian đã chọn.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
