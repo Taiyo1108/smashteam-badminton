@@ -1,6 +1,6 @@
 # SMASH TEAM - HỆ THỐNG QUẢN LÝ CÂU LẠC BỘ CẦU LÔNG (BADMINTON CLUB PLATFORM)
 
-Chào mừng bạn đến với **SMASH TEAM Badminton Platform** - hệ thống quản lý câu lạc bộ cầu lông hiện đại tích hợp tính năng **Gamification** (Thẻ người chơi, xếp hạng điểm ELO) và cổng thông tin thành viên (Player Portal) trực quan, được thiết kế chuyên biệt cho Ban chủ nhiệm và Hội viên.
+Chào mừng bạn đến với **SMASH TEAM Badminton Platform** - hệ thống quản lý câu lạc bộ cầu lông hiện đại tích hợp tính năng **Gamification** (Thẻ người chơi, xếp hạng điểm ELO, SmashPass, Kho Đồ) và cổng thông tin thành viên (Player Portal) trực quan, được thiết kế chuyên biệt cho Ban chủ nhiệm và Hội viên.
 
 ---
 
@@ -17,15 +17,16 @@ graph TD
 ```
 
 ### 1.1. Công nghệ Frontend (Next.js App Router)
-* **Framework chính:** Next.js (React 18) chạy trên kiến trúc App Router tối tân hỗ trợ Server-Side Rendering (SSR) và Client-side Navigation (SPA).
+* **Framework chính:** Next.js (React 19) chạy trên kiến trúc App Router tối tân hỗ trợ Server-Side Rendering (SSR) và Client-side Navigation (SPA).
 * **Styling (CSS):** Tailwind CSS v4 tối ưu hóa hiệu năng biên dịch và quản lý hệ màu tùy biến (`bg-smash-dark`, neon tím/bạc).
-* **Hiệu ứng & Animation:** Framer Motion (cho các chuyển động mượt mà, transition tab) và Canvas Confetti (hiệu ứng ăn mừng khi đăng ký thành công).
-* **Bộ Icon:** Lucide React.
+* **Hiệu ứng & Animation:** Framer Motion (cho các chuyển động mượt mà, transition tab) và Canvas Confetti (hiệu ứng ăn mừng khi check-in thành công).
+* **Mã QR Code:** Tích hợp `qrcode.react` để tạo mã QR Code check-in sân sắc nét.
 * **Nhạc nền BGM:** Tích hợp bộ phát nhạc nền loop chất lượng cao Synthwave/EDM tự động phát khi phát hiện tương tác đầu tiên của người dùng.
 
 ### 1.2. Công nghệ Backend & Database
 * **Runtime Environment:** Node.js v18+ kết hợp Express framework.
 * **Cơ sở dữ liệu:** PostgreSQL lưu trữ dữ liệu quan hệ, được lưu trữ và tối ưu hóa kết nối trên nền tảng Supabase Cloud.
+* **Giao dịch Cơ sở dữ liệu (Database Transactions):** Bọc các logic nhận quà, mua Premium Pass trong khối Transaction để chống lỗi click trùng (Race Condition Prevention).
 * **Bảo mật & Mã hóa:** Xác thực phiên làm việc bằng JSON Web Tokens (JWT) bảo vệ các API quản trị và API trang cá nhân. Mật khẩu được mã hóa an toàn bằng bcrypt trước khi lưu vào DB.
 * **Lưu trữ tệp tin:** Tích hợp bộ thư viện Multer + Cloudinary SDK để tải ảnh đại diện lên bộ nhớ đám mây Cloudinary của câu lạc bộ, tự động tối ưu hóa dung lượng ảnh đại diện.
 
@@ -35,35 +36,39 @@ graph TD
 
 ### 2.1. Cổng Thông Tin Thành Viên (Player Portal `/profile`)
 Trang cá nhân của hội viên được thiết kế mang đậm phong cách Game chuyên nghiệp:
-* **Thẻ Người Chơi ELO (Player Card):** Hiển thị dọc bóng bẩy với viền neon phát sáng thay đổi màu sắc động dựa theo cấp Rank ELO hiện tại (Challenger: Đỏ-Tím phát sáng, Diamond: Xanh dương, Gold: Vàng ánh kim, v.v.).
+* **Thẻ Người Chơi ELO (Player Card):** Hiển thị dọc bóng bẩy với viền neon phát sáng thay đổi màu sắc động dựa theo cấp Rank ELO hiện tại.
 * **Bảng Thông Số Kỹ Thuật (Stats Board):** Thống kê số trận đấu, tỷ lệ thắng, chuỗi thắng/thua liên tục, và hiển thị các huy hiệu (Badges) kỹ năng mềm đóng góp cho CLB (Chụp ảnh, Quay dựng, Thiết kế, Hỗ trợ giải).
-* **Điểm Danh RSVP:** Hiển thị lịch sinh hoạt/tập luyện sắp tới của CLB. Cho phép hội viên bấm chọn RSVP (Tham gia / Vắng mặt) trực tiếp. Trạng thái RSVP được cập nhật tức thì (Upsert an toàn) vào Database.
-* **Chỉnh Sửa Hồ Sơ & Đổi Mật Khẩu:**
-  * Cho phép tự tải ảnh đại diện lên Cloudinary (chỉ nhận định dạng ảnh `accept="image/*"`, tự động dọn dẹp ảnh cũ trên Cloudinary để giải phóng dung lượng).
-  * Chỉnh sửa thông tin liên hệ, nickname, học vấn cá nhân.
-  * Đổi mật khẩu bảo mật có chỉ báo trực quan thời gian thực (real-time indicators) về độ dài tối thiểu 6 ký tự và kiểm tra khớp mật khẩu nhập lại.
+* **Đăng ký Lịch tập (RSVP):** Hiển thị lịch sinh hoạt sắp tới của CLB. Cho phép hội viên chọn RSVP (Tham gia / Vắng mặt) trực tiếp. Hành động này chỉ ghi nhận lịch trình đi tập để BTC chuẩn bị (không cộng điểm khống để tránh trục lợi).
 
-### 2.2. Quy Trình Casting & Kích Hoạt Tài Khoản Mới
-* **Trang Đăng Ký Casting (`/register`):** Quy trình gồm 3 bước chuyên nghiệp:
-  1. *Thông tin cơ bản:* Họ tên, Số điện thoại Zalo (có cơ chế kiểm tra định dạng số điện thoại Việt Nam thời gian thực - báo lỗi nếu không đủ 10 số hoặc có chữ), chọn Giới tính.
-  2. *Học vấn & Trình độ:* Chọn trường Đại học, niên khóa và tự đánh giá trình độ cầu lông (Mới chơi, Trung bình, Khá/Giỏi).
-  3. *Chọn ca Casting:* Đọc thời gian và địa điểm thực tế từ cơ sở dữ liệu, cho phép ứng viên lựa chọn 1 ca phù hợp nhất.
-* **Kích Hoạt Tài Khoản Cho Hội Viên Cũ (`/claim-account`):** Các thành viên cũ đã có thông tin trong danh sách của CLB nhưng chưa có tài khoản đăng nhập có thể nhập số điện thoại Zalo cùng **Mã PIN xác thực của CLB** (Mặc định: `123456`) để thiết lập mật khẩu mới và kích hoạt tài khoản của mình.
+### 2.2. Hệ Thống Gamification SmashPass & Kho Đồ
+* **Quests Engine (Nhiệm vụ):**
+  * Hỗ trợ nhiệm vụ Hàng ngày, Hàng tuần, Hàng tháng và Mùa giải.
+  * Tích hợp cơ chế **Lazy-Reset**: Khi thành viên mở tab Nhiệm vụ, Backend tự động đối chiếu thời gian `updated_at` để reset tiến trình của chu kỳ mới mà không cần cron job ngầm.
+  * **Chống Spam quà:** Bọc logic nhận quà trong DB Transaction với câu lệnh `FOR UPDATE` khóa dòng dữ liệu nguyên tử.
+* **SmashPass (Battle Pass):**
+  * Hệ thống 10 cấp độ thưởng.
+  * Thành viên dùng Xu kiếm được để mở khóa **Premium Pass** nâng cấp, nhận quà độc quyền (Khung viền Neon Bạc, Neon Tím, Danh hiệu lấp lánh).
+* **Kho Đồ (Inventory):** Nơi lưu trữ vật phẩm (Khung viền, danh hiệu) nhận được. Người dùng có thể click Trang bị/Tháo trang bị realtime, tự động đồng bộ hiển thị lên thẻ người chơi.
 
-### 2.3. Trang Chủ & Bảng Xếp Hạng Công Khai (`/`)
-* **Hệ thống Menu Động:** Nút điều hướng góc phải tự động thay đổi dựa trên trạng thái đăng nhập (Đăng nhập / Trang cá nhân / Trang quản trị).
-* **Bảng Xếp Hạng (Leaderboard):** Xếp hạng điểm ELO công khai của các thành viên. Hỗ trợ chuyển đổi tab xem điểm ELO Đơn (Singles) hoặc điểm ELO Đôi (Doubles).
-* **Bản tin hình ảnh & Video (Media Feed):** Hiển thị các hình ảnh sinh hoạt, video highlight từ YouTube của CLB.
+### 2.3. Hệ Thống Điểm Danh QR & Quản lý Buổi Tập (Admin)
+* **Cổng Điểm Danh Thành Viên (`/check-in`):** Thành viên quét mã QR tại sân sẽ được chuyển đến trang điểm danh.
+  * *Chống gian lận (Active Time Window Check):* Chỉ cho phép check-in thành công trong khung giờ: Giờ bắt đầu buổi tập - 30 phút <= giờ hiện tại <= giờ bắt đầu buổi tập + 120 phút.
+  * *Quà tặng chuyên cần:* Điểm danh thành công thưởng ngay **+25 XP và +10 Smash Coins**, kích hoạt pháo hoa lấp lánh và tự động đẩy tiến trình các nhiệm vụ liên quan.
+* **Quản Lý Buổi Tập (`/admin/sessions`):** Admin thiết lập buổi tập mới, tự động sinh mã QR check-in sắc nét, hỗ trợ tải file ảnh QR PNG về máy để in ấn dán tại sân. Theo dõi danh sách check-in realtime của thành viên.
+* **Cấu Hình Nhiệm Vụ (`/admin/quests`):** Admin tạo nhiệm vụ mới, thiết lập thông số (chu kỳ, hành động yêu cầu, phần thưởng) và toggle bật/tắt hoạt động nhiệm vụ.
 
-### 2.4. Bảng Quản Trị Hệ Thống Cho Ban Chủ Nhiệm (`/admin`)
-Bao gồm các mô-đun quản lý chuyên sâu:
-* **Thống kê Tổng quan (Dashboard):** Hiển thị tổng số thành viên, ứng viên đang chờ duyệt, số trận đấu và số tin bài truyền thông.
-* **Duyệt Ứng Viên Casting:** Danh sách các bạn ứng viên đăng ký casting. Admin có thể xem chi tiết kỹ năng, giới tính, giờ casting đã chọn và bấm duyệt thành viên chính thức.
-* **Bảng Quản Lý Thành Viên Thông Minh (Smart Member Table):**
-  * *Bộ lọc đa điều kiện:* Lọc thành viên theo tên/sđt, trình độ cầu lông, trạng thái hoạt động trong CLB (Hoạt động/Tạm nghỉ/Đã rời), và lọc theo kỹ năng đóng góp.
-  * *Hộp thoại Thao Tác Nhanh (Quick Actions):* Cho phép đổi vai trò tài khoản (Member/Admin/Candidate), thay đổi trạng thái sinh hoạt, hoặc **Khóa tài khoản** (tài khoản bị khóa sẽ lập tức bị từ chối truy cập hệ thống ở các lần đăng nhập sau).
-  * *Điều chỉnh ELO thủ công:* Cộng/Trừ điểm ELO (Đơn hoặc Đôi) trực tiếp kèm theo phần nhập lý do bắt buộc để ghi nhận.
-  * *Xem Chuyên Cần (Attendance Stats):* Tính toán tỷ lệ chuyên cần (%) dựa trên lịch sử điểm danh RSVP của thành viên đối với toàn bộ các buổi tập của CLB.
+### 2.4. Đánh Giá Tuyển Chọn Casting & Chào Mừng Thành Viên Mới
+* **Duyệt Ứng Viên Casting:** Khi duyệt ứng viên, Admin mở Modal **"Xác nhận & Đánh giá Tuyển chọn"** (bố cục mờ ảo tím neon):
+  * *Chuẩn hóa thông tin:* Sửa trực tiếp họ tên, số điện thoại, trường lớp của ứng viên nếu bị sai sót chính tả.
+  * *Kiểm tra trùng SĐT:* Chặn trùng số điện thoại với bất cứ ai trong CLB (trả về lỗi 400).
+  * *Phân loại trình độ 1-5 sao:* Đánh giá thực lực của ứng viên để tự động khởi tạo điểm ELO phù hợp (Mới chơi -> 900 ELO, Trung bình -> 1000 ELO, Khá/Giỏi -> 1150 ELO).
+  * *Ghi chú tuyển chọn:* Nhập nhận xét chuyên môn và lưu trữ vào trường `casting_notes`.
+* **Welcome Message Copier:** Sau khi duyệt thành công, hiển thị Popup chúc mừng với mẫu tin nhắn soạn sẵn (tên, số sao, điểm ELO khởi điểm, link kích hoạt tài khoản) cùng nút **"Copy tin nhắn"** gửi Zalo ứng viên cực nhanh.
+* **Quản Lý User vĩnh viễn:** Admin có thể xóa vĩnh viễn bất kỳ tài khoản nào khỏi hệ thống (có chặn tự xóa chính mình) tại mục Thao tác nhanh.
+
+### 2.5. Trang Chủ & Bảng Xếp Hạng Công Khai (`/`)
+* **Leaderboard:** Xếp hạng điểm ELO công khai của các thành viên. Hỗ trợ chuyển đổi tab xem điểm ELO Đơn (Singles) hoặc điểm ELO Đôi (Doubles).
+* **Bản tin Media Feed:** Hiển thị các hình ảnh sinh hoạt, video highlight từ YouTube của CLB.
 
 ---
 
@@ -74,23 +79,57 @@ Cấu trúc cơ sở dữ liệu PostgreSQL gồm các bảng chính:
 ### Bảng `users` (Lưu trữ người dùng, ứng viên, thành viên, admin)
 * `id` (UUID, Khóa chính)
 * `full_name` (VARCHAR)
-* `phone_zalo` (VARCHAR)
+* `phone_zalo` (VARCHAR) - *Chặn trùng lặp SĐT khi Đăng ký và khi BTC Duyệt.*
 * `gender` (VARCHAR) - Giới tính (Nam, Nữ, Khác)
-* `academic_info` (VARCHAR) - Trường lớp, chuyên ngành
+* `academic_info` (VARCHAR)
 * `badminton_level` (VARCHAR) - Trình độ ('Mới chơi', 'Trung bình', 'Khá/Giỏi')
-* `soft_skills` (JSONB) - Mảng kỹ năng đóng góp dạng JSON
 * `role` (VARCHAR) - Vai trò ('candidate', 'member', 'admin')
 * `status` (VARCHAR) - Trạng thái hoạt động ('active', 'inactive', 'left')
 * `is_blocked` (BOOLEAN) - Khóa tài khoản
-* `hand_preference` (VARCHAR) - Tay thuận ('Right', 'Left')
-* `play_style` (VARCHAR) - Lối chơi ('Attacking', 'Defending', 'Net-play', 'All-rounder')
-* `avatar_url` (TEXT) - Đường dẫn ảnh đại diện đám mây Cloudinary
-* `elo_singles` / `elo_doubles` (INTEGER) - Điểm ELO đơn/đôi (Mặc định: 1000)
-* `matches_singles` / `matches_doubles` (INTEGER) - Số trận đã đấu
-* `win_singles` / `win_doubles` (INTEGER) - Số trận thắng
-* `loss_singles` / `loss_doubles` (INTEGER) - Số trận thua
-* `password_hash` (VARCHAR) - Mật khẩu đã băm (chỉ dành cho tài khoản đã kích hoạt)
+* `level` / `xp` / `smash_coins` (INTEGER) - Gamification metrics
+* `streak` / `streak_shields` (INTEGER) - Chỉ số duy trì streak điểm danh
+* `active_frame` / `active_title` (VARCHAR) - Khung viền và danh hiệu đang trang bị
+* `casting_notes` (TEXT) - Nhận xét chuyên môn của BTC khi duyệt casting
+* `elo_singles` / `elo_doubles` (INTEGER) - Điểm ELO đơn/đôi (Mới chơi: 900, Trung bình: 1000, Khá/Giỏi: 1150)
+* `matches_singles` / `matches_doubles` (INTEGER)
+* `win_singles` / `win_doubles` (INTEGER)
+* `loss_singles` / `loss_doubles` (INTEGER)
+* `password_hash` (VARCHAR)
 * `joined_at` / `created_at` (TIMESTAMP)
+
+### Bảng `quests` (Cấu hình nhiệm vụ trong hệ thống)
+* `id` (SERIAL, Khóa chính)
+* `title` (VARCHAR) - Tên nhiệm vụ
+* `quest_type` (VARCHAR) - Chu kỳ ('daily', 'weekly', 'monthly', 'seasonal')
+* `action_type` (VARCHAR) - Hành động ('check_in', 'play_matches', 'win_matches', 'custom')
+* `target_count` (INTEGER) - Số lần cần làm
+* `xp_reward` / `coin_reward` (INTEGER) - Phần thưởng
+* `is_active` (BOOLEAN) - Trạng thái hoạt động
+
+### Bảng `user_quests` (Lưu tiến trình nhiệm vụ của thành viên)
+* `user_id` (UUID, Khóa ngoại)
+* `quest_id` (INTEGER, Khóa ngoại)
+* `current_count` (INTEGER) - Tiến độ hiện tại
+* `is_completed` / `is_claimed` (BOOLEAN) - Đã hoàn thành / Đã nhận quà
+* `updated_at` (TIMESTAMP)
+
+### Bảng `smash_pass_rewards` (Cấu hình mốc Battle Pass)
+* `id` (SERIAL, Khóa chính)
+* `season_id` (INTEGER)
+* `level_required` (INTEGER) - Cấp độ yêu cầu để nhận (1-10)
+* `reward_type` (VARCHAR) - Loại quà ('title', 'coins', 'avatar_frame', 'streak_shield')
+* `reward_name` (VARCHAR) - Tên hiển thị quà
+* `reward_value` (VARCHAR) - Giá trị lưu trữ/mã của quà
+* `is_premium` (BOOLEAN) - Quà Premium hay miễn phí
+
+### Bảng `user_inventory` (Túi đồ vật phẩm thành viên sở hữu)
+* `id` (SERIAL, Khóa chính)
+* `user_id` (UUID, Khóa ngoại)
+* `item_type` (VARCHAR) - Loại vật phẩm ('avatar_frame', 'title')
+* `item_name` (VARCHAR) - Tên vật phẩm
+* `item_value` (VARCHAR) - Giá trị/Mã của vật phẩm
+* `is_equipped` (BOOLEAN) - Trạng thái trang bị
+* `acquired_at` (TIMESTAMP)
 
 ### Bảng `sessions` (Các buổi tập luyện / Casting)
 * `id` (UUID, Khóa chính)
@@ -98,11 +137,12 @@ Cấu trúc cơ sở dữ liệu PostgreSQL gồm các bảng chính:
 * `date_time` (TIMESTAMP)
 * `location` (VARCHAR)
 
-### Bảng `attendances` (Điểm danh RSVP)
+### Bảng `attendances` (Điểm danh RSVP & Check-in QR)
 * `id` (UUID, Khóa chính)
 * `session_id` (UUID, Khóa ngoại)
 * `user_id` (UUID, Khóa ngoại)
 * `status` (VARCHAR) - Trạng thái RSVP ('going', 'absent')
+* `checked_in_at` (TIMESTAMP) - Thời điểm quét mã QR check-in thực tế tại sân
 * *Khóa Unique trên cặp (`session_id`, `user_id`)* để đảm bảo không trùng lặp RSVP.
 
 ---
