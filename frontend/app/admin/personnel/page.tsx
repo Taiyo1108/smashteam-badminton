@@ -757,6 +757,44 @@ export default function PersonnelPage() {
                 </div>
               </div>
 
+              {/* 4. Xóa vĩnh viễn tài khoản (Dangerous Action) */}
+              <div className="pt-6 border-t border-slate-100">
+                <h4 className="font-bold text-sm text-red-600 mb-3 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-red-600" /> Vùng nguy hiểm (Danger Zone)
+                </h4>
+                <div className="bg-red-50 p-4 rounded-xl border border-red-100 flex flex-col gap-3">
+                  <p className="text-xs text-red-700 leading-relaxed font-medium">
+                    Hành động này sẽ **xóa vĩnh viễn** tài khoản của {selectedMember.full_name} khỏi hệ thống, bao gồm tất cả dữ liệu ELO, lịch sử đấu và thành tích. Hành động này không thể hoàn tác!
+                  </p>
+                  <button
+                    onClick={async () => {
+                      if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn xóa tài khoản của thành viên ${selectedMember.full_name} vĩnh viễn? Tất cả dữ liệu liên quan sẽ bị xóa sạch.`)) {
+                        try {
+                          const token = localStorage.getItem("admin_token");
+                          const res = await fetch(`${API_URL}/api/users/${selectedMember.id}`, {
+                            method: 'DELETE',
+                            headers: { "Authorization": `Bearer ${token}` }
+                          });
+                          if (res.ok) {
+                            alert("Đã xóa tài khoản thành viên vĩnh viễn.");
+                            setShowActionsModal(false);
+                            fetchMembers();
+                          } else {
+                            const data = await res.json();
+                            alert(data.error || "Không thể xóa tài khoản.");
+                          }
+                        } catch (e) {
+                          alert("Lỗi kết nối.");
+                        }
+                      }
+                    }}
+                    className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                  >
+                    Xóa tài khoản vĩnh viễn
+                  </button>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>

@@ -8,6 +8,20 @@ router.post('/register', async (req, res) => {
   try {
     const { full_name, phone_zalo, academic_info, badminton_level, soft_skills, casting_slot_id, gender } = req.body;
     
+    if (!full_name || !phone_zalo || !academic_info || !badminton_level) {
+      return res.status(400).json({ error: 'Vui lòng điền đầy đủ các thông tin bắt buộc.' });
+    }
+
+    // Kiểm tra trùng lặp số điện thoại (Unique Phone Check)
+    const phoneCheck = await db.query(
+      'SELECT id FROM users WHERE phone_zalo = $1',
+      [phone_zalo]
+    );
+
+    if (phoneCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'Số điện thoại này đã được sử dụng hoặc đăng ký trước đó!' });
+    }
+
     const result = await db.query(
       `INSERT INTO users (full_name, phone_zalo, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender)
        VALUES ($1, $2, $3, $4, $5, 'candidate', $6, $7) RETURNING id, full_name, role`,
@@ -211,20 +225,26 @@ router.get('/stats', authenticateToken, isAdmin, async (req, res) => {
     console.error('Error fetching dashboard stats:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
-// DELETE /api/users/:id - Xóa/Loại bỏ ứng viên (Requires Admin)
+// DELETE /api/users/:id - Xóa/Loại bỏ user vĩnh viễn (Requires Admin)
 router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Chặn tự xóa chính mình
+    if (id === req.user.id) {
+      return res.status(400).json({ error: 'Bạn không thể tự xóa tài khoản của chính mình!' });
+    }
+
     const result = await db.query(
-      "DELETE FROM users WHERE id = $1 AND role = 'candidate' RETURNING id, full_name",
+      "DELETE FROM users WHERE id = $1 RETURNING id, full_name, role",
       [id]
     );
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Không tìm thấy ứng viên hoặc tài khoản này không phải là ứng viên.' });
+      return res.status(404).json({ error: 'Không tìm thấy tài khoản người dùng.' });
     }
-    res.json({ success: true, message: 'Đã loại bỏ ứng viên khỏi danh sách.', user: result.rows[0] });
+    res.json({ success: true, message: 'Đã xóa tài khoản vĩnh viễn khỏi hệ thống.', user: result.rows[0] });
   } catch (error) {
-    console.error('Error deleting candidate:', error);
+    console.error('Error deleting user:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
