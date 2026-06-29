@@ -10,6 +10,7 @@ import {
   MapPin, Clock, LogOut, Edit2, Home, Loader2, Settings
 } from "lucide-react";
 import { API_URL } from "@/app/config";
+import AvatarWithFrame from "@/app/components/AvatarWithFrame";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -17,6 +18,20 @@ export default function ProfilePage() {
   const [playerData, setPlayerData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatingRsvp, setUpdatingRsvp] = useState(false);
+
+  // Gamification states
+  const [gamProfile, setGamProfile] = useState<any>(null);
+  const [quests, setQuests] = useState<any[]>([]);
+  const [passRewards, setPassRewards] = useState<any[]>([]);
+  const [claimedPassLevels, setClaimedPassLevels] = useState<number[]>([]);
+  const [isPremiumPass, setIsPremiumPass] = useState(false);
+  const [inventory, setInventory] = useState<any[]>([]);
+  const [activeGamTab, setActiveGamTab] = useState<"quests" | "smashpass" | "inventory" | "matches">("quests");
+  
+  const [claimingQuestId, setClaimingQuestId] = useState<number | null>(null);
+  const [claimingPassLevel, setClaimingPassLevel] = useState<number | null>(null);
+  const [equippingItemId, setEquippingItemId] = useState<number | null>(null);
+  const [unlockingPremium, setUnlockingPremium] = useState(false);
 
   // Settings Modal states
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -108,8 +123,145 @@ export default function ProfilePage() {
     }
   };
 
+  const fetchGamificationData = async () => {
+    try {
+      const token = localStorage.getItem("admin_token");
+      if (!token) return;
+
+      const headers = { Authorization: `Bearer ${token}` };
+
+      // 1. Fetch Profile
+      const profileRes = await fetch(`${API_URL}/api/gamification/profile`, { headers });
+      if (profileRes.ok) {
+        const data = await profileRes.json();
+        setGamProfile(data);
+        if (data.streak_notification) {
+          showToast(data.streak_notification, "success");
+        }
+      }
+
+      // 2. Fetch Quests
+      const questsRes = await fetch(`${API_URL}/api/gamification/quests`, { headers });
+      if (questsRes.ok) setQuests(await questsRes.json());
+
+      // 3. Fetch SmashPass
+      const passRes = await fetch(`${API_URL}/api/gamification/smash-pass`, { headers });
+      if (passRes.ok) {
+        const data = await passRes.json();
+        setPassRewards(data.rewards || []);
+        setClaimedPassLevels(data.claimed_levels || []);
+        setIsPremiumPass(data.is_premium_unlocked || false);
+      }
+
+      // 4. Fetch Inventory
+      const invRes = await fetch(`${API_URL}/api/gamification/inventory`, { headers });
+      if (invRes.ok) setInventory(await invRes.json());
+
+    } catch (e) {
+      console.error("Error fetching gamification data:", e);
+    }
+  };
+
+  // Gamification Claim Handlers
+  const handleClaimQuest = async (questId: number) => {
+    setClaimingQuestId(questId);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/gamification/quests/${questId}/claim`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Nhận thưởng thành công!");
+        if (data.level_up?.leveledUp) {
+          showToast(`LÊN CẤP! Bạn đạt Cấp độ ${data.level_up.currentLevel}!`, "success");
+        }
+        await fetchGamificationData();
+        await fetchProfileData();
+      } else {
+        showToast(data.error || "Lỗi khi nhận thưởng.", "error");
+      }
+    } catch (e) {
+      showToast("Lỗi kết nối.", "error");
+    } finally {
+      setClaimingQuestId(null);
+    }
+  };
+
+  const handleClaimPass = async (level: number) => {
+    setClaimingPassLevel(level);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/gamification/smash-pass/claim/${level}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Nhận quà SmashPass thành công!");
+        await fetchGamificationData();
+        await fetchProfileData();
+      } else {
+        showToast(data.error || "Lỗi khi nhận quà.", "error");
+      }
+    } catch (e) {
+      showToast("Lỗi kết nối.", "error");
+    } finally {
+      setClaimingPassLevel(null);
+    }
+  };
+
+  const handleUnlockPremium = async () => {
+    if (!confirm("Kích hoạt Premium Pass với giá 200 Smash Coins?")) return;
+    setUnlockingPremium(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/gamification/smash-pass/unlock-premium`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Mở khóa Premium thành công!");
+        await fetchGamificationData();
+      } else {
+        showToast(data.error || "Lỗi mở khóa Premium.", "error");
+      }
+    } catch (e) {
+      showToast("Lỗi kết nối.", "error");
+    } finally {
+      setUnlockingPremium(false);
+    }
+  };
+
+  const handleEquipItem = async (itemId: number, isEquipped: boolean) => {
+    setEquippingItemId(itemId);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const url = `${API_URL}/api/gamification/inventory/${itemId}/${isEquipped ? 'unequip' : 'equip'}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Thao tác thành công!");
+        await fetchGamificationData();
+        await fetchProfileData();
+      } else {
+        showToast(data.error || "Lỗi khi trang bị.", "error");
+      }
+    } catch (e) {
+      showToast("Lỗi kết nối.", "error");
+    } finally {
+      setEquippingItemId(null);
+    }
+  };
+
   useEffect(() => {
     fetchProfileData();
+    fetchGamificationData();
   }, []);
 
   const handleLogout = () => {
@@ -140,6 +292,7 @@ export default function ProfilePage() {
 
       showToast("Cập nhật lịch tập RSVP thành công!");
       await fetchProfileData();
+      await fetchGamificationData();
     } catch (err: any) {
       showToast(err.message || "Lỗi RSVP.", "error");
     } finally {
@@ -499,27 +652,39 @@ export default function ProfilePage() {
 
             {/* Avatar & Player Name */}
             <div className="flex flex-col items-center text-center relative z-10 mb-6">
-              {/* Rounded image avatar with ELO Glow */}
-              <div className={`w-24 h-24 rounded-full overflow-hidden flex items-center justify-center bg-purple-950/40 text-smash-violet font-black text-3xl mb-4 border-2 border-smash-violet shadow-[0_0_15px_rgba(157,78,221,0.3)] relative`}>
-                {player.avatar_url ? (
-                  <Image
-                    src={player.avatar_url}
-                    alt={player.full_name}
-                    fill
-                    className="object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  player.full_name.substring(0, 2).toUpperCase()
-                )}
-              </div>
+              <AvatarWithFrame 
+                avatarUrl={player.avatar_url} 
+                frameStyle={gamProfile?.selected_avatar_frame || player.selected_avatar_frame} 
+                sizeClass="w-24 h-24 mb-4" 
+                alt={player.full_name}
+              />
               
               <h2 className="text-2xl font-black text-white tracking-wide">{player.full_name}</h2>
+              {(player.selected_title || gamProfile?.selected_title) && (
+                <div className="text-[10px] font-black text-amber-400 mt-1 uppercase tracking-widest bg-amber-400/10 px-2.5 py-0.5 rounded border border-amber-400/20">
+                  👑 {player.selected_title || gamProfile?.selected_title}
+                </div>
+              )}
               
               <div className="flex items-center gap-1.5 mt-2 text-slate-400">
                 <span className="text-sm font-medium italic">
                   {player.nickname ? `"${player.nickname}"` : "Chưa đặt biệt danh"}
                 </span>
+              </div>
+
+              {/* Stats badges inside card */}
+              <div className="flex items-center gap-3.5 mt-3.5 bg-slate-900/60 px-4 py-2 rounded-full border border-purple-950/30 text-xs">
+                <div className="flex items-center gap-1 font-bold text-amber-500">
+                  <span className="text-base select-none">🪙</span> {gamProfile?.smash_coins ?? 0} xu
+                </div>
+                <div className="w-px h-3.5 bg-slate-800" />
+                <div className="flex items-center gap-1 font-bold text-orange-500">
+                  <Flame className="w-4 h-4 text-orange-500 animate-pulse" /> {gamProfile?.current_streak ?? 0} ngày
+                </div>
+                <div className="w-px h-3.5 bg-slate-800" />
+                <div className="flex items-center gap-1 font-bold text-indigo-400">
+                  🛡️ {gamProfile?.streak_shields ?? 0} khiên
+                </div>
               </div>
             </div>
 
@@ -540,21 +705,38 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Rank Progress Bar */}
-            <div className="relative z-10">
-              <div className="flex justify-between text-[10px] text-slate-400 font-bold mb-1.5 uppercase">
-                <span>Rank ELO {maxElo}</span>
-                <span>Mục tiêu {rank.nextElo}</span>
+            {/* Level & Rank Progress */}
+            <div className="relative z-10 space-y-4">
+              {/* Level XP Bar */}
+              <div>
+                <div className="flex justify-between text-[10px] text-slate-400 font-bold mb-1.5 uppercase">
+                  <span>Cấp độ {gamProfile?.level ?? 1}</span>
+                  <span>{gamProfile?.xp ?? 0} / {gamProfile?.xp_needed ?? 80} XP</span>
+                </div>
+                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-purple-950/40 shadow-inner">
+                  <div 
+                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
+                    style={{ width: `${gamProfile ? Math.min(100, (gamProfile.xp / gamProfile.xp_needed) * 100) : 0}%` }}
+                  ></div>
+                </div>
               </div>
-              <div className="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden border border-purple-950/40 shadow-inner">
-                <div 
-                  className="h-full bg-gradient-to-r from-smash-purple to-smash-violet rounded-full shadow-[0_0_10px_rgba(157,78,221,0.5)] transition-all duration-1000"
-                  style={{ width: `${progressPercent}%` }}
-                ></div>
-              </div>
-              <div className="flex justify-between mt-1.5 text-[9px] text-slate-500">
-                <span>Học vấn: {player.academic_info || "Chưa đặt"}</span>
-                <span>Cần thêm {rank.nextElo - maxElo} điểm</span>
+
+              {/* Rank ELO Bar */}
+              <div>
+                <div className="flex justify-between text-[10px] text-slate-400 font-bold mb-1.5 uppercase">
+                  <span>Rank ELO {maxElo}</span>
+                  <span>Mục tiêu {rank.nextElo}</span>
+                </div>
+                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-purple-950/40 shadow-inner">
+                  <div 
+                    className="h-full bg-gradient-to-r from-smash-purple to-smash-violet rounded-full shadow-[0_0_10px_rgba(157,78,221,0.5)] transition-all duration-1000"
+                    style={{ width: `${progressPercent}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between mt-1.5 text-[9px] text-slate-500">
+                  <span>Học vấn: {player.academic_info || "Chưa đặt"}</span>
+                  <span>Cần thêm {Math.max(0, rank.nextElo - maxElo)} ELO</span>
+                </div>
               </div>
             </div>
           </div>
@@ -660,77 +842,307 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* MATCH HISTORY WIDGET */}
+          {/* SMASHPASS GAMIFICATION PORTAL */}
           <div className="rounded-3xl bg-slate-950/80 backdrop-blur-md border border-purple-950/40 p-6 shadow-sm">
-            <h3 className="font-extrabold text-white text-lg mb-5 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-smash-violet" /> Lịch sử Đấu gần đây (5 trận)
-            </h3>
-            
-            {matches.length > 0 ? (
-              <div className="space-y-4">
-                {matches.map((m: any) => (
-                  <div key={m.id} className="p-4 rounded-2xl bg-slate-900/40 border border-purple-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-smash-purple/20 transition-all">
-                    
-                    {/* Format & Opponent */}
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                          m.isDoubles 
-                            ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" 
-                            : "bg-purple-500/10 text-smash-violet border border-smash-purple/20"
-                        }`}>
-                          {m.isDoubles ? "Đôi" : "Đơn"}
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          {new Date(m.created_at).toLocaleDateString("vi-VN")}
-                        </span>
-                      </div>
-                      <p className="text-sm font-bold text-white">
-                        đối thủ: <span className="text-slate-300">{m.opponent}</span>
-                      </p>
-                    </div>
-
-                    {/* Scores & Result */}
-                    <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-10">
-                      {/* Score display */}
-                      <span className="font-extrabold text-base text-slate-300 tracking-wider font-mono">
-                        {m.score}
-                      </span>
-                      
-                      {/* Win/Loss Pill */}
-                      <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full text-center min-w-[70px] ${
-                        m.won
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                          : "bg-rose-500/10 text-rose-400 border border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
-                      }`}>
-                        {m.won ? "Thắng" : "Thua"}
-                      </span>
-
-                      {/* ELO Exchanged */}
-                      <span className={`text-sm font-black tracking-wide min-w-[65px] text-right ${
-                        m.eloChange >= 0 ? "text-emerald-400" : "text-rose-400"
-                      }`}>
-                        {m.eloChange >= 0 ? `+${m.eloChange}` : m.eloChange} ELO
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              /* Beautiful Empty State with encouragement card */
-              <div className="flex flex-col items-center justify-center p-10 rounded-2xl bg-slate-900/30 border border-dashed border-purple-950/20 text-center">
-                <div className="w-12 h-12 rounded-full bg-purple-950/50 text-smash-violet flex items-center justify-center mb-4 border border-purple-950/50 shadow-inner animate-pulse">
-                  <Trophy className="w-6 h-6" />
-                </div>
-                <h4 className="text-white font-bold text-base mb-1.5">Bạn chưa tham gia trận đấu xếp hạng nào</h4>
-                <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
-                  Hãy đăng ký tham gia giao đấu xếp hạng (Đơn/Đôi) tại câu lạc bộ để kích hoạt thẻ người chơi ELO của bạn và ghi danh trên bảng xếp hạng của SMASH TEAM!
-                </p>
-                <Link href="/">
-                  <button className="flex items-center gap-1.5 px-6 py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-full shadow-md active:scale-95 transition-all cursor-pointer">
-                    Xem Bảng Xếp Hạng CLB <Clock className="w-3.5 h-3.5" />
+            {/* Tab selection */}
+            <div className="flex flex-wrap gap-2 border-b border-purple-950/30 pb-3 mb-6">
+              {[
+                { id: "quests", label: "Nhiệm vụ", icon: Sparkles },
+                { id: "smashpass", label: "SmashPass", icon: Trophy },
+                { id: "inventory", label: "Kho đồ", icon: Shield },
+                { id: "matches", label: "Lịch sử đấu", icon: Activity }
+              ].map(t => {
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveGamTab(t.id as any)}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-full border transition-all cursor-pointer ${
+                      activeGamTab === t.id
+                        ? "bg-smash-purple border-smash-violet text-white shadow-[0_0_10px_rgba(122,34,224,0.4)]"
+                        : "bg-slate-900/60 border-purple-950/40 text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" /> {t.label}
                   </button>
-                </Link>
+                );
+              })}
+            </div>
+
+            {/* TAB CONTENT: QUESTS */}
+            {activeGamTab === "quests" && (
+              <div className="space-y-4">
+                {quests.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500 text-sm">Không có nhiệm vụ khả dụng.</div>
+                ) : (
+                  quests.map((q: any) => {
+                    const isDone = q.current_count >= q.target_count;
+                    const pct = Math.min(100, (q.current_count / q.target_count) * 100);
+                    
+                    return (
+                      <div key={q.id} className="p-4 rounded-2xl bg-slate-900/40 border border-purple-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-purple-900/30 transition-all">
+                        <div className="flex-1 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                              q.quest_type === 'daily'
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                : q.quest_type === 'weekly'
+                                ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                            }`}>
+                              {q.quest_type === 'daily' ? 'Hàng ngày' : q.quest_type === 'weekly' ? 'Hàng tuần' : 'Mùa giải'}
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              Phần thưởng: <span className="text-emerald-400">+{q.xp_reward} XP</span> • <span className="text-amber-400">+{q.coin_reward} Xu</span>
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-bold text-white tracking-wide">{q.title}</h4>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-purple-950/30">
+                              <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-xs font-mono font-bold text-slate-400 shrink-0">{q.current_count}/{q.target_count}</span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 flex items-center justify-end">
+                          {q.is_claimed ? (
+                            <span className="text-xs font-bold text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">Đã nhận</span>
+                          ) : isDone ? (
+                            <button
+                              onClick={() => handleClaimQuest(q.id)}
+                              disabled={claimingQuestId === q.id}
+                              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-lg shadow-lg shadow-emerald-600/30 cursor-pointer animate-pulse active:scale-95 transition-transform"
+                            >
+                              {claimingQuestId === q.id ? "Đang nhận..." : "Nhận Quà"}
+                            </button>
+                          ) : (
+                            <span className="text-xs font-bold text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-purple-950/30">Đang làm</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* TAB CONTENT: SMASHPASS */}
+            {activeGamTab === "smashpass" && (
+              <div className="space-y-6">
+                {/* Premium activation banner */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border border-purple-900/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div>
+                    <h4 className="font-extrabold text-sm text-white tracking-wide flex items-center gap-1.5">
+                      🏆 SmashPass Mùa 1: Khởi Đầu Hoàng Gia
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-1">Mở khóa quà Premium với khung viền lấp lánh và danh hiệu độc quyền.</p>
+                  </div>
+                  <div>
+                    {isPremiumPass ? (
+                      <span className="text-xs font-black text-amber-400 bg-amber-400/10 px-3.5 py-1.5 rounded-full border border-amber-400/20">
+                        💎 ĐÃ KÍCH HOẠT PREMIUM
+                      </span>
+                    ) : (
+                      <button
+                        onClick={handleUnlockPremium}
+                        disabled={unlockingPremium}
+                        className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-600 hover:to-yellow-500 disabled:opacity-50 text-slate-950 font-black text-xs rounded-full shadow-lg shadow-amber-500/20 active:scale-95 transition-transform cursor-pointer flex items-center gap-1"
+                      >
+                        🪙 200 Xu: Lên Premium
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Rewards List */}
+                <div className="space-y-3">
+                  {passRewards.map((item: any) => {
+                    const isClaimed = claimedPassLevels.includes(item.level_required);
+                    const isLevelReached = (gamProfile?.level ?? 1) >= item.level_required;
+                    const isLocked = item.is_premium && !isPremiumPass;
+                    const canClaim = isLevelReached && !isClaimed && !isLocked;
+
+                    return (
+                      <div key={item.id} className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+                        isClaimed 
+                          ? "bg-slate-900/20 border-purple-950/10 opacity-60" 
+                          : isLevelReached 
+                          ? "bg-purple-950/10 border-smash-purple/30" 
+                          : "bg-slate-900/40 border-purple-950/20"
+                      }`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shrink-0 border-2 ${
+                            isLevelReached
+                              ? "bg-smash-purple border-smash-violet text-white shadow-[0_0_8px_rgba(157,78,221,0.5)]"
+                              : "bg-slate-950 border-purple-950/40 text-slate-500"
+                          }`}>
+                            Lvl {item.level_required}
+                          </div>
+                          <div>
+                            <h5 className="text-sm font-bold text-white flex items-center gap-1.5">
+                              {item.reward_name}
+                              {item.is_premium && (
+                                <span className="text-[9px] bg-amber-400/10 text-amber-400 border border-amber-400/20 px-1.5 py-0.5 rounded font-black uppercase">Premium</span>
+                              )}
+                            </h5>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              Loại: <span className="text-slate-300 font-medium">{item.reward_type === 'avatar_frame' ? 'Khung viền' : item.reward_type === 'title' ? 'Danh hiệu' : item.reward_type === 'coins' ? 'Xu' : 'Vật phẩm'}</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          {isClaimed ? (
+                            <span className="text-xs font-bold text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">Đã nhận</span>
+                          ) : canClaim ? (
+                            <button
+                              onClick={() => handleClaimPass(item.level_required)}
+                              disabled={claimingPassLevel === item.level_required}
+                              className="px-4 py-1.5 bg-gradient-to-r from-smash-purple to-smash-violet hover:from-smash-violet hover:to-smash-purple text-white text-xs font-black rounded-lg shadow-lg active:scale-95 transition-transform cursor-pointer"
+                            >
+                              {claimingPassLevel === item.level_required ? "Đang nhận..." : "Nhận quà"}
+                            </button>
+                          ) : isLocked ? (
+                            <span className="text-xs font-bold text-amber-500/70 bg-amber-950/20 px-3 py-1.5 rounded-lg border border-amber-500/10">Khóa Premium</span>
+                          ) : (
+                            <span className="text-xs font-bold text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-purple-950/10">Lvl {item.level_required}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: INVENTORY */}
+            {activeGamTab === "inventory" && (
+              <div className="space-y-4">
+                {inventory.length === 0 ? (
+                  <div className="text-center py-10 rounded-2xl bg-slate-900/20 border border-dashed border-purple-950/20">
+                    <div className="w-12 h-12 rounded-full bg-purple-950/40 text-smash-violet flex items-center justify-center mx-auto mb-3">
+                      <Shield className="w-6 h-6" />
+                    </div>
+                    <span className="text-sm font-bold text-slate-400">Kho đồ trống</span>
+                    <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">Tích cực thăng cấp và làm nhiệm vụ SmashPass để mở khóa nhiều vật phẩm độc quyền nhé!</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {inventory.map((item: any) => {
+                      const isEquipped = item.is_equipped;
+                      const canEquip = ['avatar_frame', 'title'].includes(item.item_type);
+                      
+                      return (
+                        <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-3 ${
+                          isEquipped ? "border-smash-purple shadow-[0_0_10px_rgba(157,78,221,0.2)]" : "border-purple-950/20 hover:border-purple-900/30"
+                        }`}>
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                                item.item_type === 'avatar_frame'
+                                  ? "bg-purple-500/10 text-smash-violet border border-smash-purple/20"
+                                  : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                              }`}>
+                                {item.item_type === 'avatar_frame' ? 'Khung Viền' : 'Danh hiệu'}
+                              </span>
+                              {isEquipped && (
+                                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                                  ● Đang trang bị
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
+                            <p className="text-[10px] text-slate-400 mt-1">Sở hữu lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
+                          </div>
+                          
+                          {canEquip && (
+                            <button
+                              onClick={() => handleEquipItem(item.id, isEquipped)}
+                              disabled={equippingItemId === item.id}
+                              className={`w-full py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                                isEquipped
+                                  ? "bg-slate-800 hover:bg-slate-700 text-slate-300"
+                                  : "bg-smash-purple hover:bg-smash-violet text-white shadow-md shadow-smash-purple/20 active:scale-95"
+                              }`}
+                            >
+                              {equippingItemId === item.id 
+                                ? "Đang xử lý..." 
+                                : isEquipped 
+                                ? "Tháo trang bị" 
+                                : "Trang bị"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB CONTENT: MATCHES */}
+            {activeGamTab === "matches" && (
+              <div className="space-y-4">
+                {matches.length > 0 ? (
+                  <div className="space-y-4">
+                    {matches.map((m: any) => (
+                      <div key={m.id} className="p-4 rounded-2xl bg-slate-900/40 border border-purple-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-smash-purple/20 transition-all">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                              m.isDoubles 
+                                ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" 
+                                : "bg-purple-500/10 text-smash-violet border border-smash-purple/20"
+                            }`}>
+                              {m.isDoubles ? "Đôi" : "Đơn"}
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              {new Date(m.created_at).toLocaleDateString("vi-VN")}
+                            </span>
+                          </div>
+                          <p className="text-sm font-bold text-white">
+                            đối thủ: <span className="text-slate-300">{m.opponent}</span>
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-10">
+                          <span className="font-extrabold text-base text-slate-300 tracking-wider font-mono">
+                            {m.score}
+                          </span>
+                          
+                          <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full text-center min-w-[70px] ${
+                            m.won
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
+                              : "bg-rose-500/10 text-rose-400 border border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
+                          }`}>
+                            {m.won ? "Thắng" : "Thua"}
+                          </span>
+
+                          <span className={`text-sm font-black tracking-wide min-w-[65px] text-right ${
+                            m.eloChange >= 0 ? "text-emerald-400" : "text-rose-400"
+                          }`}>
+                            {m.eloChange >= 0 ? `+${m.eloChange}` : m.eloChange} ELO
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-10 rounded-2xl bg-slate-900/30 border border-dashed border-purple-950/20 text-center">
+                    <div className="w-12 h-12 rounded-full bg-purple-950/50 text-smash-violet flex items-center justify-center mb-4 border border-purple-950/50 shadow-inner animate-pulse">
+                      <Trophy className="w-6 h-6" />
+                    </div>
+                    <h4 className="text-white font-bold text-base mb-1.5">Bạn chưa tham gia trận đấu xếp hạng nào</h4>
+                    <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
+                      Hãy đăng ký tham gia giao đấu xếp hạng (Đơn/Đôi) tại câu lạc bộ để kích hoạt thẻ người chơi ELO của bạn và ghi danh trên bảng xếp hạng của SMASH TEAM!
+                    </p>
+                    <Link href="/">
+                      <button className="flex items-center gap-1.5 px-6 py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-full shadow-md active:scale-95 transition-all cursor-pointer">
+                        Xem Bảng Xếp Hạng CLB <Clock className="w-3.5 h-3.5" />
+                      </button>
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </div>

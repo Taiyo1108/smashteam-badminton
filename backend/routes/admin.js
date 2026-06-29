@@ -170,4 +170,120 @@ router.get('/users/:id/attendance-stats', async (req, res) => {
   }
 });
 
+// POST /api/admin/sessions - Tạo buổi tập mới
+router.post('/sessions', async (req, res) => {
+  try {
+    const { title, date_time, location } = req.body;
+    if (!title || !date_time || !location) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp tiêu đề, thời gian và địa điểm.' });
+    }
+
+    const result = await db.query(
+      `INSERT INTO sessions (title, date_time, location) 
+       VALUES ($1, $2, $3) RETURNING *`,
+      [title, date_time, location]
+    );
+
+    res.status(201).json({ success: true, session: result.rows[0] });
+  } catch (error) {
+    console.error('Error creating session:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/sessions/:id/attendees - Lấy danh sách thành viên check-in thực tế của buổi tập
+router.get('/sessions/:id/attendees', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Lấy thông tin session
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [id]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy buổi tập.' });
+    }
+
+    // Lấy danh sách thành viên tham gia (status = 'going')
+    const attendeesRes = await db.query(
+      `SELECT 
+        u.id AS user_id,
+        u.full_name,
+        u.nickname,
+        u.phone_zalo,
+        u.avatar_url,
+        a.created_at AS checked_in_at
+       FROM attendances a
+       JOIN users u ON a.user_id = u.id
+       WHERE a.session_id = $1 AND a.status = 'going'
+       ORDER BY a.created_at DESC`,
+      [id]
+    );
+
+    res.json({
+      session: sessionRes.rows[0],
+      attendees: attendeesRes.rows
+    });
+  } catch (error) {
+    console.error('Error fetching session attendees:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/admin/quests - Tạo nhiệm vụ mới
+router.post('/quests', async (req, res) => {
+  try {
+    const { title, quest_type, xp_reward, coin_reward, action_type, target_count } = req.body;
+    if (!title || !quest_type || !xp_reward || !coin_reward || !action_type || !target_count) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ thông tin nhiệm vụ.' });
+    }
+
+    const result = await db.query(
+      `INSERT INTO quests (title, quest_type, xp_reward, coin_reward, action_type, target_count, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING *`,
+      [title, quest_type, xp_reward, coin_reward, action_type, target_count]
+    );
+
+    res.status(201).json({ success: true, quest: result.rows[0] });
+  } catch (error) {
+    console.error('Error creating quest:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/quests - Lấy danh sách tất cả nhiệm vụ để quản trị
+router.get('/quests', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM quests ORDER BY id DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching quests for admin:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/admin/quests/:id/toggle - Bật/Tắt hoạt động nhiệm vụ
+router.put('/quests/:id/toggle', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    if (is_active === undefined) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp trạng thái is_active.' });
+    }
+
+    const result = await db.query(
+      'UPDATE quests SET is_active = $1 WHERE id = $2 RETURNING *',
+      [is_active, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy nhiệm vụ.' });
+    }
+
+    res.json({ success: true, quest: result.rows[0] });
+  } catch (error) {
+    console.error('Error toggling quest:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

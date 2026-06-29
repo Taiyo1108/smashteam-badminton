@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { calculateElo } = require('../utils/elo');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
 
 // GET /api/matches - Lấy lịch sử đấu (Đơn & Đôi)
 router.get('/', async (req, res) => {
@@ -161,6 +162,13 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
          WHERE id = $8::uuid`,
         [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id]
       );
+
+      // Award 15 XP for match and progress quest
+      await addXpToUser(id, 15, db);
+      await updateQuestProgress(id, 'play_matches', 1, db);
+      if (won) {
+        await updateQuestProgress(id, 'win_matches', 1, db);
+      }
     };
 
     // Thực hiện cập nhật cho các người chơi

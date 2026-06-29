@@ -3,6 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
+const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const { cloudinary } = require('../utils/cloudinary');
@@ -179,6 +180,13 @@ router.post('/rsvp', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Không tìm thấy buổi tập này.' });
     }
 
+    // Kiểm tra trạng thái RSVP trước đó để tránh nhận thưởng trùng
+    const existingRes = await db.query(
+      'SELECT status FROM attendances WHERE session_id = $1 AND user_id = $2',
+      [session_id, userId]
+    );
+    const wasGoing = existingRes.rows.length > 0 && existingRes.rows[0].status === 'going';
+
     // ON CONFLICT DO UPDATE đảm bảo cập nhật an toàn không trùng lặp
     const result = await db.query(
       `INSERT INTO attendances (session_id, user_id, status)
@@ -188,6 +196,12 @@ router.post('/rsvp', authenticateToken, async (req, res) => {
        RETURNING *`,
       [session_id, userId, status]
     );
+
+    // Thưởng XP và tiến trình check-in nếu chuyển sang 'going' lần đầu
+    if (status === 'going' && !wasGoing) {
+      await addXpToUser(userId, 25, db);
+      await updateQuestProgress(userId, 'check_in', 1, db);
+    }
 
     res.json({ success: true, attendance: result.rows[0] });
   } catch (error) {

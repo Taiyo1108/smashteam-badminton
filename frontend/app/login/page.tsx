@@ -32,8 +32,12 @@ export default function UnifiedLogin() {
         localStorage.setItem("admin_token", data.token); // using admin_token for compatibility with existing codebase
         localStorage.setItem("user_role", data.user.role);
         
-        // Redirect based on role
-        if (data.user.role === 'admin') {
+        // Redirect based on role or redirect parameter
+        const searchParams = new URLSearchParams(window.location.search);
+        const redirectTo = searchParams.get("redirect");
+        if (redirectTo) {
+          router.push(redirectTo);
+        } else if (data.user.role === 'admin') {
           router.push("/admin");
         } else {
           router.push("/profile");
