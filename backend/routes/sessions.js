@@ -25,21 +25,26 @@ router.post('/:id/qr-check-in', authenticateToken, async (req, res) => {
   const userId = req.user.id;
 
   try {
-    // 1. Lấy thông tin buổi tập
-    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    // 1. Lấy thông tin buổi tập (ép kiểu TEXT để lấy chuỗi ngày giờ thô không múi giờ)
+    const sessionRes = await db.query(
+      `SELECT id, title, date_time::text AS date_time_str, location FROM sessions WHERE id = $1`,
+      [sessionId]
+    );
     if (sessionRes.rows.length === 0) {
       return res.status(404).json({ error: 'Không tìm thấy buổi tập này.' });
     }
 
     const session = sessionRes.rows[0];
-    const tStart = new Date(session.date_time);
+    // Khởi tạo tStart bắt buộc theo giờ Việt Nam (+07:00) tránh lệch múi giờ trên Render (UTC)
+    const tStart = new Date(session.date_time_str + ' +07:00');
     const tCurrent = new Date();
 
     // 2. Kiểm tra Active Time Window (t_start - 30 phút <= t_current <= t_start + 120 phút)
     const diffMinutesStart = (tCurrent - tStart) / (1000 * 60);
 
     if (diffMinutesStart < -30 || diffMinutesStart > 120) {
-      const formattedTime = tStart.toLocaleDateString("vi-VN", {
+      const formattedTime = tStart.toLocaleString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
         weekday: "long",
         day: "numeric",
         month: "numeric",
