@@ -197,12 +197,6 @@ router.post('/rsvp', authenticateToken, async (req, res) => {
       [session_id, userId, status]
     );
 
-    // Thưởng XP và tiến trình check-in nếu chuyển sang 'going' lần đầu
-    if (status === 'going' && !wasGoing) {
-      await addXpToUser(userId, 25, db);
-      await updateQuestProgress(userId, 'check_in', 1, db);
-    }
-
     res.json({ success: true, attendance: result.rows[0] });
   } catch (error) {
     console.error('Error handling RSVP:', error);
