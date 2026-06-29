@@ -133,16 +133,60 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
 router.put('/:id/approve', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await db.query(
-      `UPDATE users SET role = 'member' WHERE id = $1 RETURNING id, full_name, role`,
-      [id]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+    const { full_name, phone_zalo, academic_info, badminton_level, casting_notes } = req.body;
+
+    if (!full_name || !phone_zalo || !academic_info || !badminton_level) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ thông tin bắt buộc.' });
     }
-    res.json(result.rows[0]);
+
+    // 1. Kiểm tra trùng lặp số điện thoại (Unique Phone Check)
+    const phoneCheck = await db.query(
+      'SELECT id FROM users WHERE phone_zalo = $1 AND id != $2',
+      [phone_zalo, id]
+    );
+
+    if (phoneCheck.rows.length > 0) {
+      return res.status(400).json({ 
+        error: 'Số điện thoại này đã được sử dụng bởi một thành viên khác trong CLB!' 
+      });
+    }
+
+    // 2. Định nghĩa điểm ELO khởi điểm động dựa trên trình độ
+    let eloInit = 1000;
+    if (badminton_level === 'Mới chơi') {
+      eloInit = 900;
+    } else if (badminton_level === 'Trung bình') {
+      eloInit = 1000;
+    } else if (badminton_level === 'Khá/Giỏi') {
+      eloInit = 1150;
+    }
+
+    // 3. Thực hiện cập nhật ứng viên
+    const result = await db.query(
+      `UPDATE users 
+       SET role = 'member',
+           full_name = $1,
+           phone_zalo = $2,
+           academic_info = $3,
+           badminton_level = $4,
+           casting_notes = $5,
+           elo_singles = $6,
+           elo_doubles = $7
+       WHERE id = $8 RETURNING id, full_name, role, elo_singles`,
+      [full_name, phone_zalo, academic_info, badminton_level, casting_notes || null, eloInit, eloInit, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy ứng viên.' });
+    }
+
+    res.json({
+      success: true,
+      user: result.rows[0],
+      elo_initialized: eloInit
+    });
   } catch (error) {
-    console.error(error);
+    console.error('Error approving candidate:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -165,6 +209,22 @@ router.get('/stats', authenticateToken, isAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+// DELETE /api/users/:id - Xóa/Loại bỏ ứng viên (Requires Admin)
+router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query(
+      "DELETE FROM users WHERE id = $1 AND role = 'candidate' RETURNING id, full_name",
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy ứng viên hoặc tài khoản này không phải là ứng viên.' });
+    }
+    res.json({ success: true, message: 'Đã loại bỏ ứng viên khỏi danh sách.', user: result.rows[0] });
+  } catch (error) {
+    console.error('Error deleting candidate:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

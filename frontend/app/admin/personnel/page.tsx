@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, CheckCircle2, Loader2, MoreHorizontal, X, ShieldAlert, Award, Ban, Unlock, Phone, Clock } from "lucide-react";
+import { Search, CheckCircle2, Loader2, MoreHorizontal, X, ShieldAlert, Award, Ban, Unlock, Phone, Clock, Star, Copy, Check } from "lucide-react";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
 
@@ -42,6 +42,24 @@ export default function PersonnelPage() {
   const [isUpdatingElo, setIsUpdatingElo] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+
+  // States cho Casting Assessment (Duyệt ứng viên & Đánh giá)
+  const [assessmentCandidate, setAssessmentCandidate] = useState<any>(null);
+  const [editFullName, setEditFullName] = useState("");
+  const [editPhoneZalo, setEditPhoneZalo] = useState("");
+  const [editAcademicInfo, setEditAcademicInfo] = useState("");
+  const [selectedStars, setSelectedStars] = useState<number>(3); // 1-5 stars
+  const [castingNotes, setCastingNotes] = useState("");
+  const [isApproving, setIsApproving] = useState(false);
+  const [assessmentError, setAssessmentError] = useState<string | null>(null);
+
+  // States cho Welcome Message Copier Popup
+  const [welcomeInfo, setWelcomeInfo] = useState<{
+    fullName: string;
+    stars: number;
+    elo: number;
+    phone: string;
+  } | null>(null);
 
   // Modal Chuyên Cần (Attendance Stats)
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
@@ -97,18 +115,107 @@ export default function PersonnelPage() {
     } catch (e) {} finally { setIsLoadingM(false); }
   };
 
-  const handleApprove = async (id: string) => {
-    if (!confirm("Xác nhận duyệt ứng viên này thành viên chính thức?")) return;
+  const openAssessmentModal = (candidate: any) => {
+    setAssessmentCandidate(candidate);
+    setEditFullName(candidate.full_name);
+    setEditPhoneZalo(candidate.phone_zalo);
+    setEditAcademicInfo(candidate.academic_info || "");
+    
+    // Map badminton_level to stars
+    let defaultStars = 3;
+    if (candidate.badminton_level === 'Mới chơi') {
+      defaultStars = 2;
+    } else if (candidate.badminton_level === 'Trung bình') {
+      defaultStars = 3;
+    } else if (candidate.badminton_level === 'Khá/Giỏi') {
+      defaultStars = 4;
+    }
+    setSelectedStars(defaultStars);
+    setCastingNotes("");
+    setAssessmentError(null);
+  };
+
+  const handleRejectCandidate = async (id: string) => {
+    if (!confirm("Bạn có chắc chắn muốn loại bỏ ứng viên này khỏi danh sách tuyển chọn? Hành động này không thể hoàn tác.")) return;
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/users/${id}/approve`, {
-        method: 'PUT',
+      const res = await fetch(`${API_URL}/api/users/${id}`, {
+        method: 'DELETE',
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
         setCandidates(candidates.filter(c => c.id !== id));
+        setAssessmentCandidate(null);
+        alert("Đã loại bỏ ứng viên thành công.");
+      } else {
+        const data = await res.json();
+        alert(data.error || "Không thể loại bỏ ứng viên.");
       }
-    } catch (e) {}
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    }
+  };
+
+  const handleSubmitApprove = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assessmentCandidate) return;
+    if (!editFullName.trim() || !editPhoneZalo.trim() || !editAcademicInfo.trim()) {
+      setAssessmentError("Vui lòng điền đầy đủ các thông tin bắt buộc.");
+      return;
+    }
+
+    setIsApproving(true);
+    setAssessmentError(null);
+
+    // Map 1-5 stars to badminton_level database string
+    let levelStr = 'Trung bình';
+    if (selectedStars <= 2) {
+      levelStr = 'Mới chơi';
+    } else if (selectedStars === 3) {
+      levelStr = 'Trung bình';
+    } else {
+      levelStr = 'Khá/Giỏi';
+    }
+
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/users/${assessmentCandidate.id}/approve`, {
+        method: 'PUT',
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          full_name: editFullName.trim(),
+          phone_zalo: editPhoneZalo.trim(),
+          academic_info: editAcademicInfo.trim(),
+          badminton_level: levelStr,
+          casting_notes: castingNotes.trim()
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        // Remove from candidates list
+        setCandidates(candidates.filter(c => c.id !== assessmentCandidate.id));
+        setAssessmentCandidate(null);
+        
+        // Show welcome message copier popup
+        setWelcomeInfo({
+          fullName: editFullName.trim(),
+          stars: selectedStars,
+          elo: data.elo_initialized || (levelStr === 'Mới chơi' ? 900 : levelStr === 'Trung bình' ? 1000 : 1150),
+          phone: editPhoneZalo.trim()
+        });
+      } else {
+        setAssessmentError(data.error || "Duyệt ứng viên thất bại.");
+      }
+    } catch (err) {
+      setAssessmentError("Lỗi kết nối đến máy chủ.");
+    } finally {
+      setIsApproving(false);
+    }
   };
 
   // Quick Action functions
@@ -357,7 +464,7 @@ export default function PersonnelPage() {
                         <span className="text-xs font-bold px-2 py-1 bg-slate-100 rounded-full">{c.badminton_level}</span>
                       </td>
                       <td className="p-4 text-right">
-                        <button onClick={() => handleApprove(c.id)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg">
+                        <button onClick={() => openAssessmentModal(c)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Duyệt ứng viên">
                           <CheckCircle2 className="w-5 h-5" />
                         </button>
                       </td>
@@ -735,6 +842,211 @@ export default function PersonnelPage() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ĐÁNH GIÁ CHUYÊN MÔN & PHÂN LOẠI (CASTING ASSESSMENT) */}
+      {assessmentCandidate && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl bg-slate-900 border border-purple-950/40 rounded-3xl shadow-2xl overflow-hidden text-white bg-radial-gradient relative animate-fade-in my-8">
+            {/* Header */}
+            <div className="p-6 border-b border-purple-950/30 flex justify-between items-center bg-slate-950/50">
+              <div>
+                <h3 className="font-bold text-lg tracking-tight text-white flex items-center gap-2">
+                  <Award className="w-5 h-5 text-smash-violet" /> Xác nhận & Đánh giá Tuyển chọn
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">Buổi tuyển chọn cho ứng viên: {assessmentCandidate.full_name}</p>
+              </div>
+              <button 
+                onClick={() => setAssessmentCandidate(null)}
+                className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitApprove} className="p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Cột trái: Chuẩn hóa thông tin cá nhân */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase text-smash-violet tracking-wider">1. Chuẩn hóa thông tin cá nhân</h4>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Họ và tên</label>
+                    <input
+                      type="text"
+                      required
+                      value={editFullName}
+                      onChange={(e) => setEditFullName(e.target.value)}
+                      className="w-full bg-slate-950 border border-purple-950/40 rounded-xl p-3 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-semibold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Số điện thoại Zalo</label>
+                    <input
+                      type="text"
+                      required
+                      value={editPhoneZalo}
+                      onChange={(e) => setEditPhoneZalo(e.target.value)}
+                      className="w-full bg-slate-950 border border-purple-950/40 rounded-xl p-3 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-semibold font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Trường đại học / Học vấn</label>
+                    <input
+                      type="text"
+                      required
+                      value={editAcademicInfo}
+                      onChange={(e) => setEditAcademicInfo(e.target.value)}
+                      className="w-full bg-slate-950 border border-purple-950/40 rounded-xl p-3 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* Cột phải: Phân loại trình độ */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase text-smash-violet tracking-wider">2. Đánh giá trình độ</h4>
+
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block">Trình độ thực tế (Đánh test)</label>
+                    
+                    {/* Stars Selector (1-5 sao) */}
+                    <div className="flex items-center gap-2 bg-slate-950 p-4 rounded-2xl border border-purple-950/30 justify-center">
+                      {[1, 2, 3, 4, 5].map((star) => {
+                        const active = star <= selectedStars;
+                        return (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setSelectedStars(star)}
+                            className="p-1 hover:scale-125 transition-all text-amber-400 cursor-pointer"
+                          >
+                            <Star className={`w-8 h-8 ${active ? "fill-amber-400 text-amber-400" : "text-slate-600"}`} />
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Star Level Description Text */}
+                    <div className="bg-slate-950/50 p-3.5 rounded-xl border border-purple-950/10 text-center text-xs">
+                      {selectedStars === 1 && (
+                        <p className="text-slate-300">⭐ <span className="font-bold text-amber-400">1 Sao:</span> Mới bắt đầu chơi, chưa nắm vững bộ môn.</p>
+                      )}
+                      {selectedStars === 2 && (
+                        <p className="text-slate-300">⭐⭐ <span className="font-bold text-amber-400">2 Sao:</span> Biết chơi cơ bản, di chuyển còn chậm.</p>
+                      )}
+                      {selectedStars === 3 && (
+                        <p className="text-slate-300">⭐⭐⭐ <span className="font-bold text-amber-400">3 Sao:</span> Trung bình, có thể tham gia giao lưu ELO.</p>
+                      )}
+                      {selectedStars === 4 && (
+                        <p className="text-slate-300">⭐⭐⭐⭐ <span className="font-bold text-amber-400">4 Sao:</span> Trình độ khá, kỹ thuật tốt, di chuyển nhịp nhàng.</p>
+                      )}
+                      {selectedStars === 5 && (
+                        <p className="text-slate-300">⭐⭐⭐⭐⭐ <span className="font-bold text-amber-400">5 Sao:</span> Trình độ giỏi, đẳng cấp tuyển thủ hoặc cận chuyên nghiệp.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nhận xét chuyên môn */}
+              <div className="space-y-1.5">
+                <h4 className="text-xs font-black uppercase text-smash-violet tracking-wider">3. Nhận xét chuyên môn</h4>
+                <textarea
+                  placeholder="Ví dụ: Kỹ năng đập lưới nhanh, lực đập tốt. Thể lực di chuyển cuối sân cần rèn luyện thêm..."
+                  value={castingNotes}
+                  onChange={(e) => setCastingNotes(e.target.value)}
+                  className="w-full bg-slate-950 border border-purple-950/40 rounded-2xl p-4 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-medium h-24 resize-none"
+                />
+              </div>
+
+              {/* Error messages */}
+              {assessmentError && (
+                <div className="p-4 bg-rose-950/30 border border-rose-500/20 text-rose-400 rounded-2xl text-xs font-bold leading-relaxed">
+                  {assessmentError}
+                </div>
+              )}
+
+              {/* Footer Actions */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleRejectCandidate(assessmentCandidate.id)}
+                  className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-700 hover:text-rose-400 text-slate-300 font-bold text-sm rounded-xl transition-all cursor-pointer text-center"
+                >
+                  Loại bỏ ứng viên
+                </button>
+                <button
+                  type="submit"
+                  disabled={isApproving}
+                  className="flex-1 py-3.5 bg-smash-purple hover:bg-smash-violet text-white font-bold text-sm rounded-xl shadow-lg shadow-smash-purple/20 transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {isApproving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Đang duyệt...
+                    </>
+                  ) : (
+                    "Xác nhận & Gia nhập CLB"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP CHÚC MỪNG THÀNH VIÊN MỚI (WELCOME MESSAGE COPIER) */}
+      {welcomeInfo && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-md bg-slate-900 border border-purple-950/40 rounded-3xl shadow-2xl p-6 text-center text-white bg-radial-gradient relative">
+            <button
+              onClick={() => setWelcomeInfo(null)}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+
+            <h3 className="text-xl font-bold text-white tracking-tight">Chúc mừng thành viên mới!</h3>
+            <p className="text-xs text-slate-400 mt-1">Duyệt và khởi tạo điểm Elo thành công. Dưới đây là mẫu tin nhắn chào mừng gửi ứng viên:</p>
+
+            {/* Pre-formatted welcome message text area */}
+            <div className="mt-4 bg-slate-950 p-4 rounded-2xl border border-purple-950/30 text-left relative group">
+              <textarea
+                readOnly
+                id="welcome-message-text"
+                value={`Chúc mừng ${welcomeInfo.fullName} đã chính thức gia nhập đại gia đình SMASH TEAM! 🏸\nTrình độ casting của bạn: ${welcomeInfo.stars} ⭐\nĐiểm Elo khởi điểm của bạn: ${welcomeInfo.elo} ELO.\n\nHãy truy cập đường link sau để tự kích hoạt tài khoản của mình bằng mã PIN chung của CLB nhé: http://localhost:3000/claim-account`}
+                className="w-full bg-transparent border-none text-xs text-slate-300 font-medium h-32 outline-none resize-none scrollbar-thin select-all leading-relaxed"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => {
+                  const txt = document.getElementById("welcome-message-text") as HTMLTextAreaElement;
+                  if (txt) {
+                    navigator.clipboard.writeText(txt.value);
+                    alert("Đã sao chép tin nhắn vào clipboard!");
+                  }
+                }}
+                className="flex-1 py-3 bg-smash-purple hover:bg-smash-violet text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+              >
+                <Copy className="w-4 h-4" /> Copy tin nhắn
+              </button>
+              <button
+                onClick={() => setWelcomeInfo(null)}
+                className="py-3 px-6 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-purple-950/20 cursor-pointer active:scale-95 transition-all"
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>
