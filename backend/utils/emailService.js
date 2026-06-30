@@ -43,7 +43,7 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
       </div>
     `;
 
-    console.log(\`[EmailService] Bắt đầu gửi email chào mừng tới: \${toEmail} qua Resend...\`);
+    console.log(`[EmailService] Bắt đầu gửi email chào mừng tới: ${toEmail} qua Resend...`);
 
     const { data, error } = await resend.emails.send({
       from: 'SMASH TEAM <onboarding@resend.dev>', // Dùng email test của Resend. Nếu có domain riêng thì thay vào đây (vd: no-reply@smashteam.com)
@@ -57,7 +57,7 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
       return;
     }
 
-    console.log(\`[EmailService] Gửi email thành công qua Resend! ID: \${data.id}\`);
+    console.log(`[EmailService] Gửi email thành công qua Resend! ID: ${data.id}`);
   } catch (error) {
     console.error('[EmailService] Lỗi hệ thống khi gửi email:', error);
   }
