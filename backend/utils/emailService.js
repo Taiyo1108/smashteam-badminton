@@ -40,7 +40,8 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
     if (process.env.EMAIL_SCRIPT_URL) {
       console.log(`[EmailService] Bắt đầu gửi email chào mừng tới: ${toEmail} qua Google Apps Script...`);
       try {
-        let response = await fetch(process.env.EMAIL_SCRIPT_URL, {
+        let currentUrl = process.env.EMAIL_SCRIPT_URL;
+        let options = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -51,48 +52,52 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
             subject: emailSubject,
             htmlBody: emailHtml
           }),
-          redirect: 'manual' // Chặn tự động chuyển POST thành GET khi bị redirect 302
-        });
+          redirect: 'manual' // Xử lý redirect thủ công
+        };
 
-        // Nếu Google Apps Script trả về redirect 302/301 (luôn xảy ra đối với Web App)
-        if (response.status === 302 || response.status === 301 || response.status === 307) {
-          const redirectUrl = response.headers.get('location');
-          if (redirectUrl) {
-            console.log(`[EmailService] Phát hiện chuyển hướng Apps Script -> ${redirectUrl}`);
-            // Thực hiện gửi lại POST request trực tiếp đến URL đích để bảo toàn body và method POST
-            response = await fetch(redirectUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                token: process.env.EMAIL_PASS,
-                to: toEmail,
-                subject: emailSubject,
-                htmlBody: emailHtml
-              })
-            });
+        let response;
+        let maxRedirects = 5;
+        
+        while (maxRedirects > 0) {
+          response = await fetch(currentUrl, options);
+          
+          if (response.status >= 300 && response.status < 400) {
+            const redirectUrl = response.headers.get('location');
+            if (!redirectUrl) break;
+            
+            console.log(`[EmailService] Chuyển hướng Apps Script -> ${redirectUrl}`);
+            currentUrl = redirectUrl;
+            
+            // Nếu redirect sang googleusercontent (để nhận kết quả), phải dùng GET
+            if (currentUrl.includes('googleusercontent.com')) {
+              options = { method: 'GET' }; // Xóa body và đổi sang GET
+            } 
+            // Nếu redirect nội bộ trên script.google.com (ví dụ tài khoản Workspace), giữ nguyên POST
+            
+            maxRedirects--;
+          } else {
+            break;
           }
         }
 
         const responseText = await response.text();
-        console.log(`[EmailService] Google Apps Script raw response (first 500 chars):`, responseText.substring(0, 500));
+        console.log(`[EmailService] Google Apps Script raw response (first 200 chars):`, responseText.substring(0, 200));
 
         let resData;
         try {
           resData = JSON.parse(responseText);
         } catch (parseErr) {
-          console.warn('[EmailService] Không thể parse JSON từ response của Google Apps Script:', parseErr.message);
+          console.warn('[EmailService] Không thể parse JSON từ response của Google Apps Script. Có thể script lỗi hoặc cấu hình sai.');
         }
 
         if (resData && resData.success) {
           console.log(`[EmailService] Gửi email qua Google Apps Script thành công!`);
           return; // Kết thúc gửi thành công
         } else {
-          console.warn('[EmailService] Google Apps Script báo lỗi:', resData ? resData.error : 'Không phản hồi hoặc phản hồi không hợp lệ');
+          console.warn('[EmailService] Google Apps Script báo lỗi:', resData ? resData.error : 'Không phản hồi JSON hợp lệ.');
         }
       } catch (scriptErr) {
-        console.warn('[EmailService] Lỗi kết nối Google Apps Script, chuyển sang SMTP dự phòng:', scriptErr.message);
+        console.warn('[EmailService] Lỗi kết nối Google Apps Script:', scriptErr.message);
       }
     }
 
