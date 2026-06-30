@@ -22,7 +22,7 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
       return;
     }
 
-    const hostUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const hostUrl = process.env.FRONTEND_URL || 'https://smashteam.id.vn';
     const emailSubject = '🏸 Chúc mừng bạn đã gia nhập gia đình SMASH TEAM!';
     const emailHtml = `
       <div style="background-color: #0c0a1a; padding: 40px 20px; font-family: sans-serif; text-align: center; color: #f8fafc; border-radius: 12px; max-width: 600px; margin: 0 auto; border: 1px solid #7A22E0;">
@@ -46,7 +46,7 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
     console.log(`[EmailService] Bắt đầu gửi email chào mừng tới: ${toEmail} qua Resend...`);
 
     const { data, error } = await resend.emails.send({
-      from: 'SMASH TEAM <onboarding@resend.dev>', // Dùng email test của Resend. Nếu có domain riêng thì thay vào đây (vd: no-reply@smashteam.com)
+      from: 'SMASH TEAM <clb@smashteam.id.vn>',
       to: [toEmail],
       subject: emailSubject,
       html: emailHtml,
