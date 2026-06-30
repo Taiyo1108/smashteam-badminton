@@ -47,6 +47,7 @@ export default function PersonnelPage() {
   const [assessmentCandidate, setAssessmentCandidate] = useState<any>(null);
   const [editFullName, setEditFullName] = useState("");
   const [editPhoneZalo, setEditPhoneZalo] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [editAcademicInfo, setEditAcademicInfo] = useState("");
   const [selectedStars, setSelectedStars] = useState<number>(3); // 1-5 stars
   const [castingNotes, setCastingNotes] = useState("");
@@ -119,6 +120,7 @@ export default function PersonnelPage() {
     setAssessmentCandidate(candidate);
     setEditFullName(candidate.full_name);
     setEditPhoneZalo(candidate.phone_zalo);
+    setEditEmail(candidate.email || "");
     setEditAcademicInfo(candidate.academic_info || "");
     
     // Map badminton_level to stars
@@ -159,8 +161,13 @@ export default function PersonnelPage() {
   const handleSubmitApprove = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assessmentCandidate) return;
-    if (!editFullName.trim() || !editPhoneZalo.trim() || !editAcademicInfo.trim()) {
-      setAssessmentError("Vui lòng điền đầy đủ các thông tin bắt buộc.");
+    if (!editFullName.trim() || !editPhoneZalo.trim() || !editAcademicInfo.trim() || !editEmail.trim()) {
+      setAssessmentError("Vui lòng điền đầy đủ Họ tên, Số điện thoại, Email và Thông tin học vấn.");
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(editEmail.trim())) {
+      setAssessmentError("Địa chỉ Email không đúng định dạng (Ví dụ: user@example.com).");
       return;
     }
 
@@ -188,6 +195,8 @@ export default function PersonnelPage() {
         body: JSON.stringify({
           full_name: editFullName.trim(),
           phone_zalo: editPhoneZalo.trim(),
+          email: editEmail.trim(),
+          stars: selectedStars,
           academic_info: editAcademicInfo.trim(),
           badminton_level: levelStr,
           casting_notes: castingNotes.trim()
@@ -930,6 +939,17 @@ export default function PersonnelPage() {
                       value={editPhoneZalo}
                       onChange={(e) => setEditPhoneZalo(e.target.value)}
                       className="w-full bg-slate-950 border border-purple-950/40 rounded-xl p-3 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-semibold font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Địa chỉ Email</label>
+                    <input
+                      type="email"
+                      required
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      className="w-full bg-slate-950 border border-purple-950/40 rounded-xl p-3 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-semibold"
                     />
                   </div>
 

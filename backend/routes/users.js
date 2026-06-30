@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { sendWelcomeEmail } = require('../utils/emailService');
 
 // POST /api/users/register - Đăng ký candidate mới
 router.post('/register', async (req, res) => {
   try {
-    const { full_name, phone_zalo, academic_info, badminton_level, soft_skills, casting_slot_id, gender } = req.body;
+    const { full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, casting_slot_id, gender } = req.body;
     
     if (!full_name || !phone_zalo || !academic_info || !badminton_level) {
       return res.status(400).json({ error: 'Vui lòng điền đầy đủ các thông tin bắt buộc.' });
@@ -22,10 +23,21 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Số điện thoại này đã được sử dụng hoặc đăng ký trước đó!' });
     }
 
+    // Kiểm tra trùng lặp email (Unique Email Check)
+    if (email) {
+      const emailCheck = await db.query(
+        'SELECT id FROM users WHERE email = $1',
+        [email]
+      );
+      if (emailCheck.rows.length > 0) {
+        return res.status(400).json({ error: 'Email này đã được sử dụng để đăng ký tuyển chọn trước đó!' });
+      }
+    }
+
     const result = await db.query(
-      `INSERT INTO users (full_name, phone_zalo, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender)
-       VALUES ($1, $2, $3, $4, $5, 'candidate', $6, $7) RETURNING id, full_name, role`,
-      [full_name, phone_zalo, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id, gender]
+      `INSERT INTO users (full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender)
+       VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $8) RETURNING id, full_name, role`,
+      [full_name, phone_zalo, email || null, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id, gender]
     );
     
     res.status(201).json(result.rows[0]);
@@ -147,7 +159,7 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
 router.put('/:id/approve', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { full_name, phone_zalo, academic_info, badminton_level, casting_notes } = req.body;
+    const { full_name, phone_zalo, email, academic_info, badminton_level, stars, casting_notes } = req.body;
 
     if (!full_name || !phone_zalo || !academic_info || !badminton_level) {
       return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ thông tin bắt buộc.' });
@@ -165,7 +177,20 @@ router.put('/:id/approve', authenticateToken, isAdmin, async (req, res) => {
       });
     }
 
-    // 2. Định nghĩa điểm ELO khởi điểm động dựa trên trình độ
+    // 2. Kiểm tra trùng lặp email (Unique Email Check)
+    if (email) {
+      const emailCheck = await db.query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2',
+        [email, id]
+      );
+      if (emailCheck.rows.length > 0) {
+        return res.status(400).json({ 
+          error: 'Email này đã được sử dụng bởi một thành viên khác trong CLB!' 
+        });
+      }
+    }
+
+    // 3. Định nghĩa điểm ELO khởi điểm động dựa trên trình độ
     let eloInit = 1000;
     if (badminton_level === 'Mới chơi') {
       eloInit = 900;
@@ -175,23 +200,30 @@ router.put('/:id/approve', authenticateToken, isAdmin, async (req, res) => {
       eloInit = 1150;
     }
 
-    // 3. Thực hiện cập nhật ứng viên
+    // 4. Thực hiện cập nhật ứng viên
     const result = await db.query(
       `UPDATE users 
        SET role = 'member',
            full_name = $1,
            phone_zalo = $2,
-           academic_info = $3,
-           badminton_level = $4,
-           casting_notes = $5,
-           elo_singles = $6,
-           elo_doubles = $7
-       WHERE id = $8 RETURNING id, full_name, role, elo_singles`,
-      [full_name, phone_zalo, academic_info, badminton_level, casting_notes || null, eloInit, eloInit, id]
+           email = $3,
+           academic_info = $4,
+           badminton_level = $5,
+           casting_notes = $6,
+           elo_singles = $7,
+           elo_doubles = $8
+       WHERE id = $9 RETURNING id, full_name, role, elo_singles, email`,
+      [full_name, phone_zalo, email || null, academic_info, badminton_level, casting_notes || null, eloInit, eloInit, id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Không tìm thấy ứng viên.' });
+    }
+
+    // 5. Gửi email chào mừng chạy ngầm (non-blocking) để tránh chậm API
+    if (email) {
+      const emailStars = stars || (badminton_level === 'Mới chơi' ? 2 : badminton_level === 'Trung bình' ? 3 : 4);
+      sendWelcomeEmail(email, full_name, emailStars, eloInit);
     }
 
     res.json({

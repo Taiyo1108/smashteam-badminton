@@ -38,6 +38,7 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState({
     fullName: "",
     phoneZalo: "",
+    email: "",
     gender: "",
     university: "",
     courseYear: "",
@@ -82,13 +83,18 @@ export default function RegisterPage() {
 
   const nextStep = () => {
     if (step === 1) {
-      if (!formData.fullName || !formData.phoneZalo || !formData.gender) {
-        alert("Vui lòng điền đầy đủ Họ tên, Số điện thoại và Giới tính.");
+      if (!formData.fullName || !formData.phoneZalo || !formData.gender || !formData.email) {
+        alert("Vui lòng điền đầy đủ Họ tên, Số điện thoại, Email và Giới tính.");
         return;
       }
       const phoneRegex = /^0\d{9}$/;
       if (!phoneRegex.test(formData.phoneZalo)) {
         alert("Số điện thoại không đúng định dạng (phải có 10 chữ số và bắt đầu bằng số 0).");
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        alert("Địa chỉ Email không đúng định dạng (Ví dụ: user@example.com).");
         return;
       }
     }
@@ -115,6 +121,7 @@ export default function RegisterPage() {
         body: JSON.stringify({
           full_name: formData.fullName,
           phone_zalo: formData.phoneZalo,
+          email: formData.email,
           academic_info: `${formData.university} - ${formData.courseYear}`,
           badminton_level: formData.level,
           soft_skills: formData.selectedSkills,
@@ -213,6 +220,16 @@ export default function RegisterPage() {
                           <span>{phoneError}</span>
                         </p>
                       )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-600 mb-2">Địa chỉ Email</label>
+                      <input 
+                        type="email" 
+                        placeholder="example@domain.com"
+                        className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800 mb-4"
+                        value={formData.email}
+                        onChange={(e) => updateForm("email", e.target.value)}
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-bold text-slate-600 mb-2">Giới tính</label>
