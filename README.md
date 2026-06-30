@@ -172,3 +172,61 @@ Dự án đã tích hợp sẵn tệp kịch bản `start-dev.bat` ở thư mụ
    * **Cổng 5000:** API Backend (`http://localhost:5000`)
 
 Bạn có thể thay đổi cổng hoặc cấu hình môi trường tùy ý trong tệp tin `.env` tương ứng!
+
+---
+
+## 5. HƯỚNG DẪN CẤU HÌNH GOOGLE APPS SCRIPT LÀM EMAIL PROXY (CHO RENDER FREE TIER)
+
+Do Render chặn các cổng SMTP kết nối ra ngoài (25, 465, 587) trên gói dịch vụ Free, chúng ta sử dụng **Google Apps Script** chạy trực tiếp trên tài khoản Google của CLB làm cổng HTTP proxy (miễn phí, không bị Render chặn cổng).
+
+### Các bước cài đặt:
+
+1. Truy cập **[Google Apps Script](https://script.google.com/)** và đăng nhập bằng tài khoản Gmail của CLB (`smashteam552@gmail.com`).
+2. Bấm vào **"Dự án mới"** (New Project).
+3. Đổi tên dự án thành `SmashTeamEmailProxy` và dán đoạn mã bên dưới vào khung soạn thảo (thay thế toàn bộ mã mặc định):
+   ```javascript
+   function doPost(e) {
+     try {
+       var data = JSON.parse(e.postData.contents);
+       var token = data.token;
+       
+       // Khóa bảo mật để xác thực request (EMAIL_PASS cấu hình trong .env)
+       var SECURITY_TOKEN = "weyk vpbi dpxv gopu"; 
+       
+       if (!token || token.replace(/\s+/g, '') !== SECURITY_TOKEN.replace(/\s+/g, '')) {
+         return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Unauthorized" }))
+                              .setMimeType(ContentService.MimeType.JSON);
+       }
+       
+       var to = data.to;
+       var subject = data.subject;
+       var htmlBody = data.htmlBody;
+       
+       MailApp.sendEmail({
+         to: to,
+         subject: subject,
+         htmlBody: htmlBody
+       });
+       
+       return ContentService.createTextOutput(JSON.stringify({ success: true }))
+                            .setMimeType(ContentService.MimeType.JSON);
+     } catch (error) {
+       return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+                            .setMimeType(ContentService.MimeType.JSON);
+     }
+   }
+   ```
+4. Bấm biểu tượng 💾 **Save** để lưu lại.
+5. Bấm vào nút **"Triển khai"** (Deploy) ở góc trên bên phải -> chọn **"Triển khai mới"** (New deployment).
+6. Bấm vào biểu tượng ⚙️ (chọn loại triển khai) và chọn **"Ứng dụng web"** (Web app).
+7. Cấu hình như sau:
+   * **Mô tả:** `Smash Team Email Proxy v1`
+   * **Thực thi dưới dạng (Execute as):** **"Tôi"** (Me - email của bạn)
+   * **Ai có quyền truy cập (Who has access):** **"Mọi người"** (Anyone) -> *Đừng lo lắng, token bảo mật `SECURITY_TOKEN` sẽ chặn các request lạ bên ngoài.*
+8. Bấm **"Triển khai"** (Deploy). 
+9. Google sẽ yêu cầu ủy quyền quyền truy cập vào dịch vụ Gmail -> bấm **"Ủy quyền truy cập"** (Authorize access) -> chọn tài khoản Google của bạn -> chọn **"Nâng cao"** (Advanced) -> bấm **"Đi tới SmashTeamEmailProxy (không an toàn)"** -> bấm **"Cho phép"** (Allow).
+10. Sau khi triển khai xong, hãy sao chép đường link **"URL của ứng dụng web"** (Web app URL) có đuôi dạng `/exec`.
+11. Truy cập vào trang quản trị Render của bạn, thêm biến môi trường **`EMAIL_SCRIPT_URL`** với giá trị là đường link URL vừa sao chép được.
+
+Hệ thống sẽ tự động chuyển hướng mọi yêu cầu gửi email qua Proxy này qua cổng HTTPS (443) an toàn, nhanh chóng và không bao giờ lo bị chặn!
+
