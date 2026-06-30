@@ -59,10 +59,11 @@ Trang cá nhân của hội viên được thiết kế mang đậm phong cách 
 
 ### 2.4. Đánh Giá Tuyển Chọn Casting & Chào Mừng Thành Viên Mới
 * **Duyệt Ứng Viên Casting:** Khi duyệt ứng viên, Admin mở Modal **"Xác nhận & Đánh giá Tuyển chọn"** (bố cục mờ ảo tím neon):
-  * *Chuẩn hóa thông tin:* Sửa trực tiếp họ tên, số điện thoại, trường lớp của ứng viên nếu bị sai sót chính tả.
-  * *Kiểm tra trùng SĐT:* Chặn trùng số điện thoại với bất cứ ai trong CLB (trả về lỗi 400).
+  * *Chuẩn hóa thông tin:* Sửa trực tiếp họ tên, số điện thoại, email, trường lớp của ứng viên nếu bị sai sót chính tả.
+  * *Kiểm tra trùng SĐT & Email:* Chặn trùng số điện thoại và địa chỉ email với bất cứ ai trong CLB (trả về lỗi 400).
   * *Phân loại trình độ 1-5 sao:* Đánh giá thực lực của ứng viên để tự động khởi tạo điểm ELO phù hợp (Mới chơi -> 900 ELO, Trung bình -> 1000 ELO, Khá/Giỏi -> 1150 ELO).
   * *Ghi chú tuyển chọn:* Nhập nhận xét chuyên môn và lưu trữ vào trường `casting_notes`.
+* **Tự Động Gửi Email Chào Mừng:** Tích hợp Nodemailer gửi thư chào mừng dạng HTML neon violet cực kỳ sang trọng tới email của thành viên ngay khi Admin duyệt thành công (tác vụ chạy ngầm non-blocking để giữ hiệu năng API).
 * **Welcome Message Copier:** Sau khi duyệt thành công, hiển thị Popup chúc mừng với mẫu tin nhắn soạn sẵn (tên, số sao, điểm ELO khởi điểm, link kích hoạt tài khoản) cùng nút **"Copy tin nhắn"** gửi Zalo ứng viên cực nhanh.
 * **Quản Lý User vĩnh viễn:** Admin có thể xóa vĩnh viễn bất kỳ tài khoản nào khỏi hệ thống (có chặn tự xóa chính mình) tại mục Thao tác nhanh.
 
@@ -80,6 +81,7 @@ Cấu trúc cơ sở dữ liệu PostgreSQL gồm các bảng chính:
 * `id` (UUID, Khóa chính)
 * `full_name` (VARCHAR)
 * `phone_zalo` (VARCHAR) - *Chặn trùng lặp SĐT khi Đăng ký và khi BTC Duyệt.*
+* `email` (VARCHAR) - *Địa chỉ email liên hệ, chặn trùng lặp.*
 * `gender` (VARCHAR) - Giới tính (Nam, Nữ, Khác)
 * `academic_info` (VARCHAR)
 * `badminton_level` (VARCHAR) - Trình độ ('Mới chơi', 'Trung bình', 'Khá/Giỏi')
