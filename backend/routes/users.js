@@ -95,7 +95,7 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
     const { search, level, slot_id } = req.query;
     
     let query = `
-      SELECT u.id, u.full_name, u.gender, u.phone_zalo, u.academic_info, u.badminton_level, u.soft_skills, u.created_at, 
+      SELECT u.id, u.full_name, u.gender, u.phone_zalo, u.email, u.academic_info, u.badminton_level, u.soft_skills, u.created_at, 
              u.casting_slot_id, c.casting_time, c.location 
       FROM users u
       LEFT JOIN casting_slots c ON u.casting_slot_id = c.id

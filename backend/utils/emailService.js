@@ -1,13 +1,12 @@
 const nodemailer = require('nodemailer');
 
-// Tạo transporter kết nối SMTP Gmail
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
   secure: true, // sử dụng SSL
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
+    pass: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.replace(/\s+/g, '') : ''
   }
 });
 

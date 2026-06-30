@@ -54,13 +54,7 @@ export default function PersonnelPage() {
   const [isApproving, setIsApproving] = useState(false);
   const [assessmentError, setAssessmentError] = useState<string | null>(null);
 
-  // States cho Welcome Message Copier Popup
-  const [welcomeInfo, setWelcomeInfo] = useState<{
-    fullName: string;
-    stars: number;
-    elo: number;
-    phone: string;
-  } | null>(null);
+
 
   // Modal Chuyên Cần (Attendance Stats)
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
@@ -209,14 +203,7 @@ export default function PersonnelPage() {
         // Remove from candidates list
         setCandidates(candidates.filter(c => c.id !== assessmentCandidate.id));
         setAssessmentCandidate(null);
-        
-        // Show welcome message copier popup
-        setWelcomeInfo({
-          fullName: editFullName.trim(),
-          stars: selectedStars,
-          elo: data.elo_initialized || (levelStr === 'Mới chơi' ? 900 : levelStr === 'Trung bình' ? 1000 : 1150),
-          phone: editPhoneZalo.trim()
-        });
+        alert(`Đã duyệt thành viên ${editFullName.trim()} thành công và gửi email chào mừng!`);
       } else {
         setAssessmentError(data.error || "Duyệt ứng viên thất bại.");
       }
@@ -1057,58 +1044,7 @@ export default function PersonnelPage() {
         </div>
       )}
 
-      {/* POPUP CHÚC MỪNG THÀNH VIÊN MỚI (WELCOME MESSAGE COPIER) */}
-      {welcomeInfo && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="w-full max-w-md bg-slate-900 border border-purple-950/40 rounded-3xl shadow-2xl p-6 text-center text-white bg-radial-gradient relative">
-            <button
-              onClick={() => setWelcomeInfo(null)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
 
-            <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
-
-            <h3 className="text-xl font-bold text-white tracking-tight">Chúc mừng thành viên mới!</h3>
-            <p className="text-xs text-slate-400 mt-1">Duyệt và khởi tạo điểm Elo thành công. Dưới đây là mẫu tin nhắn chào mừng gửi ứng viên:</p>
-
-            {/* Pre-formatted welcome message text area */}
-            <div className="mt-4 bg-slate-950 p-4 rounded-2xl border border-purple-950/30 text-left relative group">
-              <textarea
-                readOnly
-                id="welcome-message-text"
-                value={`Chúc mừng ${welcomeInfo.fullName} đã chính thức gia nhập đại gia đình SMASH TEAM! 🏸\nTrình độ casting của bạn: ${welcomeInfo.stars} ⭐\nĐiểm Elo khởi điểm của bạn: ${welcomeInfo.elo} ELO.\n\nHãy truy cập đường link sau để tự kích hoạt tài khoản của mình bằng mã PIN chung của CLB nhé: http://localhost:3000/claim-account`}
-                className="w-full bg-transparent border-none text-xs text-slate-300 font-medium h-32 outline-none resize-none scrollbar-thin select-all leading-relaxed"
-              />
-            </div>
-
-            {/* Actions */}
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => {
-                  const txt = document.getElementById("welcome-message-text") as HTMLTextAreaElement;
-                  if (txt) {
-                    navigator.clipboard.writeText(txt.value);
-                    alert("Đã sao chép tin nhắn vào clipboard!");
-                  }
-                }}
-                className="flex-1 py-3 bg-smash-purple hover:bg-smash-violet text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-              >
-                <Copy className="w-4 h-4" /> Copy tin nhắn
-              </button>
-              <button
-                onClick={() => setWelcomeInfo(null)}
-                className="py-3 px-6 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-purple-950/20 cursor-pointer active:scale-95 transition-all"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
