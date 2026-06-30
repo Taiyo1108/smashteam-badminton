@@ -1,8 +1,10 @@
-const nodemailer = require('nodemailer');
-const dns = require('dns').promises;
+const { Resend } = require('resend');
+
+// Khởi tạo Resend SDK
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 /**
- * Gửi email chào mừng thành viên mới
+ * Gửi email chào mừng thành viên mới qua Resend API
  * @param {string} toEmail Địa chỉ email nhận
  * @param {string} userName Tên thành viên
  * @param {number} stars Số sao đánh giá (1-5)
@@ -12,6 +14,11 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
   try {
     if (!toEmail) {
       console.warn('[EmailService] Bỏ qua gửi email do địa chỉ email trống.');
+      return;
+    }
+
+    if (!process.env.RESEND_API_KEY) {
+      console.warn('[EmailService] Lỗi: Chưa cấu hình RESEND_API_KEY. Vui lòng thêm vào biến môi trường.');
       return;
     }
 
@@ -36,107 +43,23 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
       </div>
     `;
 
-    // 1. Ưu tiên gửi qua Google Apps Script Web App (Để tránh bị chặn cổng SMTP trên Render)
-    if (process.env.EMAIL_SCRIPT_URL) {
-      console.log(`[EmailService] Bắt đầu gửi email chào mừng tới: ${toEmail} qua Google Apps Script...`);
-      try {
-        let currentUrl = process.env.EMAIL_SCRIPT_URL;
-        let options = {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            token: process.env.EMAIL_PASS,
-            to: toEmail,
-            subject: emailSubject,
-            htmlBody: emailHtml
-          }),
-          redirect: 'manual' // Xử lý redirect thủ công
-        };
+    console.log(\`[EmailService] Bắt đầu gửi email chào mừng tới: \${toEmail} qua Resend...\`);
 
-        let response;
-        let maxRedirects = 5;
-        
-        while (maxRedirects > 0) {
-          response = await fetch(currentUrl, options);
-          
-          if (response.status >= 300 && response.status < 400) {
-            const redirectUrl = response.headers.get('location');
-            if (!redirectUrl) break;
-            
-            console.log(`[EmailService] Chuyển hướng Apps Script -> ${redirectUrl}`);
-            currentUrl = redirectUrl;
-            
-            // Nếu redirect sang googleusercontent (để nhận kết quả), phải dùng GET
-            if (currentUrl.includes('googleusercontent.com')) {
-              options = { method: 'GET' }; // Xóa body và đổi sang GET
-            } 
-            // Nếu redirect nội bộ trên script.google.com (ví dụ tài khoản Workspace), giữ nguyên POST
-            
-            maxRedirects--;
-          } else {
-            break;
-          }
-        }
-
-        const responseText = await response.text();
-        console.log(`[EmailService] Google Apps Script raw response (first 200 chars):`, responseText.substring(0, 200));
-
-        let resData;
-        try {
-          resData = JSON.parse(responseText);
-        } catch (parseErr) {
-          console.warn('[EmailService] Không thể parse JSON từ response của Google Apps Script. Có thể script lỗi hoặc cấu hình sai.');
-        }
-
-        if (resData && resData.success) {
-          console.log(`[EmailService] Gửi email qua Google Apps Script thành công!`);
-          return; // Kết thúc gửi thành công
-        } else {
-          console.warn('[EmailService] Google Apps Script báo lỗi:', resData ? resData.error : 'Không phản hồi JSON hợp lệ.');
-        }
-      } catch (scriptErr) {
-        console.warn('[EmailService] Lỗi kết nối Google Apps Script:', scriptErr.message);
-      }
-    }
-
-    // 2. SMTP Dự phòng (Hoạt động ở Local hoặc khi không cấu hình Script URL)
-    console.log(`[EmailService] Bắt đầu gửi email chào mừng tới: ${toEmail} qua SMTP dự phòng...`);
-    let resolvedIp = 'smtp.gmail.com';
-    try {
-      const ipAddresses = await dns.resolve4('smtp.gmail.com');
-      if (ipAddresses && ipAddresses.length > 0) {
-        resolvedIp = ipAddresses[0];
-      }
-    } catch (dnsErr) {
-      console.warn('[EmailService] Không thể phân giải IP cho SMTP:', dnsErr.message);
-    }
-
-    const transporter = nodemailer.createTransport({
-      host: resolvedIp,
-      port: 465,
-      secure: true,
-      tls: {
-        servername: 'smtp.gmail.com'
-      },
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.replace(/\s+/g, '') : ''
-      }
+    const { data, error } = await resend.emails.send({
+      from: 'SMASH TEAM <onboarding@resend.dev>', // Dùng email test của Resend. Nếu có domain riêng thì thay vào đây (vd: no-reply@smashteam.com)
+      to: [toEmail],
+      subject: emailSubject,
+      html: emailHtml,
     });
 
-    const mailOptions = {
-      from: `"SMASH TEAM" <${process.env.EMAIL_USER}>`,
-      to: toEmail,
-      subject: emailSubject,
-      html: emailHtml
-    };
+    if (error) {
+      console.error('[EmailService] Lỗi từ Resend API:', error);
+      return;
+    }
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[EmailService] Gửi email qua SMTP thành công: ${info.messageId}`);
+    console.log(\`[EmailService] Gửi email thành công qua Resend! ID: \${data.id}\`);
   } catch (error) {
-    console.error('[EmailService] Lỗi khi gửi email chào mừng:', error);
+    console.error('[EmailService] Lỗi hệ thống khi gửi email:', error);
   }
 };
 
