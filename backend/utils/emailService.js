@@ -40,7 +40,7 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
     if (process.env.EMAIL_SCRIPT_URL) {
       console.log(`[EmailService] Bắt đầu gửi email chào mừng tới: ${toEmail} qua Google Apps Script...`);
       try {
-        const response = await fetch(process.env.EMAIL_SCRIPT_URL, {
+        let response = await fetch(process.env.EMAIL_SCRIPT_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -50,8 +50,30 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
             to: toEmail,
             subject: emailSubject,
             htmlBody: emailHtml
-          })
+          }),
+          redirect: 'manual' // Chặn tự động chuyển POST thành GET khi bị redirect 302
         });
+
+        // Nếu Google Apps Script trả về redirect 302/301 (luôn xảy ra đối với Web App)
+        if (response.status === 302 || response.status === 301 || response.status === 307) {
+          const redirectUrl = response.headers.get('location');
+          if (redirectUrl) {
+            console.log(`[EmailService] Phát hiện chuyển hướng Apps Script -> ${redirectUrl}`);
+            // Thực hiện gửi lại POST request trực tiếp đến URL đích để bảo toàn body và method POST
+            response = await fetch(redirectUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                token: process.env.EMAIL_PASS,
+                to: toEmail,
+                subject: emailSubject,
+                htmlBody: emailHtml
+              })
+            });
+          }
+        }
 
         const responseText = await response.text();
         console.log(`[EmailService] Google Apps Script raw response (first 500 chars):`, responseText.substring(0, 500));
