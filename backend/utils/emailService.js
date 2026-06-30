@@ -1,19 +1,5 @@
 const nodemailer = require('nodemailer');
-const dns = require('dns');
-
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true, // sử dụng SSL
-  family: 4, // Ép buộc sử dụng IPv4 để tránh lỗi kết nối IPv6 (ENETUNREACH) trên Render
-  lookup: (hostname, options, callback) => {
-    dns.lookup(hostname, { family: 4 }, callback);
-  },
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.replace(/\s+/g, '') : ''
-  }
-});
+const dns = require('dns').promises;
 
 /**
  * Gửi email chào mừng thành viên mới
@@ -28,6 +14,32 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
       console.warn('[EmailService] Bỏ qua gửi email do địa chỉ email trống.');
       return;
     }
+
+    // Phân giải động địa chỉ IPv4 cho smtp.gmail.com để tránh lỗi định tuyến IPv6 (ENETUNREACH) trên Render
+    let resolvedIp = 'smtp.gmail.com';
+    try {
+      const ipAddresses = await dns.resolve4('smtp.gmail.com');
+      if (ipAddresses && ipAddresses.length > 0) {
+        resolvedIp = ipAddresses[0];
+        console.log(`[EmailService] Phân giải thành công smtp.gmail.com -> ${resolvedIp}`);
+      }
+    } catch (dnsErr) {
+      console.warn('[EmailService] Cảnh báo: Không thể phân giải IPv4 cho smtp.gmail.com, thử dùng mặc định:', dnsErr.message);
+    }
+
+    // Khởi tạo transporter động sử dụng IP đã phân giải và SNI servername khớp chứng chỉ SSL
+    const transporter = nodemailer.createTransport({
+      host: resolvedIp,
+      port: 465,
+      secure: true,
+      tls: {
+        servername: 'smtp.gmail.com' // Bắt buộc để vượt qua bước xác thực tên miền chứng chỉ SSL của Google
+      },
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.replace(/\s+/g, '') : ''
+      }
+    });
 
     const hostUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const mailOptions = {
