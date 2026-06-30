@@ -53,12 +53,21 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
           })
         });
 
-        const resData = await response.json();
+        const responseText = await response.text();
+        console.log(`[EmailService] Google Apps Script raw response (first 500 chars):`, responseText.substring(0, 500));
+
+        let resData;
+        try {
+          resData = JSON.parse(responseText);
+        } catch (parseErr) {
+          console.warn('[EmailService] Không thể parse JSON từ response của Google Apps Script:', parseErr.message);
+        }
+
         if (resData && resData.success) {
           console.log(`[EmailService] Gửi email qua Google Apps Script thành công!`);
           return; // Kết thúc gửi thành công
         } else {
-          console.warn('[EmailService] Google Apps Script báo lỗi:', resData ? resData.error : 'Không phản hồi');
+          console.warn('[EmailService] Google Apps Script báo lỗi:', resData ? resData.error : 'Không phản hồi hoặc phản hồi không hợp lệ');
         }
       } catch (scriptErr) {
         console.warn('[EmailService] Lỗi kết nối Google Apps Script, chuyển sang SMTP dự phòng:', scriptErr.message);
