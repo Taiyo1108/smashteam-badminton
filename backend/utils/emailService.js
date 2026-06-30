@@ -4,6 +4,7 @@ const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
   secure: true, // sử dụng SSL
+  family: 4, // Ép buộc sử dụng IPv4 để tránh lỗi kết nối IPv6 (ENETUNREACH) trên Render
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.replace(/\s+/g, '') : ''
