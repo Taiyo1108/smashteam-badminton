@@ -457,7 +457,7 @@ router.get('/inventory', async (req, res) => {
 
     // Lọc bỏ các bản ghi ghi nhận claimed mốc SmashPass
     const inventoryRes = await db.query(
-      `SELECT id, item_type, item_name, item_value, is_equipped, acquired_at 
+      `SELECT id, item_type, item_name, item_value, is_equipped, acquired_at, coupon_code, status, redeemed_at 
        FROM user_inventory 
        WHERE user_id = $1 AND item_type != 'smash_pass_reward_level'
        ORDER BY acquired_at DESC`,

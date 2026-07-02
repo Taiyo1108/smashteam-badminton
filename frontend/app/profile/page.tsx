@@ -7,7 +7,8 @@ import Link from "next/link";
 import { 
   Trophy, Flame, Calendar, Check, X, Sparkles, 
   Camera, Paintbrush, Shield, CalendarDays, Activity, 
-  MapPin, Clock, LogOut, Edit2, Home, Loader2, Settings
+  MapPin, Clock, LogOut, Edit2, Home, Loader2, Settings,
+  ShoppingBag
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
@@ -26,12 +27,14 @@ export default function ProfilePage() {
   const [claimedPassLevels, setClaimedPassLevels] = useState<number[]>([]);
   const [isPremiumPass, setIsPremiumPass] = useState(false);
   const [inventory, setInventory] = useState<any[]>([]);
-  const [activeGamTab, setActiveGamTab] = useState<"quests" | "smashpass" | "inventory" | "matches">("quests");
+  const [shopItems, setShopItems] = useState<any[]>([]);
+  const [activeGamTab, setActiveGamTab] = useState<"quests" | "smashpass" | "inventory" | "shop" | "matches">("quests");
   const [matchFilter, setMatchFilter] = useState<"all" | "month" | "week">("all");
   
   const [claimingQuestId, setClaimingQuestId] = useState<number | null>(null);
   const [claimingPassLevel, setClaimingPassLevel] = useState<number | null>(null);
   const [equippingItemId, setEquippingItemId] = useState<number | null>(null);
+  const [buyingItemId, setBuyingItemId] = useState<number | null>(null);
   const [unlockingPremium, setUnlockingPremium] = useState(false);
 
   // Settings Modal states
@@ -158,8 +161,56 @@ export default function ProfilePage() {
       const invRes = await fetch(`${API_URL}/api/gamification/inventory`, { headers });
       if (invRes.ok) setInventory(await invRes.json());
 
+      // 5. Fetch Shop Items
+      const shopRes = await fetch(`${API_URL}/api/shop/items`, { headers });
+      if (shopRes.ok) setShopItems(await shopRes.json());
+
     } catch (e) {
       console.error("Error fetching gamification data:", e);
+    }
+  };
+
+  const fetchShopItems = async () => {
+    try {
+      const token = localStorage.getItem("admin_token");
+      if (!token) return;
+      const headers = { Authorization: `Bearer ${token}` };
+      const res = await fetch(`${API_URL}/api/shop/items`, { headers });
+      if (res.ok) setShopItems(await res.json());
+    } catch (e) {
+      console.error("Error fetching shop items:", e);
+    }
+  };
+
+  const handleBuyItem = async (itemId: number, itemName: string, price: number) => {
+    if (!confirm(`Xác nhận dùng ${price} xu Smash Coins để đổi "${itemName}"?`)) {
+      return;
+    }
+    
+    setBuyingItemId(itemId);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const url = `${API_URL}/api/shop/buy`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ itemId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || `Đổi thành công: ${itemName}!`);
+        await fetchGamificationData();
+        await fetchProfileData();
+      } else {
+        showToast(data.error || "Lỗi khi đổi quà.", "error");
+      }
+    } catch (e) {
+      showToast("Lỗi kết nối.", "error");
+    } finally {
+      setBuyingItemId(null);
     }
   };
 
@@ -853,6 +904,7 @@ export default function ProfilePage() {
                 { id: "quests", label: "Nhiệm vụ", icon: Sparkles },
                 { id: "smashpass", label: "SmashPass", icon: Trophy },
                 { id: "inventory", label: "Kho đồ", icon: Shield },
+                { id: "shop", label: "Smash Shop", icon: ShoppingBag },
                 { id: "matches", label: "Lịch sử đấu", icon: Activity }
               ].map(t => {
                 const Icon = t.icon;
@@ -1063,8 +1115,54 @@ export default function ProfilePage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {inventory.map((item: any) => {
                       const isEquipped = item.is_equipped;
+                      const isPhysical = item.item_type === 'physical';
+                      const isRedeemed = item.status === 'redeemed';
                       const canEquip = ['avatar_frame', 'title'].includes(item.item_type);
                       
+                      if (isPhysical) {
+                        return (
+                          <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-3 relative overflow-hidden ${
+                            isRedeemed 
+                              ? "border-slate-800 opacity-60 grayscale" 
+                              : "border-smash-purple shadow-[0_0_15px_rgba(122,34,224,0.3)]"
+                          }`}>
+                            {isRedeemed && (
+                              <div className="absolute -right-4 -bottom-4 w-24 h-24 border-4 border-dashed border-red-500/30 rounded-full flex items-center justify-center rotate-12 select-none pointer-events-none">
+                                <span className="text-[9px] font-black text-red-500/40 uppercase tracking-widest text-center">ĐÃ NHẬN QUÀ</span>
+                              </div>
+                            )}
+                            
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                                  isRedeemed
+                                    ? "bg-slate-800 text-slate-400"
+                                    : "bg-smash-purple/20 text-smash-violet border border-smash-purple/30"
+                                }`}>
+                                  Quà Vật Lý
+                                </span>
+                                <span className={`text-[10px] font-bold ${isRedeemed ? "text-slate-500" : "text-emerald-400"}`}>
+                                  {isRedeemed ? "✓ Đã nhận" : "● Chưa sử dụng"}
+                                </span>
+                              </div>
+                              <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
+                              <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
+                            </div>
+
+                            <div className="bg-slate-950/60 p-2.5 rounded-xl border border-purple-950/30 flex flex-col items-center justify-center gap-1.5">
+                              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Mã Coupon</span>
+                              <span className="font-mono text-sm font-black text-smash-violet tracking-widest bg-slate-950 px-3 py-1 rounded-lg border border-purple-900/25">{item.coupon_code}</span>
+                            </div>
+
+                            {!isRedeemed && (
+                              <p className="text-[9px] text-center text-smash-violet font-semibold animate-pulse mt-0.5">
+                                Đưa mã này cho BTC tại sân để nhận quà
+                              </p>
+                            )}
+                          </div>
+                        );
+                      }
+
                       return (
                         <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-3 ${
                           isEquipped ? "border-smash-purple shadow-[0_0_10px_rgba(157,78,221,0.2)]" : "border-purple-950/20 hover:border-purple-900/30"
@@ -1105,6 +1203,108 @@ export default function ProfilePage() {
                                 : "Trang bị"}
                             </button>
                           )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB CONTENT: SHOP */}
+            {activeGamTab === "shop" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShoppingBag className="w-4 h-4 text-smash-violet" /> Cửa hàng đổi quà
+                  </h4>
+                  <div className="flex items-center gap-1 bg-slate-900/60 px-3 py-1 rounded-full border border-purple-950/40">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">Số dư:</span>
+                    <span className="text-xs font-black text-amber-400">{gamProfile?.smash_coins || 0}🪙</span>
+                  </div>
+                </div>
+                {shopItems.length === 0 ? (
+                  <div className="text-center py-10 rounded-2xl bg-slate-900/20 border border-dashed border-purple-950/20">
+                    <span className="text-sm font-bold text-slate-400">Cửa hàng trống</span>
+                    <p className="text-xs text-slate-500 mt-1">Cửa hàng đang được nhập thêm quà mới, vui lòng quay lại sau.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {shopItems.map((item: any) => {
+                      const isPhysical = item.item_type === 'physical';
+                      const isOutOfStock = isPhysical && item.stock <= 0;
+                      const userCoins = gamProfile?.smash_coins || 0;
+                      const isAffordable = userCoins >= item.coin_price;
+
+                      return (
+                        <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-4 ${
+                          isOutOfStock ? "border-slate-900 opacity-60" : "border-purple-950/20 hover:border-purple-900/30"
+                        }`}>
+                          <div className="flex gap-3">
+                            {isPhysical && item.image_url ? (
+                              <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-purple-950/20 bg-slate-950 relative">
+                                <img
+                                  src={item.image_url}
+                                  alt={item.name}
+                                  className="object-cover w-full h-full"
+                                />
+                              </div>
+                            ) : (
+                              <div className="w-20 h-20 rounded-xl bg-purple-950/10 border border-purple-950/20 flex items-center justify-center shrink-0 text-smash-violet">
+                                <Trophy className="w-8 h-8" />
+                              </div>
+                            )}
+
+                            <div className="flex flex-col justify-between py-0.5">
+                              <div>
+                                <span className={`text-[8px] uppercase font-black px-1.5 py-0.5 rounded ${
+                                  isPhysical
+                                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/25"
+                                    : "bg-purple-500/10 text-smash-violet border border-smash-purple/25"
+                                }`}>
+                                  {isPhysical ? 'Quà Vật Lý' : 'Vật Phẩm Ảo'}
+                                </span>
+                                <h4 className="text-sm font-bold text-white tracking-wide mt-1.5 line-clamp-1">{item.name}</h4>
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                {isPhysical ? (
+                                  isOutOfStock ? (
+                                    <span className="text-red-400 font-bold">Hết hàng</span>
+                                  ) : (
+                                    <span>Còn lại: <strong className="text-white">{item.stock} cái</strong></span>
+                                  )
+                                ) : (
+                                  <span className="text-slate-500">Kích hoạt trực tuyến</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 pt-1 border-t border-purple-950/10">
+                            <div className="flex items-center gap-1 font-bold text-amber-400 text-sm">
+                              {item.coin_price} <span className="text-xs text-amber-500/80">Xu</span>
+                            </div>
+
+                            <button
+                              onClick={() => handleBuyItem(item.id, item.name, item.coin_price)}
+                              disabled={isOutOfStock || !isAffordable || buyingItemId === item.id}
+                              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                                isOutOfStock
+                                  ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                                  : !isAffordable
+                                  ? "bg-slate-800 hover:bg-slate-850 text-slate-500 border border-slate-700/20"
+                                  : "bg-smash-purple hover:bg-smash-violet text-white shadow-md shadow-smash-purple/25 active:scale-95"
+                              }`}
+                            >
+                              {buyingItemId === item.id
+                                ? "Đang xử lý..."
+                                : isOutOfStock
+                                ? "Hết hàng"
+                                : !isAffordable
+                                ? "Chưa đủ xu"
+                                : "Đổi quà"}
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
