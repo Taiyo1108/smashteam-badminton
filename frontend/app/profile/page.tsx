@@ -1346,7 +1346,7 @@ export default function ProfilePage() {
                         
                         <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl w-40 h-40 mx-auto my-5 border border-purple-500/25 shadow-lg">
                           <QRCodeCanvas
-                            value={`https://smashteam.id.vn/admin/redemptions?coupon_code=${qrModalItem.coupon_code}`}
+                            value={`https://smashteam.id.vn/admin/shop?coupon_code=${qrModalItem.coupon_code}`}
                             size={136}
                             level="M"
                             includeMargin={false}

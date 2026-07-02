@@ -41,7 +41,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Nhân sự", href: "/admin/personnel", icon: Users },
     { name: "Quản lý Buổi tập", href: "/admin/sessions", icon: Calendar },
     { name: "Quản lý Nhiệm vụ", href: "/admin/quests", icon: Sparkles },
-    { name: "Quản lý Đổi quà", href: "/admin/redemptions", icon: Gift },
     { name: "Quản lý Gian hàng", href: "/admin/shop", icon: ShoppingBag },
     { name: "Cập nhật kết quả", href: "/admin/matches", icon: Swords },
     { name: "Quản lý nội dung", href: "/admin/content", icon: ImageIcon },
