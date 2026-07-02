@@ -5,6 +5,143 @@ import { Swords, Trophy, Save, ArrowDownUp, AlertCircle, TrendingUp, TrendingDow
 import confetti from "canvas-confetti";
 import { API_URL } from "@/app/config";
 
+interface SearchablePlayerSelectProps {
+  label: string;
+  value: string;
+  onChange: (id: string) => void;
+  members: any[];
+  isDoubles: boolean;
+  currentDropdown: string;
+  isSelected: (id: string, currentDropdown: string) => boolean;
+  placeholder: string;
+  badge?: React.ReactNode;
+}
+
+function SearchablePlayerSelect({
+  label,
+  value,
+  onChange,
+  members,
+  isDoubles,
+  currentDropdown,
+  isSelected,
+  placeholder,
+  badge
+}: SearchablePlayerSelectProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Sync state with selected value
+  useEffect(() => {
+    if (value) {
+      const selectedMember = members.find(m => m.id === value);
+      if (selectedMember) {
+        setSearchQuery(selectedMember.full_name);
+        return;
+      }
+    }
+    setSearchQuery("");
+  }, [value, members]);
+
+  // Filter members
+  const filtered = members.filter(m => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    const shortId = m.id ? m.id.split('-')[0].toLowerCase() : "";
+    return (
+      m.full_name.toLowerCase().includes(q) ||
+      (m.phone_zalo || "").includes(q) ||
+      shortId.includes(q)
+    );
+  });
+
+  return (
+    <div className="space-y-2 relative">
+      <div className="flex justify-between items-center">
+        <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+          {label}
+        </label>
+        {badge}
+      </div>
+
+      <div className="relative">
+        <input
+          type="text"
+          placeholder={placeholder}
+          value={searchQuery}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => {
+            // Delay to allow clicking on an option
+            setTimeout(() => {
+              setIsOpen(false);
+              // Reset to current selected name if query is not matching any selection
+              if (value) {
+                const selected = members.find(m => m.id === value);
+                if (selected) {
+                  setSearchQuery(selected.full_name);
+                }
+              } else {
+                setSearchQuery("");
+              }
+            }, 250);
+          }}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSearchQuery(val);
+            if (!val) {
+              onChange("");
+            }
+          }}
+          className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-primary font-bold text-slate-800"
+        />
+        
+        {/* Toggle icon */}
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs">
+          ▼
+        </span>
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg z-50 divide-y divide-slate-100">
+          {filtered.length === 0 ? (
+            <div className="p-3 text-xs text-slate-400 italic">Không tìm thấy thành viên</div>
+          ) : (
+            filtered.map(m => {
+              const disabled = isSelected(m.id, currentDropdown);
+              const shortId = m.id ? m.id.split('-')[0].toUpperCase() : "";
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  disabled={disabled}
+                  onMouseDown={() => {
+                    onChange(m.id);
+                    setSearchQuery(m.full_name);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full text-left p-3 text-xs transition-colors flex justify-between items-center ${
+                    disabled 
+                      ? 'bg-slate-50 text-slate-300 cursor-not-allowed' 
+                      : 'hover:bg-slate-50 text-slate-700 font-bold'
+                  }`}
+                >
+                  <div>
+                    <div>{m.full_name} <span className="text-[10px] text-slate-400 font-mono">({shortId})</span></div>
+                    <div className="text-[9px] text-slate-400 font-medium">SĐT: {m.phone_zalo || "N/A"}</div>
+                  </div>
+                  <span className="text-[10px] font-black text-amber-500 font-mono shrink-0">
+                    Elo {isDoubles ? `Đôi: ${m.elo_doubles}` : `Đơn: ${m.elo_singles}`}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MatchesPage() {
   const [members, setMembers] = useState<any[]>([]);
   const [isDoubles, setIsDoubles] = useState(false);
@@ -31,7 +168,10 @@ export default function MatchesPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
-        setMembers(await res.json());
+        const allMembers = await res.json();
+        // Lọc bỏ các thành viên tạm nghỉ (inactive), đã rời CLB (left), hoặc bị khóa tài khoản (is_blocked)
+        const activeMembers = allMembers.filter((m: any) => m.status === "active" && !m.is_blocked);
+        setMembers(activeMembers);
       }
     } catch (e) {
       console.error("Error fetching members:", e);
@@ -263,62 +403,55 @@ export default function MatchesPage() {
             {/* ĐỘI A (ĐỘI 1) */}
             <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${winner === player1 && player1 !== "" ? 'bg-primary/5 border-primary shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'bg-slate-50/50 border-slate-200'}`}>
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
-                    {isDoubles ? "Đội A (Thành viên 1)" : "Người chơi 1 (Đội A)"}
-                  </label>
-                  {p1Details && (isDoubles ? p1Details.matches_doubles : p1Details.matches_singles) < 10 && (
-                    <span className="bg-blue-100 text-blue-700 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Placement</span>
-                  )}
-                  {p1Details && (isDoubles ? p1Details.streak_doubles : p1Details.streak_singles) >= 3 && (
-                    <span className="bg-red-100 text-red-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase animate-pulse">
-                      Hot ({isDoubles ? p1Details.streak_doubles : p1Details.streak_singles}W)
-                    </span>
-                  )}
-                </div>
-
-                <select 
-                  required
+                <SearchablePlayerSelect
+                  label={isDoubles ? "Đội A (Thành viên 1)" : "Người chơi 1 (Đội A)"}
                   value={player1}
-                  onChange={(e) => {
-                    setPlayer1(e.target.value);
+                  onChange={(val) => {
+                    setPlayer1(val);
                     if (winner === player1) setWinner("");
                   }}
-                  className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-primary font-bold text-slate-800"
-                >
-                  <option value="" disabled>-- Chọn thành viên --</option>
-                  {members.map(m => (
-                    <option key={m.id} value={m.id} disabled={isSelected(m.id, "p1")}>
-                      {m.full_name} (Elo {isDoubles ? `Đôi: ${m.elo_doubles}` : `Đơn: ${m.elo_singles}`})
-                    </option>
-                  ))}
-                </select>
+                  members={members}
+                  isDoubles={isDoubles}
+                  currentDropdown="p1"
+                  isSelected={isSelected}
+                  placeholder="Nhập tên, SĐT hoặc Mã thành viên..."
+                  badge={
+                    <div className="flex gap-1.5 items-center">
+                      {p1Details && (isDoubles ? p1Details.matches_doubles : p1Details.matches_singles) < 10 && (
+                        <span className="bg-blue-100 text-blue-700 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Placement</span>
+                      )}
+                      {p1Details && (isDoubles ? p1Details.streak_doubles : p1Details.streak_singles) >= 3 && (
+                        <span className="bg-red-100 text-red-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase animate-pulse">
+                          Hot ({isDoubles ? p1Details.streak_doubles : p1Details.streak_singles}W)
+                        </span>
+                      )}
+                    </div>
+                  }
+                />
 
                 {/* Doubles Partner A */}
                 {isDoubles && (
-                  <div className="space-y-2 pt-2 border-t border-slate-200/50">
-                    <div className="flex justify-between items-center">
-                      <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">Đội A (Thành viên 2)</label>
-                      {p1pDetails && p1pDetails.matches_doubles < 10 && (
-                        <span className="bg-blue-100 text-blue-700 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Placement</span>
-                      )}
-                      {p1pDetails && p1pDetails.streak_doubles >= 3 && (
-                        <span className="bg-red-100 text-red-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase animate-pulse">Hot ({p1pDetails.streak_doubles}W)</span>
-                      )}
-                    </div>
-                    <select 
-                      required={isDoubles}
+                  <div className="pt-2 border-t border-slate-200/50">
+                    <SearchablePlayerSelect
+                      label="Đội A (Thành viên 2)"
                       value={player1Partner}
-                      onChange={(e) => setPlayer1Partner(e.target.value)}
-                      className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-primary font-bold text-slate-800"
-                    >
-                      <option value="" disabled>-- Chọn đồng đội A --</option>
-                      {members.map(m => (
-                        <option key={m.id} value={m.id} disabled={isSelected(m.id, "p1p")}>
-                          {m.full_name} (Elo Đôi: {m.elo_doubles})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setPlayer1Partner}
+                      members={members}
+                      isDoubles={isDoubles}
+                      currentDropdown="p1p"
+                      isSelected={isSelected}
+                      placeholder="Nhập tên, SĐT hoặc Mã thành viên..."
+                      badge={
+                        <div className="flex gap-1.5 items-center">
+                          {p1pDetails && p1pDetails.matches_doubles < 10 && (
+                            <span className="bg-blue-100 text-blue-700 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Placement</span>
+                          )}
+                          {p1pDetails && p1pDetails.streak_doubles >= 3 && (
+                            <span className="bg-red-100 text-red-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase animate-pulse">Hot ({p1pDetails.streak_doubles}W)</span>
+                          )}
+                        </div>
+                      }
+                    />
                   </div>
                 )}
 
@@ -437,62 +570,55 @@ export default function MatchesPage() {
             {/* ĐỘI B (ĐỘI 2) */}
             <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${winner === player2 && player2 !== "" ? 'bg-primary/5 border-primary shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'bg-slate-50/50 border-slate-200'}`}>
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
-                    {isDoubles ? "Đội B (Thành viên 1)" : "Người chơi 2 (Đội B)"}
-                  </label>
-                  {p2Details && (isDoubles ? p2Details.matches_doubles : p2Details.matches_singles) < 10 && (
-                    <span className="bg-blue-100 text-blue-700 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Placement</span>
-                  )}
-                  {p2Details && (isDoubles ? p2Details.streak_doubles : p2Details.streak_singles) >= 3 && (
-                    <span className="bg-red-100 text-red-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase animate-pulse">
-                      Hot ({isDoubles ? p2Details.streak_doubles : p2Details.streak_singles}W)
-                    </span>
-                  )}
-                </div>
-
-                <select 
-                  required
+                <SearchablePlayerSelect
+                  label={isDoubles ? "Đội B (Thành viên 1)" : "Người chơi 2 (Đội B)"}
                   value={player2}
-                  onChange={(e) => {
-                    setPlayer2(e.target.value);
+                  onChange={(val) => {
+                    setPlayer2(val);
                     if (winner === player2) setWinner("");
                   }}
-                  className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-primary font-bold text-slate-800"
-                >
-                  <option value="" disabled>-- Chọn thành viên --</option>
-                  {members.map(m => (
-                    <option key={m.id} value={m.id} disabled={isSelected(m.id, "p2")}>
-                      {m.full_name} (Elo {isDoubles ? `Đôi: ${m.elo_doubles}` : `Đơn: ${m.elo_singles}`})
-                    </option>
-                  ))}
-                </select>
+                  members={members}
+                  isDoubles={isDoubles}
+                  currentDropdown="p2"
+                  isSelected={isSelected}
+                  placeholder="Nhập tên, SĐT hoặc Mã thành viên..."
+                  badge={
+                    <div className="flex gap-1.5 items-center">
+                      {p2Details && (isDoubles ? p2Details.matches_doubles : p2Details.matches_singles) < 10 && (
+                        <span className="bg-blue-100 text-blue-700 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Placement</span>
+                      )}
+                      {p2Details && (isDoubles ? p2Details.streak_doubles : p2Details.streak_singles) >= 3 && (
+                        <span className="bg-red-100 text-red-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase animate-pulse">
+                          Hot ({isDoubles ? p2Details.streak_doubles : p2Details.streak_singles}W)
+                        </span>
+                      )}
+                    </div>
+                  }
+                />
 
                 {/* Doubles Partner B */}
                 {isDoubles && (
-                  <div className="space-y-2 pt-2 border-t border-slate-200/50">
-                    <div className="flex justify-between items-center">
-                      <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">Đội B (Thành viên 2)</label>
-                      {p2pDetails && p2pDetails.matches_doubles < 10 && (
-                        <span className="bg-blue-100 text-blue-700 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Placement</span>
-                      )}
-                      {p2pDetails && p2pDetails.streak_doubles >= 3 && (
-                        <span className="bg-red-100 text-red-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase animate-pulse">Hot ({p2pDetails.streak_doubles}W)</span>
-                      )}
-                    </div>
-                    <select 
-                      required={isDoubles}
+                  <div className="pt-2 border-t border-slate-200/50">
+                    <SearchablePlayerSelect
+                      label="Đội B (Thành viên 2)"
                       value={player2Partner}
-                      onChange={(e) => setPlayer2Partner(e.target.value)}
-                      className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-primary font-bold text-slate-800"
-                    >
-                      <option value="" disabled>-- Chọn đồng đội B --</option>
-                      {members.map(m => (
-                        <option key={m.id} value={m.id} disabled={isSelected(m.id, "p2p")}>
-                          {m.full_name} (Elo Đôi: {m.elo_doubles})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setPlayer2Partner}
+                      members={members}
+                      isDoubles={isDoubles}
+                      currentDropdown="p2p"
+                      isSelected={isSelected}
+                      placeholder="Nhập tên, SĐT hoặc Mã thành viên..."
+                      badge={
+                        <div className="flex gap-1.5 items-center">
+                          {p2pDetails && p2pDetails.matches_doubles < 10 && (
+                            <span className="bg-blue-100 text-blue-700 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Placement</span>
+                          )}
+                          {p2pDetails && p2pDetails.streak_doubles >= 3 && (
+                            <span className="bg-red-100 text-red-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase animate-pulse">Hot ({p2pDetails.streak_doubles}W)</span>
+                          )}
+                        </div>
+                      }
+                    />
                   </div>
                 )}
 
