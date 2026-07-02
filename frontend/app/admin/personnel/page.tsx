@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, CheckCircle2, Loader2, MoreHorizontal, X, ShieldAlert, Award, Ban, Unlock, Phone, Clock, Star, Copy, Check } from "lucide-react";
+import { 
+  Search, CheckCircle2, Loader2, MoreHorizontal, X, ShieldAlert, Award, Ban, Unlock, 
+  Phone, Clock, Star, Copy, Check, Plus, Calendar, MapPin, Users, Edit, Trash2, Power, 
+  PowerOff, Save 
+} from "lucide-react";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
 
@@ -13,7 +17,7 @@ const softSkillsList = [
 ];
 
 export default function PersonnelPage() {
-  const [activeTab, setActiveTab] = useState<'candidates' | 'members'>('candidates');
+  const [activeTab, setActiveTab] = useState<'candidates' | 'members' | 'campaigns'>('candidates');
   
   // States cho Candidates
   const [candidates, setCandidates] = useState<any[]>([]);
@@ -63,6 +67,128 @@ export default function PersonnelPage() {
   const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
 
+  // States cho Campaigns
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
+  const [campaignStats, setCampaignStats] = useState<any>(null);
+  const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
+  const [cForm, setCForm] = useState({ name: "", start: "", end: "", active: true });
+  const [sForm, setSForm] = useState({ time: "", location: "", max: "20" });
+
+  const fetchCampaigns = async () => {
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns`, { headers: { "Authorization": `Bearer ${token}` } });
+      if (res.ok) setCampaigns(await res.json());
+    } catch (e) {}
+  };
+
+  const fetchCampaignStats = async (id: string) => {
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/${id}/stats`, { headers: { "Authorization": `Bearer ${token}` } });
+      if (res.ok) setCampaignStats(await res.json());
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    if (selectedCampaign) {
+      fetchCampaignStats(selectedCampaign.id);
+      setCForm({
+        name: selectedCampaign.name,
+        start: new Date(selectedCampaign.start_date).toISOString().slice(0, 16),
+        end: new Date(selectedCampaign.end_date).toISOString().slice(0, 16),
+        active: selectedCampaign.is_active
+      });
+      setIsCreatingCampaign(false);
+    }
+  }, [selectedCampaign]);
+
+  const handleCreateOrUpdateCampaign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem("admin_token");
+      const url = selectedCampaign && !isCreatingCampaign
+        ? `${API_URL}/api/campaigns/${selectedCampaign.id}`
+        : `${API_URL}/api/campaigns`;
+      const method = selectedCampaign && !isCreatingCampaign ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: cForm.name,
+          start_date: new Date(cForm.start).toISOString(),
+          end_date: new Date(cForm.end).toISOString(),
+          is_active: cForm.active
+        })
+      });
+      if (res.ok) {
+        alert("Lưu Đợt tuyển thành công!");
+        setIsCreatingCampaign(false);
+        fetchCampaigns();
+        if (selectedCampaign) fetchCampaignStats(selectedCampaign.id);
+      }
+    } catch (e) {}
+  };
+
+  const handleAddSlot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCampaign) return;
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/${selectedCampaign.id}/slots`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          casting_time: new Date(sForm.time).toISOString(),
+          location: sForm.location,
+          max_capacity: parseInt(sForm.max)
+        })
+      });
+      if (res.ok) {
+        setSForm({ time: "", location: "", max: "20" });
+        fetchCampaignStats(selectedCampaign.id);
+      }
+    } catch (e) {}
+  };
+
+  const handleToggleSlot = async (slot: any) => {
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/slots/${slot.id}`, {
+        method: "PUT",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          casting_time: slot.casting_time,
+          location: slot.location,
+          max_capacity: slot.max_capacity,
+          is_active: !slot.is_active
+        })
+      });
+      if (res.ok) fetchCampaignStats(selectedCampaign.id);
+    } catch (e) {}
+  };
+
+  const handleDeleteSlot = async (slotId: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa ca casting này không?")) return;
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/slots/${slotId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchCampaignStats(selectedCampaign.id);
+      } else {
+        const err = await res.json();
+        alert(err.error || "Không thể xóa ca này.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối mạng.");
+    }
+  };
+
   useEffect(() => {
     // Fetch Slots for filter dropdown
     fetch(`${API_URL}/api/campaigns/active`)
@@ -75,8 +201,10 @@ export default function PersonnelPage() {
   useEffect(() => {
     if (activeTab === 'candidates') {
       fetchCandidates();
-    } else {
+    } else if (activeTab === 'members') {
       fetchMembers();
+    } else if (activeTab === 'campaigns') {
+      fetchCampaigns();
     }
   }, [activeTab, cSearch, cLevel, cSlot]);
 
@@ -379,8 +507,16 @@ export default function PersonnelPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-secondary mb-2">Quản lý Nhân sự</h1>
-          <p className="text-slate-500">Duyệt ứng viên mới và quản lý danh sách thành viên CLB.</p>
+          <p className="text-slate-500">Duyệt ứng viên mới, quản lý danh sách thành viên CLB và các đợt tuyển thành viên.</p>
         </div>
+        {activeTab === 'campaigns' && (
+          <button 
+            onClick={() => { setIsCreatingCampaign(true); setSelectedCampaign(null); setCForm({ name: "", start: "", end: "", active: true }); }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-hover text-secondary rounded-xl font-bold text-sm transition-all shadow-md active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> Đợt mới
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -396,6 +532,12 @@ export default function PersonnelPage() {
           className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'members' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
           Thành viên chính thức
+        </button>
+        <button 
+          onClick={() => setActiveTab('campaigns')}
+          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'campaigns' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+        >
+          Đợt tuyển thành viên
         </button>
       </div>
 
@@ -1044,6 +1186,148 @@ export default function PersonnelPage() {
         </div>
       )}
 
+      {/* CAMPAIGNS TAB (Đợt tuyển thành viên) */}
+      {activeTab === 'campaigns' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Cột trái: Danh sách Campaign */}
+          <div className="lg:col-span-4 space-y-4">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 h-[calc(100vh-240px)] overflow-y-auto">
+              <h2 className="text-base font-black text-secondary mb-4 sticky top-0 bg-white z-10 pb-2">Danh sách Đợt tuyển</h2>
+              <div className="space-y-3">
+                {campaigns.length === 0 ? (
+                  <div className="text-center py-10 text-slate-400 text-xs">Chưa có đợt tuyển nào.</div>
+                ) : (
+                  campaigns.map(c => (
+                    <div 
+                      key={c.id} 
+                      onClick={() => setSelectedCampaign(c)}
+                      className={`p-4 rounded-2xl border cursor-pointer transition-all ${selectedCampaign?.id === c.id ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'}`}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="font-bold text-secondary text-sm truncate pr-2">{c.name}</h3>
+                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${c.is_active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-slate-300'}`}></div>
+                      </div>
+                      <div className="text-[11px] text-slate-500 flex flex-col gap-1 font-medium">
+                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Mở: {format(new Date(c.start_date), "dd/MM/yyyy HH:mm")}</span>
+                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Đóng: {format(new Date(c.end_date), "dd/MM/yyyy HH:mm")}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Cột phải: Detail Dashboard */}
+          <div className="lg:col-span-8">
+            {(isCreatingCampaign || selectedCampaign) ? (
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-8">
+                {/* Form Sửa / Tạo Đợt Tuyển */}
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-black text-secondary">{isCreatingCampaign ? "Tạo đợt tuyển mới" : "Chỉnh sửa đợt tuyển"}</h2>
+                    {selectedCampaign && !isCreatingCampaign && <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold font-mono">ID: {selectedCampaign.id.split('-')[0]}</span>}
+                  </div>
+                  
+                  <form onSubmit={handleCreateOrUpdateCampaign} className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Tên chiến dịch</label>
+                      <input type="text" required value={cForm.name} onChange={e => setCForm({...cForm, name: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Thời gian mở</label>
+                      <input type="datetime-local" required value={cForm.start} onChange={e => setCForm({...cForm, start: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Thời gian đóng</label>
+                      <input type="datetime-local" required value={cForm.end} onChange={e => setCForm({...cForm, end: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                    </div>
+                    <div className="md:col-span-2 flex justify-between items-center mt-2 pt-2 border-t border-slate-200/50">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" checked={cForm.active} onChange={e => setCForm({...cForm, active: e.target.checked})} className="w-4 h-4 text-primary rounded border-slate-200 focus:ring-1 focus:ring-primary" />
+                        <span className="text-sm font-bold text-slate-700">Kích hoạt (Hiển thị Form tuyển quân)</span>
+                      </label>
+                      <button type="submit" className="px-5 py-2.5 bg-secondary hover:bg-slate-900 text-white rounded-xl font-bold text-xs flex items-center gap-2 transition-colors cursor-pointer">
+                        <Save className="w-4 h-4" /> Lưu đợt tuyển
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Thống kê & Quản lý Ca Casting (Chỉ hiện khi ĐANG CHỌN 1 đợt) */}
+                {!isCreatingCampaign && campaignStats && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-5 bg-primary/10 border border-primary/20 rounded-2xl">
+                        <p className="text-xs text-primary font-bold uppercase tracking-wider mb-1">Tổng đăng ký ứng viên</p>
+                        <p className="text-3xl font-black text-secondary">{campaignStats.total_registered} ứng viên</p>
+                      </div>
+                      <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl">
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Số lượng Ca Casting</p>
+                        <p className="text-3xl font-black text-secondary">{campaignStats.slots.length} ca</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-base font-black text-secondary mb-4 flex items-center gap-2"><MapPin className="w-5 h-5 text-primary" /> Thiết lập Ca Casting</h3>
+                      
+                      {/* Form Thêm Ca */}
+                      <form onSubmit={handleAddSlot} className="flex flex-wrap gap-2.5 mb-6">
+                        <input type="datetime-local" required value={sForm.time} onChange={e => setSForm({...sForm, time: e.target.value})} className="flex-1 min-w-[150px] p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                        <input type="text" placeholder="Sân tập..." required value={sForm.location} onChange={e => setSForm({...sForm, location: e.target.value})} className="flex-1 min-w-[150px] p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                        <input type="number" placeholder="Số người tối đa..." min="1" required value={sForm.max} onChange={e => setSForm({...sForm, max: e.target.value})} className="w-28 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                        <button type="submit" className="px-4 py-2.5 bg-primary hover:bg-primary-hover text-secondary font-bold text-sm rounded-xl cursor-pointer shadow-sm"><Plus className="w-5 h-5" /></button>
+                      </form>
+
+                      {/* Danh sách Ca */}
+                      <div className="space-y-3">
+                        {campaignStats.slots.length === 0 ? (
+                          <div className="text-center py-8 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">Chưa có ca casting nào được thêm.</div>
+                        ) : (
+                          campaignStats.slots.map((slot: any) => {
+                            const fillPercent = Math.min((parseInt(slot.registered_count) / slot.max_capacity) * 100, 100);
+                            return (
+                              <div key={slot.id} className={`p-4 border rounded-2xl flex items-center justify-between transition-colors ${!slot.is_active ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}>
+                                <div className="flex-1 pr-4">
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                    <h4 className="font-bold text-secondary text-sm">{format(new Date(slot.casting_time), "HH:mm - dd/MM/yyyy")}</h4>
+                                    <span className="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-bold text-slate-600">{slot.location}</span>
+                                    {!slot.is_active && <span className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-black uppercase">Đã đóng</span>}
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/50">
+                                      <div className="bg-primary h-full transition-all" style={{ width: `${fillPercent}%` }}></div>
+                                    </div>
+                                    <span className="text-xs font-mono font-bold text-slate-600">{slot.registered_count}/{slot.max_capacity}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button onClick={() => handleToggleSlot(slot)} className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl cursor-pointer text-slate-500 hover:text-slate-800" title={slot.is_active ? "Đóng nhận đăng ký" : "Mở nhận đăng ký"}>
+                                    {slot.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4 text-emerald-500" />}
+                                  </button>
+                                  <button onClick={() => handleDeleteSlot(slot.id)} className="p-2 border border-slate-200 hover:bg-rose-50 hover:border-rose-100 rounded-xl cursor-pointer text-slate-500 hover:text-rose-500" title="Xóa ca">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="h-full border border-dashed border-slate-200 rounded-3xl p-16 text-center text-slate-400 flex flex-col items-center justify-center">
+                <Calendar className="w-12 h-12 text-slate-200 mb-3" />
+                <p className="font-bold text-slate-500">Chưa chọn đợt tuyển quân</p>
+                <p className="text-xs text-slate-400 mt-1">Chọn một chiến dịch ở danh sách bên trái hoặc nhấn nút "Đợt mới" để thiết lập.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

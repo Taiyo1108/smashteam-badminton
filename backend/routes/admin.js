@@ -286,4 +286,55 @@ router.put('/quests/:id/toggle', async (req, res) => {
   }
 });
 
+// PUT /api/admin/quests/:id - Cập nhật toàn bộ thông tin nhiệm vụ
+router.put('/quests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, quest_type, xp_reward, coin_reward, action_type, target_count, is_active } = req.body;
+
+    const result = await db.query(
+      `UPDATE quests
+       SET title = $1, quest_type = $2, xp_reward = $3, coin_reward = $4, action_type = $5, target_count = $6, is_active = $7
+       WHERE id = $8
+       RETURNING *`,
+      [
+        title,
+        quest_type,
+        parseInt(xp_reward) || 0,
+        parseInt(coin_reward) || 0,
+        action_type,
+        parseInt(target_count) || 1,
+        is_active !== undefined ? is_active : true,
+        id
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy nhiệm vụ.' });
+    }
+
+    res.json({ success: true, message: 'Cập nhật nhiệm vụ thành công!', quest: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating quest:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật nhiệm vụ.' });
+  }
+});
+
+// DELETE /api/admin/quests/:id - Xóa nhiệm vụ
+router.delete('/quests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query('DELETE FROM quests WHERE id = $1 RETURNING *', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Nhiệm vụ không tồn tại.' });
+    }
+
+    res.json({ success: true, message: 'Xóa nhiệm vụ thành công!' });
+  } catch (error) {
+    console.error('Error deleting quest:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi xóa nhiệm vụ.' });
+  }
+});
+
 module.exports = router;

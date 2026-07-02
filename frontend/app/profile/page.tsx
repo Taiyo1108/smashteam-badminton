@@ -727,6 +727,13 @@ export default function ProfilePage() {
                 <Home className="w-4 h-4" /> Trang chủ
               </button>
             </Link>
+            {playerData?.player?.role === "admin" && (
+              <Link href="/admin">
+                <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-500/10 text-smash-violet hover:bg-purple-500/20 hover:text-white transition-all text-sm font-bold border border-purple-500/20">
+                  <Shield className="w-4 h-4" /> Trang Admin
+                </button>
+              </Link>
+            )}
             <button 
               onClick={handleLogout} 
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all text-sm font-bold border border-rose-500/20"

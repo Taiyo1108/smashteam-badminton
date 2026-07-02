@@ -63,7 +63,7 @@ router.get('/leaderboard', async (req, res) => {
               ${matches_col} as total_matches, 
               ${win_rate_col} as win_rate 
        FROM users 
-       WHERE role IN ('member', 'admin')
+       WHERE role IN ('member', 'admin') AND full_name != 'Super Admin' AND phone_zalo != '0999999999'
        ORDER BY ${elo_col} DESC`
     );
     

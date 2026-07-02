@@ -97,7 +97,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-slate-800 space-y-1">
+          <Link href="/profile" className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
+            <Users className="w-5 h-5" />
+            <span className="font-medium">Trang cá nhân</span>
+          </Link>
           <button 
             onClick={handleLogout}
             className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"

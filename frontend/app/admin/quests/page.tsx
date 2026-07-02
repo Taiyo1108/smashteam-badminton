@@ -11,6 +11,7 @@ export default function AdminQuestsPage() {
   const [quests, setQuests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingQuest, setEditingQuest] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +43,7 @@ export default function AdminQuestsPage() {
     fetchQuests();
   }, []);
 
-  const handleCreateQuest = async (e: React.FormEvent) => {
+  const handleSaveQuest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || targetCount <= 0 || xpReward < 0 || coinReward < 0) return;
 
@@ -51,8 +52,13 @@ export default function AdminQuestsPage() {
 
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/admin/quests`, {
-        method: "POST",
+      const url = editingQuest 
+        ? `${API_URL}/api/admin/quests/${editingQuest.id}` 
+        : `${API_URL}/api/admin/quests`;
+      const method = editingQuest ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
@@ -63,7 +69,8 @@ export default function AdminQuestsPage() {
           action_type: actionType,
           target_count: Number(targetCount),
           xp_reward: Number(xpReward),
-          coin_reward: Number(coinReward)
+          coin_reward: Number(coinReward),
+          is_active: editingQuest ? editingQuest.is_active : true
         })
       });
 
@@ -71,6 +78,7 @@ export default function AdminQuestsPage() {
 
       if (res.ok) {
         setIsModalOpen(false);
+        setEditingQuest(null);
         setTitle("");
         setQuestType("daily");
         setActionType("play_matches");
@@ -79,12 +87,33 @@ export default function AdminQuestsPage() {
         setCoinReward(15);
         fetchQuests();
       } else {
-        setError(data.error || "Không thể tạo nhiệm vụ.");
+        setError(data.error || "Không thể lưu nhiệm vụ.");
       }
     } catch (err) {
       setError("Lỗi kết nối.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteQuest = async (id: number) => {
+    if (!confirm("Xác nhận xóa hoàn toàn nhiệm vụ này? Hành động này sẽ xóa toàn bộ tiến trình liên quan của các hội viên.")) return;
+
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/quests/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || "Xóa nhiệm vụ thành công!");
+        fetchQuests();
+      } else {
+        alert(data.error || "Không thể xóa nhiệm vụ.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
     }
   };
 
@@ -109,6 +138,28 @@ export default function AdminQuestsPage() {
     }
   };
 
+  const handleOpenEditQuest = (q: any) => {
+    setEditingQuest(q);
+    setTitle(q.title);
+    setQuestType(q.quest_type);
+    setActionType(q.action_type);
+    setTargetCount(q.target_count);
+    setXpReward(q.xp_reward);
+    setCoinReward(q.coin_reward);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenCreateQuest = () => {
+    setEditingQuest(null);
+    setTitle("");
+    setQuestType("daily");
+    setActionType("play_matches");
+    setTargetCount(1);
+    setXpReward(30);
+    setCoinReward(15);
+    setIsModalOpen(true);
+  };
+
   return (
     <div className="space-y-6 text-slate-800">
       <div className="flex items-center justify-between">
@@ -117,7 +168,7 @@ export default function AdminQuestsPage() {
           <p className="text-slate-500 text-sm mt-1">Tạo nhiệm vụ và thiết lập lịch reset lặp lại định kỳ (Hàng ngày, Hàng tuần, Hàng tháng).</p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={handleOpenCreateQuest}
           className="flex items-center gap-2 px-5 py-2.5 bg-primary text-secondary hover:bg-primary-hover font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
         >
           <Plus className="w-4 h-4" /> Tạo Nhiệm Vụ
@@ -182,17 +233,33 @@ export default function AdminQuestsPage() {
                       </span>
                     </td>
                     <td className="p-4 pr-6 text-right">
-                      <button
-                        onClick={() => toggleQuest(q.id, q.is_active)}
-                        className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 ${
-                          q.is_active 
-                            ? "bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-600" 
-                            : "bg-emerald-550/10 border-emerald-100 hover:bg-emerald-100 text-emerald-600"
-                        }`}
-                        title={q.is_active ? "Khóa nhiệm vụ" : "Kích hoạt nhiệm vụ"}
-                      >
-                        {q.is_active ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
+                      <div className="flex justify-end items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenEditQuest(q)}
+                          className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition-all cursor-pointer active:scale-95"
+                          title="Sửa nhiệm vụ"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => toggleQuest(q.id, q.is_active)}
+                          className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 ${
+                            q.is_active 
+                              ? "bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-600" 
+                              : "bg-emerald-50 border-emerald-100 hover:bg-emerald-100 text-emerald-600"
+                          }`}
+                          title={q.is_active ? "Khóa nhiệm vụ" : "Kích hoạt nhiệm vụ"}
+                        >
+                          {q.is_active ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteQuest(q.id)}
+                          className="p-2 rounded-xl border border-rose-100 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-all cursor-pointer active:scale-95"
+                          title="Xóa nhiệm vụ"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -214,10 +281,10 @@ export default function AdminQuestsPage() {
             </button>
 
             <h3 className="text-lg font-black text-secondary mb-5 tracking-tight flex items-center gap-1.5">
-              <Sparkles className="w-5 h-5 text-primary" /> Thiết lập nhiệm vụ mới
+              <Sparkles className="w-5 h-5 text-primary" /> {editingQuest ? "Chỉnh sửa nhiệm vụ" : "Thiết lập nhiệm vụ mới"}
             </h3>
 
-            <form onSubmit={handleCreateQuest} className="space-y-4">
+            <form onSubmit={handleSaveQuest} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Tiêu đề nhiệm vụ</label>
                 <input
@@ -315,7 +382,7 @@ export default function AdminQuestsPage() {
                     Đang lưu...
                   </>
                 ) : (
-                  "Tạo Nhiệm Vụ"
+                  editingQuest ? "Lưu Nhiệm Vụ" : "Tạo Nhiệm Vụ"
                 )}
               </button>
             </form>
