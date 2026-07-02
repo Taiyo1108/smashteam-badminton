@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, Users, Swords, LogOut, Loader2, Menu, X, Image as ImageIcon, Calendar, Sparkles, Gift } from "lucide-react";
+import { LayoutDashboard, Users, Swords, LogOut, Loader2, Menu, X, Image as ImageIcon, Calendar, Sparkles, Gift, ShoppingBag } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -42,6 +42,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Quản lý Buổi tập", href: "/admin/sessions", icon: Calendar },
     { name: "Quản lý Nhiệm vụ", href: "/admin/quests", icon: Sparkles },
     { name: "Quản lý Đổi quà", href: "/admin/redemptions", icon: Gift },
+    { name: "Quản lý Gian hàng", href: "/admin/shop", icon: ShoppingBag },
     { name: "Cập nhật kết quả", href: "/admin/matches", icon: Swords },
     { name: "Quản lý nội dung", href: "/admin/content", icon: ImageIcon },
   ];

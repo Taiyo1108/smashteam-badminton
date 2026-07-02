@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { upload, cloudinary } = require('../utils/cloudinary');
 
 // GET /api/shop/items - Lấy danh sách sản phẩm hoạt động
 router.get('/items', async (req, res) => {
@@ -371,6 +372,214 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Lỗi hệ thống khi mở hộp quà.' });
   } finally {
     client.release();
+  }
+});
+
+// Helper trích xuất public_id của Cloudinary để xóa ảnh cũ
+function getCloudinaryPublicId(url) {
+  if (!url || !url.includes('res.cloudinary.com')) return null;
+  try {
+    const parts = url.split('/');
+    const uploadIndex = parts.indexOf('upload');
+    if (uploadIndex === -1) return null;
+    let publicIdParts = parts.slice(uploadIndex + 1);
+    if (publicIdParts[0].match(/^v\d+$/)) {
+      publicIdParts = publicIdParts.slice(1);
+    }
+    const fullId = publicIdParts.join('/');
+    const dotIndex = fullId.lastIndexOf('.');
+    return dotIndex !== -1 ? fullId.substring(0, dotIndex) : fullId;
+  } catch (e) {
+    console.error('Error parsing public_id from Cloudinary URL:', e);
+    return null;
+  }
+}
+
+// GET /api/admin/shop-items - Lấy toàn bộ sản phẩm quản trị (kèm cả sản phẩm ẩn)
+router.get('/admin/shop-items', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT * FROM shop_items ORDER BY id ASC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching admin shop items:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi lấy danh sách sản phẩm quản trị.' });
+  }
+});
+
+// POST /api/admin/shop-items - Thêm sản phẩm mới (Tải ảnh trực tiếp lên Cloudinary)
+router.post('/admin/shop-items', authenticateToken, isAdmin, upload.single('image'), async (req, res) => {
+  try {
+    const { name, item_type, coin_price, stock, category, description, level_required, rarity, is_active } = req.body;
+    
+    // URL ảnh từ Cloudinary upload middleware
+    const imageUrl = req.file ? req.file.path : null;
+
+    const result = await db.query(
+      `INSERT INTO shop_items (name, item_type, coin_price, stock, image_url, category, description, level_required, rarity, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [
+        name,
+        item_type || 'physical',
+        parseInt(coin_price) || 0,
+        parseInt(stock) || 0,
+        imageUrl,
+        category || 'Đồ dùng',
+        description || '',
+        parseInt(level_required) || 1,
+        rarity || 'common',
+        is_active === 'true' || is_active === true
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Thêm sản phẩm mới thành công!',
+      item: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error creating shop item:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi thêm sản phẩm mới.' });
+  }
+});
+
+// PUT /api/admin/shop-items/:id - Cập nhật sản phẩm (Fast Edit hoặc Sửa chi tiết)
+router.put('/admin/shop-items/:id', authenticateToken, isAdmin, upload.single('image'), async (req, res) => {
+  const itemId = req.params.id;
+  try {
+    // Tìm sản phẩm hiện tại
+    const currentRes = await db.query('SELECT * FROM shop_items WHERE id = $1', [itemId]);
+    if (currentRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy sản phẩm.' });
+    }
+    const currentItem = currentRes.rows[0];
+
+    const { name, item_type, coin_price, stock, category, description, level_required, rarity, is_active } = req.body;
+
+    let imageUrl = currentItem.image_url;
+
+    // Nếu tải lên hình ảnh mới, thay thế và xóa ảnh cũ trên Cloudinary
+    if (req.file) {
+      imageUrl = req.file.path;
+      if (currentItem.image_url && currentItem.image_url.includes('res.cloudinary.com')) {
+        const oldPublicId = getCloudinaryPublicId(currentItem.image_url);
+        if (oldPublicId) {
+          await cloudinary.uploader.destroy(oldPublicId).catch(err => {
+            console.error('Failed to delete old image from Cloudinary:', err);
+          });
+        }
+      }
+    }
+
+    const updatedActive = is_active !== undefined 
+      ? (is_active === 'true' || is_active === true) 
+      : currentItem.is_active;
+
+    const result = await db.query(
+      `UPDATE shop_items
+       SET name = $1, item_type = $2, coin_price = $3, stock = $4, image_url = $5, 
+           category = $6, description = $7, level_required = $8, rarity = $9, is_active = $10,
+           updated_at = NOW()
+       WHERE id = $11
+       RETURNING *`,
+      [
+        name !== undefined ? name : currentItem.name,
+        item_type !== undefined ? item_type : currentItem.item_type,
+        coin_price !== undefined ? parseInt(coin_price) : currentItem.coin_price,
+        stock !== undefined ? parseInt(stock) : currentItem.stock,
+        imageUrl,
+        category !== undefined ? category : currentItem.category,
+        description !== undefined ? description : currentItem.description,
+        level_required !== undefined ? parseInt(level_required) : currentItem.level_required,
+        rarity !== undefined ? rarity : currentItem.rarity,
+        updatedActive,
+        itemId
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: 'Cập nhật sản phẩm thành công!',
+      item: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error updating shop item:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật sản phẩm.' });
+  }
+});
+
+// DELETE /api/admin/shop-items/:id - Xóa sản phẩm an toàn
+router.delete('/admin/shop-items/:id', authenticateToken, isAdmin, async (req, res) => {
+  const itemId = req.params.id;
+  try {
+    // 1. Kiểm tra ràng buộc lịch sử giao dịch (Đã có ai mua chưa?)
+    const checkRes = await db.query(
+      `SELECT COUNT(*)::int AS count FROM user_inventory WHERE shop_item_id = $1`,
+      [itemId]
+    );
+    if (checkRes.rows[0].count > 0) {
+      return res.status(400).json({ 
+        error: 'Không thể xóa sản phẩm này vì đã có thành viên đổi quà trước đó. Vui lòng tắt công tắc "Bật bán" để ẩn sản phẩm khỏi giao diện.' 
+      });
+    }
+
+    // 2. Lấy thông tin ảnh để xóa trên Cloudinary
+    const itemRes = await db.query('SELECT image_url FROM shop_items WHERE id = $1', [itemId]);
+    if (itemRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Sản phẩm không tồn tại.' });
+    }
+    const imageUrl = itemRes.rows[0].image_url;
+
+    // 3. Xóa ảnh trên Cloudinary
+    if (imageUrl && imageUrl.includes('res.cloudinary.com')) {
+      const publicId = getCloudinaryPublicId(imageUrl);
+      if (publicId) {
+        await cloudinary.uploader.destroy(publicId).catch(err => {
+          console.error('Failed to delete image from Cloudinary:', err);
+        });
+      }
+    }
+
+    // 4. Xóa bản ghi trong database
+    await db.query('DELETE FROM shop_items WHERE id = $1', [itemId]);
+
+    res.json({
+      success: true,
+      message: 'Xóa sản phẩm thành công!'
+    });
+  } catch (error) {
+    console.error('Error deleting shop item:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi xóa sản phẩm.' });
+  }
+});
+
+// GET /api/admin/redemptions/history - Lấy lịch sử đổi quà của tất cả thành viên đối soát
+router.get('/admin/redemptions/history', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT 
+         ui.id,
+         ui.item_name,
+         ui.item_type,
+         ui.coupon_code,
+         ui.status,
+         ui.purchase_price,
+         ui.purchased_at,
+         ui.redeemed_at,
+         ui.expires_at,
+         u.full_name AS member_name,
+         u.phone_zalo AS member_phone
+       FROM user_inventory ui
+       JOIN users u ON ui.user_id = u.id
+       WHERE ui.item_type != 'smash_pass_reward_level' AND ui.item_type != 'mystery_box_claim'
+       ORDER BY ui.purchased_at DESC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching redemptions history:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi lấy lịch sử đối soát đổi quà.' });
   }
 });
 
