@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { 
   Sparkles, Plus, Loader2, X, Trash2, Eye, EyeOff, 
-  Coins, Trophy, ChevronRight, CheckCircle2 
+  Coins, Trophy, ChevronRight, CheckCircle2, Edit 
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 
