@@ -165,7 +165,8 @@ router.put('/redemptions/:id/deliver', authenticateToken, isAdmin, async (req, r
       `UPDATE user_inventory
        SET status = 'redeemed', redeemed_at = NOW()
        WHERE id = $1 AND status = 'unused' AND coupon_code IS NOT NULL
-       RETURNING id, item_name`
+       RETURNING id, item_name`,
+      [redemptionId]
     );
 
     if (result.rows.length === 0) {
