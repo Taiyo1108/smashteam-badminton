@@ -2,23 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, Award, Calendar, CheckCircle, Gift, AlertTriangle, ArrowLeft, Camera, Check } from "lucide-react";
+import { Search, Loader2, Award, Calendar, CheckCircle, Gift, AlertTriangle, ArrowLeft, Check } from "lucide-react";
 import { API_URL } from "@/app/config";
 import confetti from "canvas-confetti";
-import dynamic from "next/dynamic";
-
-// Tải động QrScanner để loại bỏ Navigator error khi SSR
-const QrScanner = dynamic(() => import("@/app/components/QrScanner"), { ssr: false });
 
 export default function AdminRedemptionsPage() {
   const router = useRouter();
   const [redemptions, setRedemptions] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Trạng thái quét mã QR
-  const [showScanner, setShowScanner] = useState(false);
-  const [scannerError, setScannerError] = useState<string | null>(null);
 
   // Trạng thái modal xác nhận trao quà
   const [selectedRedemption, setSelectedRedemption] = useState<any | null>(null);
@@ -116,29 +108,7 @@ export default function AdminRedemptionsPage() {
     }
   };
 
-  // Xử lý khi quét thành công mã QR bằng camera
-  const handleScanSuccess = (decodedText: string) => {
-    setScannerError(null);
-    setShowScanner(false);
 
-    // Trích xuất mã coupon từ URL hoặc lấy chuỗi thô
-    // Tìm coupon_code=MÃ hoặc định dạng SM-XXXX-XXXXXX hoặc SM-ITEM-XXXXXX
-    const match = decodedText.match(/coupon_code=([^&]+)/) || decodedText.match(/(SM-[A-Z0-9-]+)/);
-    const scannedCoupon = match ? match[1] : decodedText.trim();
-
-    // Đối chiếu với danh sách đổi quà hiện có
-    const matched = redemptions.find(r => r.coupon_code === scannedCoupon);
-    if (matched) {
-      setSelectedRedemption(matched);
-    } else {
-      setErrorMessage(`Không tìm thấy yêu cầu đổi quà chưa sử dụng khớp với mã: ${scannedCoupon}`);
-    }
-  };
-
-  const handleScanFailure = (err: string) => {
-    // Chỉ ghi nhận lỗi, tránh gây phiền hà cho admin lúc camera tự động lấy nét
-    console.warn("QR Scan failure:", err);
-  };
 
   // Lọc danh sách đổi quà theo ô tìm kiếm
   const filteredRedemptions = redemptions.filter((r) => {
@@ -183,17 +153,6 @@ export default function AdminRedemptionsPage() {
               className="w-full pl-10 pr-4 py-2 text-sm bg-slate-950/80 border border-purple-950/40 rounded-xl focus:outline-none focus:border-smash-purple focus:ring-1 focus:ring-smash-purple transition-all text-white placeholder-slate-500"
             />
           </div>
-
-          {/* Nút bật quét camera */}
-          <button
-            onClick={() => {
-              setShowScanner(true);
-              setErrorMessage(null);
-            }}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-gradient-to-r from-smash-purple to-smash-violet hover:from-smash-violet hover:to-smash-purple text-white text-sm font-black rounded-xl shadow-lg active:scale-95 transition-transform cursor-pointer shrink-0"
-          >
-            <Camera className="w-4 h-4" /> Quét mã QR nhận quà
-          </button>
         </div>
       </div>
 
@@ -207,17 +166,6 @@ export default function AdminRedemptionsPage() {
         {errorMessage && (
           <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2 animate-fade-in">
             <AlertTriangle className="w-5 h-5 shrink-0" /> {errorMessage}
-          </div>
-        )}
-
-        {/* Hiển thị máy quét QR nếu được kích hoạt */}
-        {showScanner && (
-          <div className="mb-8 p-6 rounded-2xl bg-slate-950/60 border border-purple-500/20 flex flex-col items-center justify-center max-w-sm mx-auto shadow-2xl relative">
-            <QrScanner
-              onScanSuccess={handleScanSuccess}
-              onScanFailure={handleScanFailure}
-              onClose={() => setShowScanner(false)}
-            />
           </div>
         )}
 

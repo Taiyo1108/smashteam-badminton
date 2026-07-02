@@ -238,7 +238,7 @@ router.put('/redemptions/:id/deliver', authenticateToken, isAdmin, async (req, r
     // 3. Cập nhật trạng thái
     await client.query(
       `UPDATE user_inventory
-       SET status = 'redeemed', redeemed_at = NOW(), updated_at = NOW()
+       SET status = 'redeemed', redeemed_at = NOW()
        WHERE id = $1`,
       [redemptionId]
     );
