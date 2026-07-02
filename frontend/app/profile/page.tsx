@@ -40,6 +40,11 @@ export default function ProfilePage() {
   const [isOpeningBox, setIsOpeningBox] = useState(false);
   const [boxCooldown, setBoxCooldown] = useState<number | null>(null);
   const [mysteryBoxReward, setMysteryBoxReward] = useState<any | null>(null);
+  
+  // Phân mục kho đồ: "physical" (vật phẩm) | "virtual" (trang bị)
+  const [inventorySubTab, setInventorySubTab] = useState<"physical" | "virtual">("physical");
+  // Lưu item cần mở modal xem mã QR
+  const [qrModalItem, setQrModalItem] = useState<any | null>(null);
 
   // Settings Modal states
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -1166,132 +1171,210 @@ export default function ProfilePage() {
             )}
 
             {/* TAB CONTENT: INVENTORY */}
-            {activeGamTab === "inventory" && (
-              <div className="space-y-4">
-                {inventory.length === 0 ? (
-                  <div className="text-center py-10 rounded-2xl bg-slate-900/20 border border-dashed border-purple-950/20">
-                    <div className="w-12 h-12 rounded-full bg-purple-950/40 text-smash-violet flex items-center justify-center mx-auto mb-3">
-                      <Shield className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold text-slate-400">Kho đồ trống</span>
-                    <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">Tích cực thăng cấp và làm nhiệm vụ SmashPass để mở khóa nhiều vật phẩm độc quyền nhé!</p>
+            {activeGamTab === "inventory" && (() => {
+              const filteredAndSortedInventory = inventory
+                .filter((item: any) => {
+                  if (inventorySubTab === "physical") {
+                    return item.item_type === "physical";
+                  } else {
+                    return item.item_type !== "physical";
+                  }
+                })
+                .sort((a: any, b: any) => {
+                  const aRedeemed = a.status === "redeemed" ? 1 : 0;
+                  const bRedeemed = b.status === "redeemed" ? 1 : 0;
+                  if (aRedeemed !== bRedeemed) {
+                    return aRedeemed - bRedeemed; // Đã đổi xuống dưới, chưa đổi lên trên
+                  }
+                  return new Date(b.acquired_at).getTime() - new Date(a.acquired_at).getTime();
+                });
+
+              return (
+                <div className="space-y-4">
+                  
+                  {/* Phân mục Kho đồ */}
+                  <div className="flex gap-2 p-1 bg-slate-950/60 rounded-xl border border-purple-950/30">
+                    <button
+                      onClick={() => setInventorySubTab("physical")}
+                      className={`flex-1 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                        inventorySubTab === "physical"
+                          ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      Vật phẩm (Quà vật lý)
+                    </button>
+                    <button
+                      onClick={() => setInventorySubTab("virtual")}
+                      className={`flex-1 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                        inventorySubTab === "virtual"
+                          ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      Trang bị (Danh hiệu, Khung...)
+                    </button>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {inventory.map((item: any) => {
-                      const isEquipped = item.is_equipped;
-                      const isPhysical = item.item_type === 'physical';
-                      const isRedeemed = item.status === 'redeemed';
-                      const canEquip = ['avatar_frame', 'title'].includes(item.item_type);
-                      
-                      if (isPhysical) {
-                        return (
-                          <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-3 relative overflow-hidden ${
-                            isRedeemed 
-                              ? "border-slate-800 opacity-60 grayscale" 
-                              : "border-smash-purple shadow-[0_0_15px_rgba(122,34,224,0.3)]"
-                          }`}>
-                            {isRedeemed && (
-                              <div className="absolute -right-4 -bottom-4 w-24 h-24 border-4 border-dashed border-red-500/30 rounded-full flex items-center justify-center rotate-12 select-none pointer-events-none">
-                                <span className="text-[9px] font-black text-red-500/40 uppercase tracking-widest text-center">ĐÃ NHẬN QUÀ</span>
+
+                  {filteredAndSortedInventory.length === 0 ? (
+                    <div className="text-center py-10 rounded-2xl bg-slate-900/20 border border-dashed border-purple-950/20">
+                      <div className="w-12 h-12 rounded-full bg-purple-950/40 text-smash-violet flex items-center justify-center mx-auto mb-3">
+                        <Shield className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold text-slate-400">Kho đồ trống</span>
+                      <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">
+                        {inventorySubTab === "physical" 
+                          ? "Hãy tích cực thi đấu, tích lũy xu để đổi những phần quà vật lý hấp dẫn tại Cửa hàng!"
+                          : "Tích cực thăng cấp và làm nhiệm vụ SmashPass để mở khóa nhiều danh hiệu và khung viền độc quyền nhé!"}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {filteredAndSortedInventory.map((item: any) => {
+                        const isEquipped = item.is_equipped;
+                        const isPhysical = item.item_type === 'physical';
+                        const isRedeemed = item.status === 'redeemed';
+                        const canEquip = ['avatar_frame', 'title'].includes(item.item_type);
+                        
+                        if (isPhysical) {
+                          return (
+                            <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-3 relative overflow-hidden ${
+                              isRedeemed 
+                                ? "border-slate-850 opacity-50 grayscale" 
+                                : "border-smash-purple shadow-[0_0_12px_rgba(122,34,224,0.2)]"
+                            }`}>
+                              {isRedeemed && (
+                                <div className="absolute -right-4 -bottom-4 w-24 h-24 border-4 border-dashed border-red-500/20 rounded-full flex items-center justify-center rotate-12 select-none pointer-events-none">
+                                  <span className="text-[9px] font-black text-red-500/30 uppercase tracking-widest text-center">ĐÃ NHẬN</span>
+                                </div>
+                              )}
+                              
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                                    isRedeemed
+                                      ? "bg-slate-800 text-slate-400"
+                                      : "bg-smash-purple/20 text-smash-violet border border-smash-purple/30"
+                                  }`}>
+                                    Quà Vật Lý
+                                  </span>
+                                  <span className={`text-[10px] font-bold ${isRedeemed ? "text-slate-500" : "text-emerald-400"}`}>
+                                    {isRedeemed ? "✓ Đã nhận" : "● Chưa sử dụng"}
+                                  </span>
+                                </div>
+                                <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
+                                <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
                               </div>
-                            )}
-                            
+
+                              <div className="bg-slate-950/60 p-2 rounded-xl border border-purple-950/30 flex items-center justify-between gap-2">
+                                <div className="flex flex-col">
+                                  <span className="text-[8px] text-slate-500 font-bold uppercase">Mã Coupon</span>
+                                  <span className="font-mono text-xs font-black text-smash-violet tracking-widest">{item.coupon_code}</span>
+                                </div>
+                                
+                                {!isRedeemed && (
+                                  <button
+                                    onClick={() => setQrModalItem(item)}
+                                    className="px-3 py-1.5 bg-gradient-to-r from-smash-purple to-smash-violet hover:from-smash-violet hover:to-smash-purple text-white text-[10px] font-black rounded-lg cursor-pointer transition-all active:scale-95"
+                                  >
+                                    Xem mã QR
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-3 ${
+                            isEquipped ? "border-smash-purple shadow-[0_0_10px_rgba(157,78,221,0.2)]" : "border-purple-950/20 hover:border-purple-900/30"
+                          }`}>
                             <div>
                               <div className="flex items-center justify-between mb-2">
                                 <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                                  isRedeemed
-                                    ? "bg-slate-800 text-slate-400"
-                                    : "bg-smash-purple/20 text-smash-violet border border-smash-purple/30"
+                                  item.item_type === 'avatar_frame'
+                                    ? "bg-purple-500/10 text-smash-violet border border-smash-purple/20"
+                                    : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                                 }`}>
-                                  Quà Vật Lý
+                                  {item.item_type === 'avatar_frame' ? 'Khung Viền' : 'Danh hiệu'}
                                 </span>
-                                <span className={`text-[10px] font-bold ${isRedeemed ? "text-slate-500" : "text-emerald-400"}`}>
-                                  {isRedeemed ? "✓ Đã nhận" : "● Chưa sử dụng"}
-                                </span>
+                                {isEquipped && (
+                                  <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                                    ● Đang trang bị
+                                  </span>
+                                )}
                               </div>
                               <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                              <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Sở hữu lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
+                              {item.expires_at && (
+                                <p className="text-[9px] text-red-400 font-medium mt-1">
+                                  Hết hạn: {new Date(item.expires_at).toLocaleString("vi-VN")}
+                                </p>
+                              )}
                             </div>
-
-                            {/* Mã QR cho quà vật lý chưa sử dụng */}
-                            {!isRedeemed && (
-                              <div className="flex flex-col items-center justify-center p-2 bg-white rounded-xl w-32 h-32 mx-auto my-2 border border-purple-500/25">
-                                <QRCodeCanvas
-                                  value={`https://smashteam.id.vn/admin/redemptions?coupon_code=${item.coupon_code}`}
-                                  size={112}
-                                  level="M"
-                                  includeMargin={false}
-                                />
-                              </div>
-                            )}
-
-                            <div className="bg-slate-950/60 p-2.5 rounded-xl border border-purple-950/30 flex flex-col items-center justify-center gap-1.5">
-                              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Mã Coupon</span>
-                              <span className="font-mono text-sm font-black text-smash-violet tracking-widest bg-slate-950 px-3 py-1 rounded-lg border border-purple-900/25">{item.coupon_code}</span>
-                            </div>
-
-                            {!isRedeemed && (
-                              <p className="text-[9px] text-center text-smash-violet font-semibold animate-pulse mt-0.5">
-                                Đưa mã này cho BTC tại sân để nhận quà
-                              </p>
+                            
+                            {canEquip && (
+                              <button
+                                onClick={() => handleEquipItem(item.id, isEquipped)}
+                                disabled={equippingItemId === item.id}
+                                className={`w-full py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                                  isEquipped
+                                    ? "bg-slate-800 hover:bg-slate-700 text-slate-300"
+                                    : "bg-smash-purple hover:bg-smash-violet text-white shadow-md shadow-smash-purple/20 active:scale-95"
+                                }`}
+                              >
+                                {equippingItemId === item.id 
+                                  ? "Đang xử lý..." 
+                                  : isEquipped 
+                                  ? "Tháo trang bị" 
+                                  : "Trang bị"}
+                              </button>
                             )}
                           </div>
                         );
-                      }
+                      })}
+                    </div>
+                  )}
 
-                      return (
-                        <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-3 ${
-                          isEquipped ? "border-smash-purple shadow-[0_0_10px_rgba(157,78,221,0.2)]" : "border-purple-950/20 hover:border-purple-900/30"
-                        }`}>
-                          <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                                item.item_type === 'avatar_frame'
-                                  ? "bg-purple-500/10 text-smash-violet border border-smash-purple/20"
-                                  : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                              }`}>
-                                {item.item_type === 'avatar_frame' ? 'Khung Viền' : 'Danh hiệu'}
-                              </span>
-                              {isEquipped && (
-                                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                                  ● Đang trang bị
-                                </span>
-                              )}
-                            </div>
-                            <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                            <p className="text-[10px] text-slate-400 mt-1">Sở hữu lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
-                            {item.expires_at && (
-                              <p className="text-[9px] text-red-400 font-medium mt-1">
-                                Hết hạn: {new Date(item.expires_at).toLocaleString("vi-VN")}
-                              </p>
-                            )}
-                          </div>
-                          
-                          {canEquip && (
-                            <button
-                              onClick={() => handleEquipItem(item.id, isEquipped)}
-                              disabled={equippingItemId === item.id}
-                              className={`w-full py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                                isEquipped
-                                  ? "bg-slate-800 hover:bg-slate-700 text-slate-300"
-                                  : "bg-smash-purple hover:bg-smash-violet text-white shadow-md shadow-smash-purple/20 active:scale-95"
-                              }`}
-                            >
-                              {equippingItemId === item.id 
-                                ? "Đang xử lý..." 
-                                : isEquipped 
-                                ? "Tháo trang bị" 
-                                : "Trang bị"}
-                            </button>
-                          )}
+                  {/* QR Code Pop-up Modal */}
+                  {qrModalItem && (
+                    <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                      <div className="p-6 rounded-2xl bg-slate-950 border border-purple-500/40 max-w-sm w-full text-center relative overflow-hidden shadow-2xl">
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-smash-purple to-smash-violet animate-pulse"></div>
+                        <h4 className="text-sm font-black text-white tracking-wide">Mã QR Nhận Quà</h4>
+                        <p className="text-xs text-slate-400 mt-1">{qrModalItem.item_name}</p>
+                        
+                        <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl w-40 h-40 mx-auto my-5 border border-purple-500/25 shadow-lg">
+                          <QRCodeCanvas
+                            value={`https://smashteam.id.vn/admin/redemptions?coupon_code=${qrModalItem.coupon_code}`}
+                            size={136}
+                            level="M"
+                            includeMargin={false}
+                          />
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+                        
+                        <div className="bg-slate-900/60 p-2.5 rounded-xl border border-purple-950/30 mb-4">
+                          <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider block mb-1">Mã Coupon</span>
+                          <span className="font-mono text-sm font-black text-smash-violet tracking-widest">{qrModalItem.coupon_code}</span>
+                        </div>
+                        
+                        <p className="text-[10px] text-slate-400 mb-5 px-3">
+                          Đưa mã QR này hoặc đọc mã Coupon cho Ban tổ chức tại sân để xác nhận trao quà.
+                        </p>
+                        
+                        <button
+                          onClick={() => setQrModalItem(null)}
+                          className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black rounded-lg cursor-pointer transition-colors border border-purple-950/20"
+                        >
+                          Đóng
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              );
+            })()}
 
             {/* TAB CONTENT: SHOP */}
             {activeGamTab === "shop" && (

@@ -65,9 +65,11 @@ export default function AdminRedemptionsPage() {
         } else {
           setErrorMessage(`Không tìm thấy coupon chưa sử dụng hoặc đã được trao: ${cleanCoupon}`);
         }
+        // Xóa tham số khỏi thanh địa chỉ để tránh cảnh báo dư khi reload dữ liệu
+        router.replace("/admin/redemptions");
       }
     }
-  }, [redemptions]);
+  }, [redemptions, router]);
 
   const handleDeliver = async () => {
     if (!selectedRedemption) return;
