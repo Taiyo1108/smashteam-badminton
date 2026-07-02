@@ -93,12 +93,18 @@ export default function AdminShopPage() {
     }
   };
 
-  // URL coupon_code parser on load
+  // URL parameters parser on load (tab & coupon_code)
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
+      const tabQuery = params.get("tab");
       const couponQuery = params.get("coupon_code");
-      if (couponQuery) {
+
+      if (tabQuery === "redemptions") {
+        setActiveTab("redemptions");
+        // Clear param immediately
+        router.replace("/admin/shop");
+      } else if (couponQuery) {
         const cleanCoupon = couponQuery.replace(/[\[\]]/g, "").trim();
         setActiveTab("redemptions");
         

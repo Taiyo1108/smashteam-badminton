@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, Trophy, Activity, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Users, UserPlus, Trophy, Activity, Loader2, Gift } from "lucide-react";
 import { API_URL } from "@/app/config";
 
 export default function AdminDashboard() {
@@ -13,6 +14,7 @@ export default function AdminDashboard() {
   });
   const [latestMatches, setLatestMatches] = useState<any[]>([]);
   const [recentCandidates, setRecentCandidates] = useState<any[]>([]);
+  const [pendingRedemptionsCount, setPendingRedemptionsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Helper to calculate relative time
@@ -52,11 +54,18 @@ export default function AdminDashboard() {
       });
       const candidates = candidatesRes.ok ? await candidatesRes.json() : [];
 
+      // 4. Fetch Pending Redemptions
+      const redemptionsRes = await fetch(`${API_URL}/api/shop/redemptions`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const redemptions = redemptionsRes.ok ? await redemptionsRes.json() : [];
+
       if (stats) {
         setStatsData(stats);
       }
       setLatestMatches(matches.slice(0, 3));
       setRecentCandidates(candidates.slice(0, 3));
+      setPendingRedemptionsCount(redemptions.length);
     } catch (e) {
       console.error("Error loading dashboard data:", e);
     } finally {
@@ -86,10 +95,32 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-secondary mb-2">Tổng quan</h1>
-        <p className="text-slate-500">Thống kê hoạt động thực tế của Câu lạc bộ Cầu lông SmashTeam.</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-secondary mb-2">Tổng quan</h1>
+          <p className="text-slate-500">Thống kê hoạt động thực tế của Câu lạc bộ Cầu lông SmashTeam.</p>
+        </div>
       </div>
+
+      {/* Alert pending redemptions */}
+      {pendingRedemptionsCount > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+              <Gift className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">Có {pendingRedemptionsCount} yêu cầu đổi quà chờ duyệt!</p>
+              <p className="text-xs text-slate-500 mt-0.5">Vui lòng kiểm tra và trao quà vật lý cho hội viên tại sân tập.</p>
+            </div>
+          </div>
+          <Link href="/admin/shop?tab=redemptions" className="shrink-0 w-full sm:w-auto">
+            <button className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary-hover text-secondary text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer">
+              Duyệt ngay
+            </button>
+          </Link>
+        </div>
+      )}
 
       {/* Grid Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
