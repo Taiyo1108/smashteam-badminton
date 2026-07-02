@@ -37,7 +37,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const navItems = [
     { name: "Tổng quan", href: "/admin", icon: LayoutDashboard },
-    { name: "Đợt tuyển quân", href: "/admin/campaigns", icon: Users },
     { name: "Nhân sự", href: "/admin/personnel", icon: Users },
     { name: "Quản lý Buổi tập", href: "/admin/sessions", icon: Calendar },
     { name: "Quản lý Nhiệm vụ", href: "/admin/quests", icon: Sparkles },
