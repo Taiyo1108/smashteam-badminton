@@ -48,9 +48,26 @@ router.get('/me', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
+    // 0. Tự động dọn dẹp các vật phẩm đã hết hạn
+    await db.query(
+      `WITH expired_items AS (
+         UPDATE user_inventory 
+         SET is_equipped = false 
+         WHERE user_id = $1 AND expires_at <= NOW() AND is_equipped = true
+         RETURNING item_type
+       )
+       UPDATE users
+       SET 
+         selected_avatar_frame = CASE WHEN EXISTS (SELECT 1 FROM expired_items WHERE item_type = 'avatar_frame') THEN NULL ELSE selected_avatar_frame END,
+         selected_title = CASE WHEN EXISTS (SELECT 1 FROM expired_items WHERE item_type = 'title') THEN NULL ELSE selected_title END
+       WHERE id = $1`,
+      [userId]
+    );
+
     // 1. Fetch thông tin cá nhân
     const userRes = await db.query(
       `SELECT id, full_name, nickname, phone_zalo, academic_info, badminton_level, soft_skills, role, avatar_url,
+              selected_avatar_frame, selected_title,
               elo_singles, matches_singles, win_rate_singles, win_singles, loss_singles, streak_singles, max_streak_singles,
               elo_doubles, matches_doubles, win_rate_doubles, win_doubles, loss_doubles, streak_doubles, max_streak_doubles,
               created_at

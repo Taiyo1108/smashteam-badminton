@@ -2,14 +2,27 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, Award, Calendar, CheckCircle, Gift, AlertTriangle, ArrowLeft } from "lucide-react";
+import { Search, Loader2, Award, Calendar, CheckCircle, Gift, AlertTriangle, ArrowLeft, Camera, Check } from "lucide-react";
 import { API_URL } from "@/app/config";
+import confetti from "canvas-confetti";
+import dynamic from "next/dynamic";
+
+// Tải động QrScanner để loại bỏ Navigator error khi SSR
+const QrScanner = dynamic(() => import("@/app/components/QrScanner"), { ssr: false });
 
 export default function AdminRedemptionsPage() {
   const router = useRouter();
   const [redemptions, setRedemptions] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Trạng thái quét mã QR
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+
+  // Trạng thái modal xác nhận trao quà
+  const [selectedRedemption, setSelectedRedemption] = useState<any | null>(null);
+  
   const [deliveringId, setDeliveringId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -46,11 +59,28 @@ export default function AdminRedemptionsPage() {
     }
   };
 
-  const handleDeliver = async (id: number, memberName: string, itemName: string) => {
-    if (!confirm(`Xác nhận đã trao quà "${itemName}" cho thành viên "${memberName}"?`)) {
-      return;
+  // Check query param coupon_code trên URL để tự mở modal xác thực nhanh
+  useEffect(() => {
+    if (typeof window !== "undefined" && redemptions.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const couponQuery = params.get("coupon_code");
+      if (couponQuery) {
+        // Khử dấu ngoặc vuông nếu người dùng copy thô URL mẫu [MÃ]
+        const cleanCoupon = couponQuery.replace(/[\[\]]/g, "").trim();
+        const matched = redemptions.find(r => r.coupon_code === cleanCoupon);
+        if (matched) {
+          setSelectedRedemption(matched);
+        } else {
+          setErrorMessage(`Không tìm thấy coupon chưa sử dụng hoặc đã được trao: ${cleanCoupon}`);
+        }
+      }
     }
+  }, [redemptions]);
 
+  const handleDeliver = async () => {
+    if (!selectedRedemption) return;
+
+    const { id, member_name, item_name } = selectedRedemption;
     setDeliveringId(id);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -64,9 +94,17 @@ export default function AdminRedemptionsPage() {
       const data = await res.json();
       if (res.ok) {
         setSuccessMessage(data.message || "Đã xác nhận trao quà thành công!");
-        // Tải lại danh sách
-        await fetchRedemptions();
-        // Tự động tắt thông báo sau 4 giây
+        
+        // Bắn pháo hoa Confetti xanh lá báo thành công
+        confetti({
+          particleCount: 150,
+          spread: 80,
+          origin: { y: 0.6 },
+          colors: ["#10b981", "#34d399", "#a7f3d0", "#ffffff"]
+        });
+
+        setSelectedRedemption(null); // Đóng modal
+        await fetchRedemptions(); // Tải lại danh sách
         setTimeout(() => setSuccessMessage(null), 4000);
       } else {
         setErrorMessage(data.error || "Không thể xác nhận trao quà.");
@@ -76,6 +114,30 @@ export default function AdminRedemptionsPage() {
     } finally {
       setDeliveringId(null);
     }
+  };
+
+  // Xử lý khi quét thành công mã QR bằng camera
+  const handleScanSuccess = (decodedText: string) => {
+    setScannerError(null);
+    setShowScanner(false);
+
+    // Trích xuất mã coupon từ URL hoặc lấy chuỗi thô
+    // Tìm coupon_code=MÃ hoặc định dạng SM-XXXX-XXXXXX hoặc SM-ITEM-XXXXXX
+    const match = decodedText.match(/coupon_code=([^&]+)/) || decodedText.match(/(SM-[A-Z0-9-]+)/);
+    const scannedCoupon = match ? match[1] : decodedText.trim();
+
+    // Đối chiếu với danh sách đổi quà hiện có
+    const matched = redemptions.find(r => r.coupon_code === scannedCoupon);
+    if (matched) {
+      setSelectedRedemption(matched);
+    } else {
+      setErrorMessage(`Không tìm thấy yêu cầu đổi quà chưa sử dụng khớp với mã: ${scannedCoupon}`);
+    }
+  };
+
+  const handleScanFailure = (err: string) => {
+    // Chỉ ghi nhận lỗi, tránh gây phiền hà cho admin lúc camera tự động lấy nét
+    console.warn("QR Scan failure:", err);
   };
 
   // Lọc danh sách đổi quà theo ô tìm kiếm
@@ -108,23 +170,37 @@ export default function AdminRedemptionsPage() {
           <p className="text-xs text-slate-400 mt-1">Xác nhận và trao quà tại sân cho các thành viên đã đổi xu.</p>
         </div>
 
-        {/* Thanh tìm kiếm nhanh */}
-        <div className="relative w-full md:w-80 shrink-0">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Tìm mã coupon, tên học viên..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm bg-slate-950/80 border border-purple-950/40 rounded-xl focus:outline-none focus:border-smash-purple focus:ring-1 focus:ring-smash-purple transition-all text-white placeholder-slate-500"
-          />
+        {/* Cụm chức năng tìm kiếm & Quét QR */}
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+          {/* Thanh tìm kiếm nhanh */}
+          <div className="relative w-full sm:w-64 shrink-0">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Tìm mã coupon, tên học viên..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 text-sm bg-slate-950/80 border border-purple-950/40 rounded-xl focus:outline-none focus:border-smash-purple focus:ring-1 focus:ring-smash-purple transition-all text-white placeholder-slate-500"
+            />
+          </div>
+
+          {/* Nút bật quét camera */}
+          <button
+            onClick={() => {
+              setShowScanner(true);
+              setErrorMessage(null);
+            }}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-gradient-to-r from-smash-purple to-smash-violet hover:from-smash-violet hover:to-smash-purple text-white text-sm font-black rounded-xl shadow-lg active:scale-95 transition-transform cursor-pointer shrink-0"
+          >
+            <Camera className="w-4 h-4" /> Quét mã QR nhận quà
+          </button>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto">
         {/* Thông báo thành công / thất bại */}
         {successMessage && (
-          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2 animate-fade-in">
+          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2 animate-fade-in animate-pulse-slow">
             <CheckCircle className="w-5 h-5 shrink-0" /> {successMessage}
           </div>
         )}
@@ -134,7 +210,18 @@ export default function AdminRedemptionsPage() {
           </div>
         )}
 
-        {/* Bảng dữ liệu chính */}
+        {/* Hiển thị máy quét QR nếu được kích hoạt */}
+        {showScanner && (
+          <div className="mb-8 p-6 rounded-2xl bg-slate-950/60 border border-purple-500/20 flex flex-col items-center justify-center max-w-sm mx-auto shadow-2xl relative">
+            <QrScanner
+              onScanSuccess={handleScanSuccess}
+              onScanFailure={handleScanFailure}
+              onClose={() => setShowScanner(false)}
+            />
+          </div>
+        )}
+
+        {/* Bảng danh sách quà đang chờ nhận */}
         <div className="rounded-2xl bg-slate-950/80 backdrop-blur-md border border-purple-950/40 shadow-xl overflow-hidden">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -145,7 +232,7 @@ export default function AdminRedemptionsPage() {
             <div className="text-center py-20 text-slate-500">
               <Gift className="w-12 h-12 text-purple-950 mx-auto mb-4" />
               <p className="text-sm font-bold text-slate-400">Không tìm thấy yêu cầu đổi quà nào</p>
-              <p className="text-xs text-slate-500 mt-1">Danh sách hiện tại trống hoặc không trùng với từ khóa tìm kiếm.</p>
+              <p className="text-xs text-slate-500 mt-1">Danh sách hiện tại trống hoặc không khớp với nội dung tìm kiếm.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -192,17 +279,10 @@ export default function AdminRedemptionsPage() {
                       </td>
                       <td className="py-4 px-6 text-right">
                         <button
-                          onClick={() => handleDeliver(row.id, row.member_name, row.item_name)}
-                          disabled={deliveringId === row.id}
-                          className="px-4 py-1.5 bg-gradient-to-r from-smash-purple to-smash-violet hover:from-smash-violet hover:to-smash-purple text-white text-xs font-black rounded-lg shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                          onClick={() => setSelectedRedemption(row)}
+                          className="px-4 py-1.5 bg-gradient-to-r from-smash-purple to-smash-violet hover:from-smash-violet hover:to-smash-purple text-white text-xs font-black rounded-lg shadow-md active:scale-95 transition-all cursor-pointer"
                         >
-                          {deliveringId === row.id ? (
-                            <span className="flex items-center gap-1">
-                              <Loader2 className="w-3 h-3 animate-spin" /> Đang xử lý...
-                            </span>
-                          ) : (
-                            "Xác nhận trao quà"
-                          )}
+                          Xác nhận trao quà
                         </button>
                       </td>
                     </tr>
@@ -213,6 +293,62 @@ export default function AdminRedemptionsPage() {
           )}
         </div>
       </div>
+
+      {/* Pop-up Modal xác thực trao quà (Premium Custom Confirm Modal) */}
+      {selectedRedemption && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="p-6 rounded-2xl bg-slate-950 border border-purple-500/40 max-w-sm w-full relative overflow-hidden shadow-2xl">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-smash-violet animate-pulse"></div>
+            
+            <div className="w-12 h-12 rounded-full bg-purple-950/40 text-smash-violet flex items-center justify-center mx-auto mb-4 border border-purple-500/20">
+              <Gift className="w-6 h-6 animate-pulse" />
+            </div>
+
+            <h3 className="text-base font-black text-white text-center tracking-wide">Xác Nhận Trao Quà Vật Lý</h3>
+            <p className="text-xs text-slate-400 text-center mt-1">Vui lòng đối chiếu kỹ sản phẩm trước khi xác nhận.</p>
+
+            <div className="my-5 p-3.5 rounded-xl bg-slate-900/60 border border-purple-950/40 space-y-2.5 text-xs text-slate-300">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">Hội viên:</span>
+                <span className="font-bold text-white text-right">{selectedRedemption.member_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">Quà tặng:</span>
+                <span className="font-bold text-amber-400 text-right">{selectedRedemption.item_name}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-bold">Mã Coupon:</span>
+                <span className="font-mono font-black text-smash-violet tracking-wider bg-slate-950 px-2 py-0.5 rounded border border-purple-900/20">{selectedRedemption.coupon_code}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSelectedRedemption(null)}
+                className="flex-1 py-2 text-xs font-black text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-850 rounded-lg cursor-pointer transition-colors border border-purple-950/30"
+              >
+                Hủy bỏ
+              </button>
+              
+              <button
+                onClick={handleDeliver}
+                disabled={deliveringId === selectedRedemption.id}
+                className="flex-1 py-2 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700/50 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5"
+              >
+                {deliveringId === selectedRedemption.id ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang lưu...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" /> Đồng ý trao
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

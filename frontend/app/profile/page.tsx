@@ -8,8 +8,9 @@ import {
   Trophy, Flame, Calendar, Check, X, Sparkles, 
   Camera, Paintbrush, Shield, CalendarDays, Activity, 
   MapPin, Clock, LogOut, Edit2, Home, Loader2, Settings,
-  ShoppingBag
+  ShoppingBag, Lock, Gift
 } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
 
@@ -36,6 +37,9 @@ export default function ProfilePage() {
   const [equippingItemId, setEquippingItemId] = useState<number | null>(null);
   const [buyingItemId, setBuyingItemId] = useState<number | null>(null);
   const [unlockingPremium, setUnlockingPremium] = useState(false);
+  const [isOpeningBox, setIsOpeningBox] = useState(false);
+  const [boxCooldown, setBoxCooldown] = useState<number | null>(null);
+  const [mysteryBoxReward, setMysteryBoxReward] = useState<any | null>(null);
 
   // Settings Modal states
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -213,6 +217,67 @@ export default function ProfilePage() {
       setBuyingItemId(null);
     }
   };
+
+  const handleOpenMysteryBox = async () => {
+    setIsOpeningBox(true);
+    setMysteryBoxReward(null);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const url = `${API_URL}/api/shop/mystery-box`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMysteryBoxReward(data.reward);
+        showToast(data.message || "Mở hộp quà thành công!", "success");
+        await fetchGamificationData();
+        await fetchProfileData();
+      } else {
+        showToast(data.error || "Lỗi khi mở hộp quà.", "error");
+      }
+    } catch (e) {
+      showToast("Lỗi kết nối.", "error");
+    } finally {
+      setIsOpeningBox(false);
+    }
+  };
+
+  // Cooldown timer for mystery box
+  useEffect(() => {
+    if (boxCooldown === null || boxCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setBoxCooldown(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timer);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [boxCooldown]);
+
+  // Calculate box cooldown from inventory
+  useEffect(() => {
+    if (inventory.length > 0) {
+      const claims = inventory.filter(i => i.item_type === 'mystery_box_claim');
+      if (claims.length > 0) {
+        const lastClaim = new Date(claims[0].acquired_at);
+        const diffMs = new Date().getTime() - lastClaim.getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+        if (diffHours < 24) {
+          const remainingSeconds = Math.ceil((24 - diffHours) * 60 * 60);
+          setBoxCooldown(remainingSeconds);
+        } else {
+          setBoxCooldown(null);
+        }
+      } else {
+        setBoxCooldown(null);
+      }
+    }
+  }, [inventory]);
 
   // Gamification Claim Handlers
   const handleClaimQuest = async (questId: number) => {
@@ -1149,6 +1214,18 @@ export default function ProfilePage() {
                               <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
                             </div>
 
+                            {/* Mã QR cho quà vật lý chưa sử dụng */}
+                            {!isRedeemed && (
+                              <div className="flex flex-col items-center justify-center p-2 bg-white rounded-xl w-32 h-32 mx-auto my-2 border border-purple-500/25">
+                                <QRCodeCanvas
+                                  value={`https://smashteam.id.vn/admin/redemptions?coupon_code=${item.coupon_code}`}
+                                  size={112}
+                                  level="M"
+                                  includeMargin={false}
+                                />
+                              </div>
+                            )}
+
                             <div className="bg-slate-950/60 p-2.5 rounded-xl border border-purple-950/30 flex flex-col items-center justify-center gap-1.5">
                               <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Mã Coupon</span>
                               <span className="font-mono text-sm font-black text-smash-violet tracking-widest bg-slate-950 px-3 py-1 rounded-lg border border-purple-900/25">{item.coupon_code}</span>
@@ -1184,6 +1261,11 @@ export default function ProfilePage() {
                             </div>
                             <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
                             <p className="text-[10px] text-slate-400 mt-1">Sở hữu lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
+                            {item.expires_at && (
+                              <p className="text-[9px] text-red-400 font-medium mt-1">
+                                Hết hạn: {new Date(item.expires_at).toLocaleString("vi-VN")}
+                              </p>
+                            )}
                           </div>
                           
                           {canEquip && (
@@ -1213,16 +1295,90 @@ export default function ProfilePage() {
 
             {/* TAB CONTENT: SHOP */}
             {activeGamTab === "shop" && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <ShoppingBag className="w-4 h-4 text-smash-violet" /> Cửa hàng đổi quà
+              <div className="space-y-6">
+                
+                {/* 1. Hộp quà bí ẩn hàng ngày (Daily Mystery Box) */}
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-slate-950 to-amber-950/30 border border-purple-500/30 shadow-[0_0_15px_rgba(147,51,234,0.15)] flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full filter blur-2xl pointer-events-none"></div>
+                  
+                  <div className="flex items-center gap-4 flex-col sm:flex-row text-center sm:text-left">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-600 to-amber-500 flex items-center justify-center text-white text-3xl shadow-lg shadow-purple-500/25 shrink-0 animate-bounce">
+                      🎁
+                    </div>
+                    <div>
+                      <h4 className="text-base font-black text-white tracking-wide flex items-center justify-center sm:justify-start gap-1.5">
+                        Hộp Quà Bí Ẩn Hàng Ngày <span className="text-[10px] bg-amber-400/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-400/20 font-black uppercase">Free</span>
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-1">Mỗi ngày mở 1 lần để có cơ hội nhận Xu, Khiên hoặc Khung avatar hiếm!</p>
+                      
+                      {/* Tỉ lệ mở hộp quà */}
+                      <div className="flex gap-4 mt-2 text-[10px] text-slate-500 font-bold justify-center sm:justify-start">
+                        <span>💰 70% Xu (10-30)</span>
+                        <span>🛡️ 20% Khiên</span>
+                        <span>👑 10% Khung VIP</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 w-full sm:w-auto text-center">
+                    {boxCooldown !== null ? (() => {
+                      const h = Math.floor(boxCooldown / 3600);
+                      const m = Math.floor((boxCooldown % 3600) / 60);
+                      const s = boxCooldown % 60;
+                      const timeStr = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+                      return (
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-xs font-bold text-slate-500 bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl">
+                            Chờ: {timeStr}
+                          </span>
+                        </div>
+                      );
+                    })() : (
+                      <button
+                        onClick={handleOpenMysteryBox}
+                        disabled={isOpeningBox}
+                        className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-purple-600 to-amber-500 hover:from-purple-500 hover:to-amber-400 text-white font-black text-xs rounded-xl shadow-lg active:scale-95 transition-transform cursor-pointer"
+                      >
+                        {isOpeningBox ? "Đang mở..." : "Mở ngay hộp quà"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Modal thông báo nhận quà Mystery Box */}
+                {mysteryBoxReward && (
+                  <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="p-6 rounded-2xl bg-slate-950 border border-purple-500/40 max-w-sm w-full text-center relative overflow-hidden shadow-2xl">
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-amber-400 to-purple-500 animate-pulse"></div>
+                      <div className="text-5xl my-4">🎉</div>
+                      <h4 className="text-lg font-black text-white">Bạn Đã Nhận Được Quà!</h4>
+                      <p className="text-base font-black text-amber-400 mt-2">{mysteryBoxReward.name}</p>
+                      <p className="text-xs text-slate-400 mt-2">
+                        {mysteryBoxReward.type === 'avatar_frame' 
+                          ? 'Vật phẩm đã được thêm vào Kho đồ của bạn với thời hạn sử dụng 7 ngày.' 
+                          : 'Phần thưởng đã được cộng trực tiếp vào tài khoản.'}
+                      </p>
+                      <button
+                        onClick={() => setMysteryBoxReward(null)}
+                        className="mt-6 w-full py-2 bg-smash-purple hover:bg-smash-violet text-white text-xs font-black rounded-lg cursor-pointer transition-colors"
+                      >
+                        Đồng ý
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Cửa hàng chính */}
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs uppercase font-black tracking-widest text-slate-400 flex items-center gap-1.5">
+                    <ShoppingBag className="w-3.5 h-3.5 text-smash-violet" /> Cửa hàng đổi quà
                   </h4>
                   <div className="flex items-center gap-1 bg-slate-900/60 px-3 py-1 rounded-full border border-purple-950/40">
                     <span className="text-[10px] text-slate-400 font-bold uppercase">Số dư:</span>
                     <span className="text-xs font-black text-amber-400">{gamProfile?.smash_coins || 0}🪙</span>
                   </div>
                 </div>
+
                 {shopItems.length === 0 ? (
                   <div className="text-center py-10 rounded-2xl bg-slate-900/20 border border-dashed border-purple-950/20">
                     <span className="text-sm font-bold text-slate-400">Cửa hàng trống</span>
@@ -1235,11 +1391,43 @@ export default function ProfilePage() {
                       const isOutOfStock = isPhysical && item.stock <= 0;
                       const userCoins = gamProfile?.smash_coins || 0;
                       const isAffordable = userCoins >= item.coin_price;
+                      
+                      // Check Level lock
+                      const isLevelLocked = (gamProfile?.level || 1) < item.level_required;
+
+                      // Rarity styling
+                      let rarityBorder = "border-purple-950/20";
+                      let rarityBadge = "bg-slate-800 text-slate-400";
+                      if (item.rarity === 'rare') {
+                        rarityBorder = "border-blue-500/40 hover:border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.15)]";
+                        rarityBadge = "bg-blue-500/10 text-blue-400 border border-blue-500/20";
+                      } else if (item.rarity === 'epic') {
+                        rarityBorder = "border-purple-500/50 hover:border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.35)]";
+                        rarityBadge = "bg-purple-500/10 text-smash-violet border border-smash-purple/20";
+                      } else if (item.rarity === 'legendary') {
+                        rarityBorder = "border-amber-400 hover:border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.45)]";
+                        rarityBadge = "bg-amber-400/10 text-amber-400 border border-amber-400/20";
+                      }
+
+                      // Check hot alerts or low stock alerts
+                      const showLowStock = isPhysical && item.stock > 0 && item.stock < 5;
+                      const isHotItem = item.name.toLowerCase().includes('yonex') || item.name.toLowerCase().includes('khung') || item.name.toLowerCase().includes('smash king');
 
                       return (
-                        <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-4 ${
-                          isOutOfStock ? "border-slate-900 opacity-60" : "border-purple-950/20 hover:border-purple-900/30"
+                        <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-4 relative overflow-hidden ${
+                          isOutOfStock ? "opacity-60 grayscale border-slate-900" : rarityBorder
                         }`}>
+                          
+                          {/* Alert Badges */}
+                          <div className="absolute top-2 right-2 flex gap-1 z-10">
+                            {showLowStock && (
+                              <span className="text-[8px] font-black uppercase tracking-wider bg-red-600 text-white px-1.5 py-0.5 rounded animate-pulse">Sắp hết!</span>
+                            )}
+                            {!isOutOfStock && isHotItem && (
+                              <span className="text-[8px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded">Hot</span>
+                            )}
+                          </div>
+
                           <div className="flex gap-3">
                             {isPhysical && item.image_url ? (
                               <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-purple-950/20 bg-slate-950 relative">
@@ -1255,18 +1443,18 @@ export default function ProfilePage() {
                               </div>
                             )}
 
-                            <div className="flex flex-col justify-between py-0.5">
+                            <div className="flex flex-col justify-between py-0.5 flex-1 min-w-0">
                               <div>
-                                <span className={`text-[8px] uppercase font-black px-1.5 py-0.5 rounded ${
-                                  isPhysical
-                                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/25"
-                                    : "bg-purple-500/10 text-smash-violet border border-smash-purple/25"
-                                }`}>
-                                  {isPhysical ? 'Quà Vật Lý' : 'Vật Phẩm Ảo'}
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-[8px] uppercase font-black px-1.5 py-0.5 rounded ${rarityBadge}`}>
+                                    {item.rarity || 'common'}
+                                  </span>
+                                  <span className="text-[8px] text-slate-500 font-bold">{item.category || 'Đồ dùng'}</span>
+                                </div>
                                 <h4 className="text-sm font-bold text-white tracking-wide mt-1.5 line-clamp-1">{item.name}</h4>
+                                <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{item.description}</p>
                               </div>
-                              <div className="text-[10px] text-slate-400">
+                              <div className="text-[10px] text-slate-400 mt-1">
                                 {isPhysical ? (
                                   isOutOfStock ? (
                                     <span className="text-red-400 font-bold">Hết hàng</span>
@@ -1280,30 +1468,36 @@ export default function ProfilePage() {
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between gap-3 pt-1 border-t border-purple-950/10">
+                          <div className="flex items-center justify-between gap-3 pt-1.5 border-t border-purple-950/10">
                             <div className="flex items-center gap-1 font-bold text-amber-400 text-sm">
                               {item.coin_price} <span className="text-xs text-amber-500/80">Xu</span>
                             </div>
 
-                            <button
-                              onClick={() => handleBuyItem(item.id, item.name, item.coin_price)}
-                              disabled={isOutOfStock || !isAffordable || buyingItemId === item.id}
-                              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                                isOutOfStock
-                                  ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                            {isLevelLocked ? (
+                              <span className="text-[10px] font-black text-red-500 bg-red-950/20 border border-red-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1 select-none">
+                                <Lock className="w-3 h-3 shrink-0" /> Level {item.level_required}
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleBuyItem(item.id, item.name, item.coin_price)}
+                                disabled={isOutOfStock || !isAffordable || buyingItemId === item.id}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                                  isOutOfStock
+                                    ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                                    : !isAffordable
+                                    ? "bg-slate-800 hover:bg-slate-850 text-slate-500 border border-slate-700/20"
+                                    : "bg-smash-purple hover:bg-smash-violet text-white shadow-md shadow-smash-purple/25 active:scale-95"
+                                }`}
+                              >
+                                {buyingItemId === item.id
+                                  ? "Đang xử lý..."
+                                  : isOutOfStock
+                                  ? "Hết hàng"
                                   : !isAffordable
-                                  ? "bg-slate-800 hover:bg-slate-850 text-slate-500 border border-slate-700/20"
-                                  : "bg-smash-purple hover:bg-smash-violet text-white shadow-md shadow-smash-purple/25 active:scale-95"
-                              }`}
-                            >
-                              {buyingItemId === item.id
-                                ? "Đang xử lý..."
-                                : isOutOfStock
-                                ? "Hết hàng"
-                                : !isAffordable
-                                ? "Chưa đủ xu"
-                                : "Đổi quà"}
-                            </button>
+                                  ? "Chưa đủ xu"
+                                  : "Đổi quà"}
+                              </button>
+                            )}
                           </div>
                         </div>
                       );

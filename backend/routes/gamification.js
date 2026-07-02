@@ -91,6 +91,22 @@ router.get('/profile', async (req, res) => {
   try {
     const userId = req.user.id;
     
+    // Tự động dọn dẹp các vật phẩm đã hết hạn
+    await db.query(
+      `WITH expired_items AS (
+         UPDATE user_inventory 
+         SET is_equipped = false 
+         WHERE user_id = $1 AND expires_at <= NOW() AND is_equipped = true
+         RETURNING item_type
+       )
+       UPDATE users
+       SET 
+         selected_avatar_frame = CASE WHEN EXISTS (SELECT 1 FROM expired_items WHERE item_type = 'avatar_frame') THEN NULL ELSE selected_avatar_frame END,
+         selected_title = CASE WHEN EXISTS (SELECT 1 FROM expired_items WHERE item_type = 'title') THEN NULL ELSE selected_title END
+       WHERE id = $1`,
+      [userId]
+    );
+    
     // Check and update streak
     const streakInfo = await checkAndUpdateStreak(userId);
     
@@ -455,11 +471,27 @@ router.get('/inventory', async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Lọc bỏ các bản ghi ghi nhận claimed mốc SmashPass
+    // Tự động dọn dẹp các vật phẩm đã hết hạn
+    await db.query(
+      `WITH expired_items AS (
+         UPDATE user_inventory 
+         SET is_equipped = false 
+         WHERE user_id = $1 AND expires_at <= NOW() AND is_equipped = true
+         RETURNING item_type
+       )
+       UPDATE users
+       SET 
+         selected_avatar_frame = CASE WHEN EXISTS (SELECT 1 FROM expired_items WHERE item_type = 'avatar_frame') THEN NULL ELSE selected_avatar_frame END,
+         selected_title = CASE WHEN EXISTS (SELECT 1 FROM expired_items WHERE item_type = 'title') THEN NULL ELSE selected_title END
+       WHERE id = $1`,
+      [userId]
+    );
+
+    // Lọc bỏ các bản ghi ghi nhận claimed mốc SmashPass và các vật phẩm đã hết hạn
     const inventoryRes = await db.query(
-      `SELECT id, item_type, item_name, item_value, is_equipped, acquired_at, coupon_code, status, redeemed_at 
+      `SELECT id, item_type, item_name, item_value, is_equipped, acquired_at, coupon_code, status, redeemed_at, expires_at 
        FROM user_inventory 
-       WHERE user_id = $1 AND item_type != 'smash_pass_reward_level'
+       WHERE user_id = $1 AND item_type != 'smash_pass_reward_level' AND (expires_at IS NULL OR expires_at > NOW())
        ORDER BY acquired_at DESC`,
       [userId]
     );
