@@ -689,9 +689,6 @@ export default function PersonnelPage() {
                         </td>
                         <td className="p-4">
                           <p className="text-sm font-semibold text-slate-700">{m.badminton_level}</p>
-                          <p className="text-xs text-slate-400">
-                            {m.hand_preference ? `Tay ${m.hand_preference === 'Right' ? 'Thuận' : 'Trái'}` : "Chưa chọn tay"} • {m.play_style || "Chưa chọn lối chơi"}
-                          </p>
                         </td>
                         <td className="p-4">
                           <div className="flex gap-2">

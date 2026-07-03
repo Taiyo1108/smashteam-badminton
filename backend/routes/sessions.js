@@ -4,14 +4,21 @@ const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { addXpToUser, trackActivity } = require('../utils/gamification');
 
-// GET /api/sessions - Lấy danh sách các buổi tập sắp diễn ra
+// GET /api/sessions - Lấy danh sách các buổi tập (Hỗ trợ lấy lịch sử)
 router.get('/', async (req, res) => {
+  const showHistory = req.query.history === 'true';
   try {
-    const result = await db.query(
-      `SELECT * FROM sessions 
-       WHERE date_time >= NOW() - INTERVAL '2 hours' 
-       ORDER BY date_time ASC LIMIT 10`
-    );
+    let queryText = '';
+    if (showHistory) {
+      // Lấy toàn bộ các buổi tập đã qua và sắp tới để lưu trữ lịch sử
+      queryText = `SELECT * FROM sessions ORDER BY date_time DESC`;
+    } else {
+      // Chỉ lấy các buổi tập sắp diễn ra
+      queryText = `SELECT * FROM sessions 
+                   WHERE date_time >= NOW() - INTERVAL '2 hours' 
+                   ORDER BY date_time ASC LIMIT 10`;
+    }
+    const result = await db.query(queryText);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching sessions:', error);

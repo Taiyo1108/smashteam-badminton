@@ -381,7 +381,8 @@ export default function AdminShopPage() {
     <div className="space-y-6 text-slate-800">
       
       {/* Title & Topbar */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      {/* Title & Topbar */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200/60 pb-5">
         <div>
           <h1 className="text-3xl font-black text-secondary tracking-tight flex items-center gap-2">
             <ShoppingBag className="w-8 h-8 text-primary" />
@@ -389,69 +390,72 @@ export default function AdminShopPage() {
           </h1>
           <p className="text-slate-500 text-sm mt-1">Cấu hình sản phẩm, duyệt trao quà vật lý cho học viên và xem lịch sử đối soát hàng hóa.</p>
         </div>
+      </div>
 
-        {/* Cụm chức năng Tabs, Tìm kiếm & Thêm mới */}
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-          {/* 3 Tabs */}
-          <div className="flex bg-slate-200/80 p-1 rounded-xl w-full sm:w-auto shrink-0">
-            <button
-              onClick={() => {
-                setActiveTab("items");
-                setSearchQuery("");
-                setErrorMessage(null);
-              }}
-              className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === "items"
-                  ? "bg-primary text-secondary shadow-sm font-extrabold"
-                  : "text-slate-600 hover:text-slate-800"
-              }`}
-            >
-              <Package className="w-3.5 h-3.5" /> Sản phẩm
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("redemptions");
-                setSearchQuery("");
-                setErrorMessage(null);
-              }}
-              className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === "redemptions"
-                  ? "bg-primary text-secondary shadow-sm font-extrabold"
-                  : "text-slate-600 hover:text-slate-800"
-              }`}
-            >
-              <Gift className="w-3.5 h-3.5" /> Duyệt đổi quà
-              {pendingRedemptions.length > 0 && (
-                <span className="bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0">
-                  {pendingRedemptions.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("history");
-                setSearchQuery("");
-                setErrorMessage(null);
-              }}
-              className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === "history"
-                  ? "bg-primary text-secondary shadow-sm font-extrabold"
-                  : "text-slate-600 hover:text-slate-800"
-              }`}
-            >
-              <History className="w-3.5 h-3.5" /> Lịch sử đối soát
-            </button>
-          </div>
+      {/* Toolbar: Tabs on left, Search + Add Button on right */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-slate-100/50 p-4 rounded-2xl border border-slate-200/60">
+        {/* 3 Tabs */}
+        <div className="flex bg-slate-200/80 p-1 rounded-xl w-full lg:w-auto shrink-0">
+          <button
+            onClick={() => {
+              setActiveTab("items");
+              setSearchQuery("");
+              setErrorMessage(null);
+            }}
+            className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === "items"
+                ? "bg-primary text-secondary shadow-sm font-extrabold"
+                : "text-slate-600 hover:text-slate-800"
+            }`}
+          >
+            <Package className="w-3.5 h-3.5" /> Sản phẩm
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("redemptions");
+              setSearchQuery("");
+              setErrorMessage(null);
+            }}
+            className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === "redemptions"
+                ? "bg-primary text-secondary shadow-sm font-extrabold"
+                : "text-slate-600 hover:text-slate-800"
+            }`}
+          >
+            <Gift className="w-3.5 h-3.5" /> Duyệt đổi quà
+            {pendingRedemptions.length > 0 && (
+              <span className="bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0">
+                {pendingRedemptions.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("history");
+              setSearchQuery("");
+              setErrorMessage(null);
+            }}
+            className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === "history"
+                ? "bg-primary text-secondary shadow-sm font-extrabold"
+                : "text-slate-600 hover:text-slate-800"
+            }`}
+          >
+            <History className="w-3.5 h-3.5" /> Lịch sử đối soát
+          </button>
+        </div>
 
+        {/* Search & Add button */}
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
           {/* Ô tìm kiếm */}
-          <div className="relative w-full sm:w-52 shrink-0">
+          <div className="relative w-full sm:w-60 shrink-0">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Tìm kiếm..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-slate-800 placeholder-slate-400"
+              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-slate-800 placeholder-slate-400 font-medium"
             />
           </div>
 

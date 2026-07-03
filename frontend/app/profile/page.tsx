@@ -1501,7 +1501,7 @@ export default function ProfilePage() {
 
                       // Check hot alerts or low stock alerts
                       const showLowStock = isPhysical && item.stock > 0 && item.stock < 5;
-                      const isHotItem = item.name.toLowerCase().includes('yonex') || item.name.toLowerCase().includes('khung') || item.name.toLowerCase().includes('smash king');
+                      const isHotItem = item.is_hot;
 
                       return (
                         <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-4 relative overflow-hidden ${

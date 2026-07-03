@@ -17,18 +17,21 @@ export default function AdminSessionsPage() {
   const [selectedSession, setSelectedSession] = useState<any>(null);
   const [attendees, setAttendees] = useState<any[]>([]);
   const [isLoadingAttendees, setIsLoadingAttendees] = useState(false);
+  const [viewMode, setViewMode] = useState<"upcoming" | "history">("upcoming");
 
   // Form states
   const [title, setTitle] = useState("");
   const [dateTime, setDateTime] = useState("");
   const [location, setLocation] = useState("");
+  const [template, setTemplate] = useState<"dinh_ky" | "offline" | "khac">("khac");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSessions = async () => {
+  const fetchSessions = async (historyMode = false) => {
+    setIsLoading(true);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/sessions`, {
+      const res = await fetch(`${API_URL}/api/sessions?history=${historyMode}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -61,8 +64,8 @@ export default function AdminSessionsPage() {
   };
 
   useEffect(() => {
-    fetchSessions();
-  }, []);
+    fetchSessions(viewMode === "history");
+  }, [viewMode]);
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,7 +136,10 @@ export default function AdminSessionsPage() {
           <p className="text-slate-500 text-sm mt-1">Tạo buổi sinh hoạt tập luyện mới và quản lý danh sách thành viên check-in quét mã QR Code.</p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setIsModalOpen(true);
+            setTemplate("khac");
+          }}
           className="flex items-center gap-2 px-5 py-2.5 bg-primary text-secondary hover:bg-primary-hover font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
         >
           <Plus className="w-4 h-4" /> Tạo Buổi Tập
@@ -143,17 +149,36 @@ export default function AdminSessionsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* SESSIONS LIST */}
         <div className="lg:col-span-1 space-y-4">
-          <h3 className="font-extrabold text-secondary text-lg flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-primary" /> Lịch tập sắp diễn ra
-          </h3>
+          <div className="flex bg-slate-200/80 p-1 rounded-xl w-full">
+            <button
+              onClick={() => setViewMode("upcoming")}
+              className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all text-center ${
+                viewMode === "upcoming"
+                  ? "bg-primary text-secondary shadow-sm font-extrabold"
+                  : "text-slate-600 hover:text-slate-800"
+              }`}
+            >
+              Sắp diễn ra
+            </button>
+            <button
+              onClick={() => setViewMode("history")}
+              className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all text-center ${
+                viewMode === "history"
+                  ? "bg-primary text-secondary shadow-sm font-extrabold"
+                  : "text-slate-600 hover:text-slate-800"
+              }`}
+            >
+              Lịch sử buổi đánh
+            </button>
+          </div>
 
           {isLoading ? (
             <div className="flex justify-center p-8">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
           ) : sessions.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center text-slate-400">
-              Chưa có buổi tập nào được xếp lịch.
+            <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center text-slate-400 text-xs">
+              {viewMode === "history" ? "Chưa có lịch sử buổi tập nào." : "Chưa có buổi tập nào được xếp lịch."}
             </div>
           ) : (
             <div className="space-y-3">
@@ -298,14 +323,75 @@ export default function AdminSessionsPage() {
 
             <form onSubmit={handleCreateSession} className="space-y-4">
               <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Chọn loại buổi tập nhanh</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTemplate("dinh_ky");
+                      setTitle("Sinh hoạt định kì");
+                      const now = new Date();
+                      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T19:00`;
+                      setDateTime(dateStr);
+                      setLocation("Sân Bình Thắng");
+                    }}
+                    className={`p-2 rounded-xl border text-[10px] font-black text-center transition-all cursor-pointer ${
+                      template === "dinh_ky"
+                        ? "border-primary bg-primary/10 text-secondary"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    Sinh hoạt định kì
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTemplate("offline");
+                      setTitle("Offline toàn bộ CLB");
+                      const now = new Date();
+                      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T17:00`;
+                      setDateTime(dateStr);
+                      setLocation("Sân Bình Thắng");
+                    }}
+                    className={`p-2 rounded-xl border text-[10px] font-black text-center transition-all cursor-pointer ${
+                      template === "offline"
+                        ? "border-primary bg-primary/10 text-secondary"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    Offline toàn bộ CLB
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTemplate("khac");
+                      setTitle("");
+                      setDateTime("");
+                      setLocation("");
+                    }}
+                    className={`p-2 rounded-xl border text-[10px] font-black text-center transition-all cursor-pointer ${
+                      template === "khac"
+                        ? "border-primary bg-primary/10 text-secondary"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    Kiểu khác
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Tên buổi sinh hoạt</label>
                 <input
                   type="text"
                   required
                   placeholder="Ví dụ: Buổi tập Thứ Bảy - Giao lưu ELO"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50"
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setTemplate("khac");
+                  }}
+                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50 font-bold"
                 />
               </div>
 
@@ -315,8 +401,11 @@ export default function AdminSessionsPage() {
                   type="datetime-local"
                   required
                   value={dateTime}
-                  onChange={(e) => setDateTime(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50"
+                  onChange={(e) => {
+                    setDateTime(e.target.value);
+                    setTemplate("khac");
+                  }}
+                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50 font-bold"
                 />
               </div>
 
@@ -327,8 +416,11 @@ export default function AdminSessionsPage() {
                   required
                   placeholder="Ví dụ: Sân cầu lông Kỳ Hòa, Quận 10"
                   value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50"
+                  onChange={(e) => {
+                    setLocation(e.target.value);
+                    setTemplate("khac");
+                  }}
+                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50 font-bold"
                 />
               </div>
 

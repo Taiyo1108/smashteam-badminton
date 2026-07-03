@@ -8,9 +8,49 @@ const { upload, cloudinary } = require('../utils/cloudinary');
 router.get('/items', async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT * FROM shop_items WHERE is_active = true ORDER BY id ASC`
+      `SELECT s.*, COALESCE(buy_stats.buy_count, 0)::int as monthly_buys
+       FROM shop_items s
+       LEFT JOIN (
+           SELECT shop_item_id, COUNT(*)::int as buy_count
+           FROM user_inventory
+           WHERE purchased_at >= NOW() - INTERVAL '30 days' AND shop_item_id IS NOT NULL
+           GROUP BY shop_item_id
+       ) buy_stats ON s.id = buy_stats.shop_item_id
+       WHERE s.is_active = true`
     );
-    res.json(result.rows);
+
+    const items = result.rows;
+    // Tìm top 3 mặt hàng được mua nhiều nhất trong tháng qua (chỉ tính mặt hàng đã được mua > 0 lần)
+    const sortedByBuys = [...items]
+      .filter(item => item.monthly_buys > 0)
+      .sort((a, b) => b.monthly_buys - a.monthly_buys);
+    
+    const top3Ids = sortedByBuys.slice(0, 3).map(item => item.id);
+
+    const processedItems = items.map(item => {
+      const isHot = top3Ids.includes(item.id);
+      return {
+        ...item,
+        is_hot: isHot
+      };
+    });
+
+    // Sắp xếp:
+    // 1. Mặt hàng HOT lên trên cùng (xếp theo lượng mua giảm dần)
+    // 2. Tiếp theo là các mặt hàng không HOT, xếp theo giá (coin_price) từ thấp đến cao
+    processedItems.sort((a, b) => {
+      if (a.is_hot && !b.is_hot) return -1;
+      if (!a.is_hot && b.is_hot) return 1;
+      if (a.is_hot && b.is_hot) {
+        if (b.monthly_buys !== a.monthly_buys) {
+          return b.monthly_buys - a.monthly_buys;
+        }
+        return a.coin_price - b.coin_price;
+      }
+      return a.coin_price - b.coin_price;
+    });
+
+    res.json(processedItems);
   } catch (error) {
     console.error('Error fetching shop items:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi lấy danh sách sản phẩm.' });
