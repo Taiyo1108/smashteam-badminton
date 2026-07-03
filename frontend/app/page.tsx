@@ -240,7 +240,7 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
-                className="group relative rounded-2xl overflow-hidden bg-slate-100 aspect-square md:aspect-[4/5] shadow-sm hover:shadow-xl transition-all"
+                className="group relative rounded-2xl overflow-hidden bg-slate-100 aspect-square md:aspect-[4/5] shadow-sm hover:shadow-xl transition-all effect-shimmer"
               >
                 {media.type === 'image' ? (
                   <Image src={media.url} alt={media.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />

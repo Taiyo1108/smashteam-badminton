@@ -138,10 +138,10 @@ export default function BgmPlayer() {
           <div className="flex items-center justify-center gap-[3px]">
             <Volume2 className="w-5 h-5 animate-pulse" />
             {/* Visual audio soundwaves bar animation */}
-            <div className="flex items-end gap-[1.5px] h-3">
-              <span className="w-[1.5px] h-1 bg-smash-violet rounded-full animate-soundwave-1" />
-              <span className="w-[1.5px] h-1 bg-smash-violet rounded-full animate-soundwave-2" />
-              <span className="w-[1.5px] h-1 bg-smash-violet rounded-full animate-soundwave-3" />
+            <div className="flex items-end gap-[2px] h-4">
+              <span className="sound-wave-bar" style={{ animationDelay: '0.1s' }} />
+              <span className="sound-wave-bar" style={{ animationDelay: '0.4s' }} />
+              <span className="sound-wave-bar" style={{ animationDelay: '0.7s' }} />
             </div>
           </div>
         ) : (

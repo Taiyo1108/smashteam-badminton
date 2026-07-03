@@ -575,7 +575,7 @@ export default function ProfilePage() {
     if (elo >= 1800) return {
       name: "Challenger",
       borderClass: "bg-gradient-to-r from-red-500 via-purple-600 to-red-500 p-[3px]",
-      glowClass: "shadow-[0_0_25px_rgba(239,68,68,0.6)]",
+      glowClass: "rank-glow-challenger",
       badgeClass: "bg-gradient-to-r from-red-500 to-purple-600 text-white border border-red-400",
       nextElo: 2500,
       prevElo: 1800
@@ -583,7 +583,7 @@ export default function ProfilePage() {
     if (elo >= 1600) return {
       name: "Diamond",
       borderClass: "border-4 border-blue-500",
-      glowClass: "shadow-[0_0_20px_rgba(59,130,246,0.5)]",
+      glowClass: "rank-glow-diamond",
       badgeClass: "bg-blue-600/30 text-blue-400 border border-blue-500/50",
       nextElo: 1800,
       prevElo: 1600
@@ -591,7 +591,7 @@ export default function ProfilePage() {
     if (elo >= 1400) return {
       name: "Platinum",
       borderClass: "border-4 border-teal-400",
-      glowClass: "shadow-[0_0_15px_rgba(45,212,191,0.4)]",
+      glowClass: "rank-glow-platinum",
       badgeClass: "bg-teal-600/30 text-teal-400 border border-teal-500/50",
       nextElo: 1600,
       prevElo: 1400
@@ -599,7 +599,7 @@ export default function ProfilePage() {
     if (elo >= 1200) return {
       name: "Gold",
       borderClass: "border-4 border-amber-400",
-      glowClass: "shadow-[0_0_15px_rgba(251,191,36,0.4)]",
+      glowClass: "rank-glow-gold",
       badgeClass: "bg-amber-600/30 text-amber-400 border border-amber-500/50",
       nextElo: 1400,
       prevElo: 1200
@@ -607,7 +607,7 @@ export default function ProfilePage() {
     if (elo >= 1100) return {
       name: "Silver",
       borderClass: "border-4 border-slate-300",
-      glowClass: "shadow-[0_0_10px_rgba(203,213,225,0.3)]",
+      glowClass: "rank-glow-silver",
       badgeClass: "bg-slate-600/30 text-slate-300 border border-slate-400/50",
       nextElo: 1200,
       prevElo: 1100
@@ -615,7 +615,7 @@ export default function ProfilePage() {
     return {
       name: "Bronze",
       borderClass: "border-4 border-amber-800",
-      glowClass: "shadow-[0_0_10px_rgba(146,64,14,0.2)]",
+      glowClass: "rank-glow-bronze",
       badgeClass: "bg-amber-800/30 text-amber-600 border border-amber-800/50",
       nextElo: 1100,
       prevElo: 1000
@@ -1388,7 +1388,7 @@ export default function ProfilePage() {
               <div className="space-y-6">
                 
                 {/* 1. Hộp quà bí ẩn hàng ngày (Daily Mystery Box) */}
-                <div className="p-5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-slate-950 to-amber-950/30 border border-purple-500/30 shadow-[0_0_15px_rgba(147,51,234,0.15)] flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-slate-950 to-amber-950/30 border box-glow-mystery flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full filter blur-2xl pointer-events-none"></div>
                   
                   <div className="flex items-center gap-4 flex-col sm:flex-row text-center sm:text-left">

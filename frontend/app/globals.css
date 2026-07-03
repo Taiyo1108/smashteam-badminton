@@ -11,8 +11,71 @@
   --color-smash-violet: #9D4EDD;
   --color-smash-dark: #0c0a1a;
   --color-smash-light: #f8fafc;
-  
+  --color-smash-gold: #FFD700;
+  --color-smash-bronze: #CD7F32;
+  --color-smash-silver: #C0C0C0;
+  --color-smash-diamond: #B9F2FF;
+  --color-smash-platinum: #2dd4bf;
+  --color-smash-challenger: #FF007F;
+
+  /* Custom Glow Box Shadows */
+  --shadow-glow-bronze: 0 0 10px rgba(205, 127, 50, 0.4);
+  --shadow-glow-silver: 0 0 12px rgba(192, 192, 192, 0.5);
+  --shadow-glow-gold: 0 0 20px rgba(255, 215, 0, 0.65);
+  --shadow-glow-platinum: 0 0 15px rgba(45, 212, 191, 0.45);
+  --shadow-glow-diamond: 0 0 22px rgba(185, 242, 255, 0.7);
+  --shadow-glow-challenger: 0 0 25px rgba(255, 0, 127, 0.85);
+  --shadow-glow-mystery: 0 0 20px rgba(157, 78, 221, 0.8);
+
+  /* Animations definitions */
+  --animate-neon-pulse: neon-pulse 2s infinite alternate;
+  --animate-rainbow-glow: rainbow-glow 4s infinite linear;
+  --animate-shimmer: shimmer 2.5s infinite linear;
+  --animate-float: float 3s ease-in-out infinite;
+
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  @keyframes neon-pulse {
+    from {
+      box-shadow: 0 0 8px var(--color-smash-purple), 0 0 3px rgba(122, 34, 224, 0.3);
+    }
+    to {
+      box-shadow: 0 0 22px var(--color-smash-violet), 0 0 10px rgba(157, 78, 221, 0.7);
+    }
+  }
+
+  @keyframes rainbow-glow {
+    0%, 100% {
+      border-color: var(--color-smash-purple);
+      box-shadow: 0 0 15px rgba(122, 34, 224, 0.6);
+    }
+    33% {
+      border-color: var(--color-smash-diamond);
+      box-shadow: 0 0 15px rgba(185, 242, 255, 0.6);
+    }
+    66% {
+      border-color: var(--color-smash-challenger);
+      box-shadow: 0 0 20px rgba(255, 0, 127, 0.7);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
 }
 
 :root {
@@ -60,5 +123,81 @@ body {
 
 .animate-soundwave-3 {
   animation: soundwave 0.7s ease-in-out infinite 0.3s;
+}
+
+/* THIẾT LẬP CÁC LỚP TIỆN ÍCH PHÁT SÁNG CỐ ĐỊNH */
+
+/* Bậc Đồng (Bronze) */
+@utility rank-glow-bronze {
+  border: 2px solid var(--color-smash-bronze);
+  box-shadow: var(--shadow-glow-bronze);
+}
+
+/* Bạc (Silver) */
+@utility rank-glow-silver {
+  border: 2px solid var(--color-smash-silver);
+  box-shadow: var(--shadow-glow-silver);
+}
+
+/* Vàng (Gold) */
+@utility rank-glow-gold {
+  border: 2px solid var(--color-smash-gold);
+  box-shadow: var(--shadow-glow-gold);
+  animation: var(--animate-neon-pulse);
+}
+
+/* Bạch Kim (Platinum) */
+@utility rank-glow-platinum {
+  border: 2px solid var(--color-smash-platinum);
+  box-shadow: var(--shadow-glow-platinum);
+}
+
+/* Kim Cương (Diamond) */
+@utility rank-glow-diamond {
+  border: 2px solid var(--color-smash-diamond);
+  box-shadow: var(--shadow-glow-diamond);
+}
+
+/* Cao Thủ / Thách Đấu (Challenger) */
+@utility rank-glow-challenger {
+  border: 2px solid var(--color-smash-challenger);
+  animation: var(--animate-rainbow-glow);
+}
+
+/* Hộp quà bí ẩn (Mystery Box) */
+@utility box-glow-mystery {
+  box-shadow: var(--shadow-glow-mystery);
+  animation: var(--animate-float);
+}
+
+/* Hiệu ứng lấp lánh trượt bóng (Shimmer Card Background) */
+@utility effect-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(12, 10, 26, 0.1) 25%,
+    rgba(157, 78, 221, 0.15) 50%,
+    rgba(12, 10, 26, 0.1) 75%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+/* Sóng âm của nút BGM */
+@utility sound-wave-bar {
+  display: inline-block;
+  width: 3px;
+  height: 15px;
+  background-color: var(--color-smash-violet);
+  border-radius: 999px;
+  animation: soundwave-bgm 1.2s ease-in-out infinite;
+}
+
+@keyframes soundwave-bgm {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
 }
 
