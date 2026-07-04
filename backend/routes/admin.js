@@ -191,6 +191,33 @@ router.post('/sessions', async (req, res) => {
   }
 });
 
+// PUT /api/admin/sessions/:id - Chỉnh sửa thông tin buổi tập
+router.put('/sessions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, date_time, location } = req.body;
+    if (!title || !date_time || !location) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp tiêu đề, thời gian và địa điểm.' });
+    }
+
+    const result = await db.query(
+      `UPDATE sessions 
+       SET title = $1, date_time = $2, location = $3 
+       WHERE id = $4 RETURNING *`,
+      [title, date_time, location, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy buổi tập này.' });
+    }
+
+    res.json({ success: true, session: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating session:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/admin/sessions/:id/attendees - Lấy danh sách thành viên check-in thực tế của buổi tập
 router.get('/sessions/:id/attendees', async (req, res) => {
   try {

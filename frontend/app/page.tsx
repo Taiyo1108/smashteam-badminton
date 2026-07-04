@@ -58,6 +58,7 @@ export default function Home() {
 
   const [countdownText, setCountdownText] = useState("Đang tính toán...");
   const [isTodaySession, setIsTodaySession] = useState(false);
+  const [settings, setSettings] = useState<any>({});
 
   // Heart likes simulation on feed
   const [likedActivities, setLikedActivities] = useState<Record<string, boolean>>({});
@@ -122,9 +123,12 @@ export default function Home() {
     fetch(`${API_URL}/api/settings?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
-        if (data && data.homepage_cover_url) {
-          setCoverUrl(data.homepage_cover_url);
-          localStorage.setItem("homepage_cover_url", data.homepage_cover_url);
+        if (data) {
+          setSettings(data);
+          if (data.homepage_cover_url) {
+            setCoverUrl(data.homepage_cover_url);
+            localStorage.setItem("homepage_cover_url", data.homepage_cover_url);
+          }
         }
       })
       .catch(e => console.error("Error loading settings:", e));
@@ -392,330 +396,347 @@ export default function Home() {
       </section>
 
       {/* TẦNG 2: LIVE DASHBOARD & FOMO WIDGET */}
-      <section className="max-w-7xl mx-auto px-4 py-20 relative z-10">
-        <div className="p-8 rounded-3xl bg-slate-900/60 border border-slate-800 backdrop-blur-md relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full filter blur-3xl -z-10 pointer-events-none" />
-          
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* Status dashboard */}
-            <div className="lg:col-span-7 space-y-4">
-              <div className="flex items-center gap-2">
-                {isTodaySession ? (
-                  <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-extrabold text-[10px] uppercase tracking-widest animate-pulse">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> LIVE HÔM NAY
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-extrabold text-[10px] uppercase tracking-widest">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" /> Buổi tập kế tiếp
-                  </span>
-                )}
-                <span className="text-xs font-black text-slate-400 tracking-wider">
-                  {liveData.session ? liveData.session.title : "Chưa lập lịch tập mới"}
-                </span>
-              </div>
-
-              {liveData.session ? (
-                <>
-                  <h3 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-                    {isTodaySession ? (
-                      <span>Chào mừng đến với buổi tập ngày hôm nay! 👋</span>
-                    ) : (
-                      <span>Đếm ngược buổi sinh hoạt sắp diễn ra:</span>
-                    )}
-                  </h3>
-                  
-                  <div className="flex flex-wrap gap-4 items-center text-slate-300">
-                    <span className="text-sm font-bold bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-850">
-                      📍 {liveData.session.location}
-                    </span>
-                    <span className="text-sm font-bold bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-850">
-                      ⏰ {new Date(liveData.session.date_time_str).toLocaleString("vi-VN", {
-                        weekday: "long", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit"
-                      })}
-                    </span>
-                  </div>
-
-                  {!isTodaySession && (
-                    <div className="pt-2">
-                      <p className="text-4xl md:text-5xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-primary to-pink-500 tracking-wider">
-                        {countdownText}
-                      </p>
-                    </div>
-                  )}
-
-                  {isTodaySession && (
-                    <div className="grid grid-cols-2 gap-4 max-w-sm pt-2">
-                      <div className="p-3 bg-slate-950/80 border border-slate-850 rounded-2xl text-center">
-                        <p className="text-2xl font-black text-white">{liveData.todayStats.checkinsCount}</p>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">Đã Check-in</p>
-                      </div>
-                      <div className="p-3 bg-slate-950/80 border border-slate-850 rounded-2xl text-center">
-                        <p className="text-2xl font-black text-white">{liveData.todayStats.matchesCount}</p>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">Trận đấu hôm nay</p>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-slate-400 text-sm italic">Ban quản trị đang cập nhật lịch tập luyện mới...</p>
-              )}
-            </div>
-
-            {/* FOMO Stack Widget */}
-            <div className="lg:col-span-5 border-t lg:border-t-0 lg:border-l border-slate-800 pt-6 lg:pt-0 lg:pl-8 space-y-4">
-              <h4 className="text-sm font-black text-slate-400 tracking-wider uppercase">
-                {isTodaySession ? "Đang có mặt trên sân:" : "Ai sẽ tham gia buổi này?"}
-              </h4>
-
-              {liveData?.rsvpList?.length > 0 ? (
-                <div className="space-y-4">
-                  {/* Stack design */}
-                  <div className="flex items-center">
-                    <div className="flex -space-x-3 overflow-hidden">
-                      {liveData.rsvpList.slice(0, 8).map((user: any) => (
-                        <div 
-                          key={user.id} 
-                          className="relative w-10 h-10 rounded-full border-2 border-slate-900 overflow-hidden bg-slate-850 group cursor-pointer"
-                        >
-                          {user.avatar_url ? (
-                            <Image 
-                              src={user.avatar_url} 
-                              alt={user.full_name} 
-                              fill 
-                              sizes="40px"
-                              className="object-cover" 
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-primary text-white text-xs font-bold">
-                              {user.full_name?.substring(0, 2).toUpperCase()}
-                            </div>
-                          )}
-                          
-                          {/* Tooltip on hover */}
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] p-2 bg-slate-950 border border-slate-800 rounded-xl text-[10px] font-black pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50 text-white text-center shadow-xl">
-                            <p className="text-slate-200">{user.full_name}</p>
-                            <p className="text-slate-400 font-medium">{user.academic_info || "Hội viên CLB"}</p>
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-extrabold bg-primary/20 text-primary border border-primary/20 mt-1">
-                              {user.rank_name} {user.elo_score} ELO
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-
-                      {liveData?.rsvpList?.length > 8 && (
-                        <div className="w-10 h-10 rounded-full border-2 border-slate-900 bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-300">
-                          +{liveData.rsvpList.length - 8}
-                        </div>
-                      )}
-                    </div>
-
-                    <span className="text-xs text-slate-400 font-bold ml-3">
-                      {liveData?.rsvpList?.length} người đã RSVP
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-500 italic">
-                    * Rê chuột vào từng avatar để xem trường Đại học & thứ hạng Rank Elo của họ!
-                  </p>
-                </div>
-              ) : (
-                <p className="text-slate-400 text-xs italic">Chưa có ai RSVP. Đăng ký ngay để ghi danh!</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* TẦNG 3: BATTLE PASS TEASER */}
-      <section className="max-w-7xl mx-auto px-4 py-10 relative z-10">
-        <div className="p-8 rounded-3xl bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-slate-950 border border-purple-500/20 shadow-[0_0_40px_rgba(122,34,224,0.15)] flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
-          {/* Left info */}
-          <div className="space-y-4 max-w-xl text-center md:text-left">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-black uppercase tracking-wider">
-              <Zap className="w-3.5 h-3.5 fill-purple-400" /> Smash Pass độc quyền
-            </div>
-            <h3 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-              Tích lũy Điểm Danh, Mở khóa <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Smash Pass</span>
-            </h3>
-            <p className="text-sm text-slate-400">
-              Độc nhất vô nhị chỉ có tại SmashTeam: Hoàn thành các buổi sinh hoạt định kỳ và nhiệm vụ thử thách để thăng cấp, tích lũy Smash Coins và đổi lấy các quà tặng phiên bản giới hạn.
-            </p>
-            <div className="flex flex-wrap gap-4 items-center justify-center md:justify-start pt-2">
-              <span className="text-xs text-slate-400 font-bold bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
-                🎫 Cấp BP: {battlePass.level}
-              </span>
-              <span className="text-xs text-slate-400 font-bold bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
-                ⏳ Còn lại: {battlePass.daysLeft} ngày
-              </span>
-            </div>
-          </div>
-
-          {/* Progress visual and teaser reward */}
-          <div className="w-full md:w-80 p-5 rounded-2xl bg-slate-950 border border-slate-850 space-y-4">
-            <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{battlePass.season}</p>
+      {settings.show_next_session !== "false" && (
+        <section className="max-w-7xl mx-auto px-4 py-20 relative z-10">
+          <div className="p-8 rounded-3xl bg-slate-900/60 border border-slate-800 backdrop-blur-md relative overflow-hidden shadow-2xl">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full filter blur-3xl -z-10 pointer-events-none" />
             
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs font-bold">
-                <span className="text-purple-400">Tiến độ cấp {battlePass.level}</span>
-                <span className="text-slate-400">{battlePass.progress}%</span>
-              </div>
-              <div className="w-full h-3 bg-slate-900 rounded-full overflow-hidden border border-slate-850 p-[2px]">
-                <div 
-                  className="h-full bg-gradient-to-r from-primary to-pink-500 rounded-full" 
-                  style={{ width: `${battlePass.progress}%` }} 
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 bg-slate-900/60 rounded-xl border border-purple-500/20">
-              <div className="text-2xl animate-pulse">🎁</div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Phần thưởng cấp tiếp theo</p>
-                <p className="text-xs font-black text-purple-300">{battlePass.nextReward}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* TẦNG 4: COMMUNITY ACTIVITY FEED (Facebook mini) */}
-      <section className="max-w-7xl mx-auto px-4 py-20 grid grid-cols-1 lg:grid-cols-3 gap-12 relative z-10">
-        <div className="lg:col-span-2 space-y-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-2 h-8 bg-primary rounded-full"></div>
-            <div>
-              <h2 className="text-3xl font-black text-white tracking-tight">Hoạt động Câu Lạc Bộ</h2>
-              <p className="text-slate-500 text-sm mt-1">Dòng tin tức tự động ghi nhận trực tiếp mọi khoảnh khắc tranh tài, thăng hạng ELO.</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {liveData.activities.length > 0 ? (
-              liveData.activities.map((act: any) => (
-                <div 
-                  key={act.id} 
-                  className="p-5 rounded-2xl bg-slate-900/40 border border-slate-850/50 flex gap-4 items-start hover:border-slate-800 transition-colors group relative overflow-hidden"
-                >
-                  {/* Left Icon indicator */}
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-850 text-xl group-hover:scale-105 transition-transform duration-300">
-                    {act.type === 'match' ? '🏸' : act.type === 'promotion' ? '👑' : '🔥'}
-                  </div>
-
-                  {/* Text Details */}
-                  <div className="flex-grow space-y-1">
-                    <p className="text-sm md:text-base font-bold text-slate-200 group-hover:text-white transition-colors">
-                      {act.text}
-                    </p>
-                    <p className="text-[10px] text-slate-500 font-bold">
-                      {new Date(act.timestamp).toLocaleTimeString("vi-VN", {
-                        hour: "2-digit", minute: "2-digit"
-                      })} - {new Date(act.timestamp).toLocaleDateString("vi-VN")}
-                    </p>
-                  </div>
-
-                  {/* Like Button */}
-                  <button 
-                    onClick={() => handleLike(act.id)}
-                    className={`p-2.5 rounded-xl border flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${
-                      likedActivities[act.id]
-                        ? "bg-rose-500/10 border-rose-500/30 text-rose-500"
-                        : "bg-slate-950 border-slate-850 text-slate-500 hover:text-slate-400"
-                    }`}
-                  >
-                    <Heart className={`w-3.5 h-3.5 ${likedActivities[act.id] ? "fill-rose-500" : ""}`} />
-                    <span>{likeCounts[act.id] || 0}</span>
-                  </button>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              {/* Status dashboard */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="flex items-center gap-2">
+                  {isTodaySession ? (
+                    <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-extrabold text-[10px] uppercase tracking-widest animate-pulse">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> LIVE HÔM NAY
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-extrabold text-[10px] uppercase tracking-widest">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" /> Buổi tập kế tiếp
+                    </span>
+                  )}
+                  <span className="text-xs font-black text-slate-400 tracking-wider">
+                    {liveData.session ? liveData.session.title : "Chưa lập lịch tập mới"}
+                  </span>
                 </div>
-              ))
-            ) : (
-              <p className="text-slate-400 text-sm italic">Hôm nay chưa có bản tin hoạt động mới...</p>
-            )}
-          </div>
-        </div>
 
-        {/* TẦNG 5: HALL OF FAME TABBED 3D CARDS (Leaderboards Widget Overhaul) */}
-        <div className="space-y-8 lg:col-span-1">
-          <div className="flex items-center gap-3">
-            <div className="w-2 h-8 bg-primary rounded-full"></div>
-            <div>
-              <h2 className="text-3xl font-black text-white tracking-tight">Hall of Fame</h2>
-              <p className="text-slate-500 text-sm mt-1">Nơi vinh danh các cá nhân xuất sắc nhất trong CLB.</p>
-            </div>
-          </div>
+                {liveData.session ? (
+                  <>
+                    <h3 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+                      {isTodaySession ? (
+                        <span>Chào mừng đến với buổi tập ngày hôm nay! 👋</span>
+                      ) : (
+                        <span>Đếm ngược buổi sinh hoạt sắp diễn ra:</span>
+                      )}
+                    </h3>
+                    
+                    <div className="flex flex-wrap gap-4 items-center text-slate-300">
+                      <span className="text-sm font-bold bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-850">
+                        📍 {liveData.session.location}
+                      </span>
+                      <span className="text-sm font-bold bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-850">
+                        ⏰ {new Date(liveData.session.date_time_str).toLocaleString("vi-VN", {
+                          weekday: "long", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit"
+                        })}
+                      </span>
+                    </div>
 
-          <div className="bg-slate-900/60 rounded-3xl p-6 border border-slate-850 relative overflow-hidden shadow-2xl">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-bl-full -z-0 pointer-events-none"></div>
-
-            {/* Grid Tabs Switcher */}
-            <div className="relative z-10 grid grid-cols-2 gap-1.5 p-1 bg-slate-950 rounded-xl mb-6 border border-slate-850">
-              {hofTabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveHofTab(tab.key as any)}
-                  className={`py-2 text-[10px] font-black rounded-lg transition-all duration-300 cursor-pointer ${
-                    activeHofTab === tab.key
-                      ? "bg-primary text-white shadow-md shadow-primary/20 scale-[1.02]"
-                      : "text-slate-500 hover:text-slate-300"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Podium details */}
-            <div className="space-y-4 relative z-10">
-              {getActiveHofData().length > 0 ? (
-                getActiveHofData().map((user: any, index: number) => (
-                  <div 
-                    key={user.id} 
-                    className={`p-4 rounded-2xl bg-slate-950 border flex items-center justify-between transition-all group ${getRankGlowClass(user.rank_name)}`}
-                  >
-                    <div className="flex items-center gap-3.5">
-                      {/* Trophy indicator */}
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0 border
-                        ${index === 0 ? 'bg-amber-400/10 border-amber-400/30 text-amber-400' : 
-                          index === 1 ? 'bg-slate-300/10 border-slate-300/30 text-slate-300' : 
-                          'bg-amber-800/10 border-amber-800/30 text-amber-600'}`}
-                      >
-                        {index + 1}
+                    {!isTodaySession && (
+                      <div className="pt-2">
+                        <p className="text-4xl md:text-5xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-primary to-pink-500 tracking-wider">
+                          {countdownText}
+                        </p>
                       </div>
+                    )}
 
-                      {/* Avatar with rank border */}
-                      <div className="relative w-11 h-11 rounded-full overflow-hidden border-2 border-slate-800 shrink-0">
-                        {user.avatar_url ? (
-                          <Image src={user.avatar_url} alt={user.full_name} fill sizes="44px" className="object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white font-bold text-xs">
-                            {user.full_name?.substring(0, 2).toUpperCase()}
+                    {isTodaySession && (
+                      <div className="grid grid-cols-2 gap-4 max-w-sm pt-2">
+                        <div className="p-3 bg-slate-950/80 border border-slate-850 rounded-2xl text-center">
+                          <p className="text-2xl font-black text-white">{liveData.todayStats.checkinsCount}</p>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">Đã Check-in</p>
+                        </div>
+                        <div className="p-3 bg-slate-950/80 border border-slate-850 rounded-2xl text-center">
+                          <p className="text-2xl font-black text-white">{liveData.todayStats.matchesCount}</p>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">Trận đấu hôm nay</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-slate-400 text-sm italic">Ban quản trị đang cập nhật lịch tập luyện mới...</p>
+                )}
+              </div>
+
+              {/* FOMO Stack Widget */}
+              <div className="lg:col-span-5 border-t lg:border-t-0 lg:border-l border-slate-800 pt-6 lg:pt-0 lg:pl-8 space-y-4">
+                <h4 className="text-sm font-black text-slate-400 tracking-wider uppercase">
+                  {isTodaySession ? "Đang có mặt trên sân:" : "Ai sẽ tham gia buổi này?"}
+                </h4>
+
+                {liveData?.rsvpList?.length > 0 ? (
+                  <div className="space-y-4">
+                    {/* Stack design */}
+                    <div className="flex items-center">
+                      <div className="flex -space-x-3 overflow-hidden">
+                        {liveData.rsvpList.slice(0, 8).map((user: any) => (
+                          <div 
+                            key={user.id} 
+                            className="relative w-10 h-10 rounded-full border-2 border-slate-900 overflow-hidden bg-slate-850 group cursor-pointer"
+                          >
+                            {user.avatar_url ? (
+                              <Image 
+                                src={user.avatar_url} 
+                                alt={user.full_name} 
+                                fill 
+                                sizes="40px"
+                                className="object-cover" 
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-primary text-white text-xs font-bold">
+                                {user.full_name?.substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            
+                            {/* Tooltip on hover */}
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] p-2 bg-slate-950 border border-slate-800 rounded-xl text-[10px] font-black pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50 text-white text-center shadow-xl">
+                              <p className="text-slate-200">{user.full_name}</p>
+                              <p className="text-slate-400 font-medium">{user.academic_info || "Hội viên CLB"}</p>
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-extrabold bg-primary/20 text-primary border border-primary/20 mt-1">
+                                {user.rank_name} {user.elo_score} ELO
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+
+                        {liveData?.rsvpList?.length > 8 && (
+                          <div className="w-10 h-10 rounded-full border-2 border-slate-900 bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-300">
+                            +{liveData.rsvpList.length - 8}
                           </div>
                         )}
                       </div>
 
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-extrabold text-white group-hover:text-primary transition-colors text-sm">{user.full_name}</p>
-                          <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(user.rank_name)}`}>
-                            {user.rank_name}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 font-bold mt-0.5">Tân binh tháng này</p>
-                      </div>
+                      <span className="text-xs text-slate-400 font-bold ml-3">
+                        {liveData?.rsvpList?.length} người đã RSVP
+                      </span>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <p className="font-black text-sm text-white">{getHofScoreUnit(user.score)}</p>
-                      <p className="text-[8px] uppercase tracking-wider text-slate-500 font-bold">Thành tích</p>
-                    </div>
+                    <span className="text-xs text-slate-500 italic">
+                      * Rê chuột vào từng avatar để xem trường Đại học & thứ hạng Rank Elo của họ!
+                    </span>
                   </div>
-                ))
-              ) : (
-                <p className="text-slate-400 text-xs italic text-center py-6">Hiện chưa có thống kê cho hạng mục này.</p>
-              )}
+                ) : (
+                  <p className="text-slate-400 text-xs italic">Chưa có ai RSVP. Đăng ký ngay để ghi danh!</p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
+
+      {/* TẦNG 3: BATTLE PASS TEASER */}
+      {settings.show_battle_pass !== "false" && (
+        <section className="max-w-7xl mx-auto px-4 py-10 relative z-10">
+          <div className="p-8 rounded-3xl bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-slate-950 border border-purple-500/20 shadow-[0_0_40px_rgba(122,34,224,0.15)] flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
+            {/* Left info */}
+            <div className="space-y-4 max-w-xl text-center md:text-left">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-black uppercase tracking-wider">
+                <Zap className="w-3.5 h-3.5 fill-purple-400" /> Smash Pass độc quyền
+              </div>
+              <h3 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+                Tích lũy Điểm Danh, Mở khóa <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Smash Pass</span>
+              </h3>
+              <p className="text-sm text-slate-400">
+                Độc nhất vô nhị chỉ có tại SmashTeam: Hoàn thành các buổi sinh hoạt định kỳ và nhiệm vụ thử thách để thăng cấp, tích lũy Smash Coins và đổi lấy các quà tặng phiên bản giới hạn.
+              </p>
+              <div className="flex flex-wrap gap-4 items-center justify-center md:justify-start pt-2">
+                <span className="text-xs text-slate-400 font-bold bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
+                  🎫 Cấp BP: {battlePass.level}
+                </span>
+                <span className="text-xs text-slate-400 font-bold bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
+                  ⏳ Còn lại: {battlePass.daysLeft} ngày
+                </span>
+              </div>
+            </div>
+
+            {/* Progress visual and teaser reward */}
+            <div className="w-full md:w-80 p-5 rounded-2xl bg-slate-950 border border-slate-850 space-y-4">
+              <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{battlePass.season}</p>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-bold text-slate-400">
+                  <span>Tiến trình cấp {battlePass.level}</span>
+                  <span className="text-purple-400">{battlePass.progress}%</span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden border border-slate-850">
+                  <div 
+                    className="h-full bg-gradient-to-r from-primary to-purple-500 rounded-full" 
+                    style={{ width: `${battlePass.progress}%` }} 
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 p-3 bg-slate-900/60 rounded-xl border border-purple-500/20">
+                <div className="text-2xl animate-pulse">🎁</div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Phần thưởng cấp tiếp theo</p>
+                  <p className="text-xs font-black text-purple-300">{battlePass.nextReward}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* TẦNG 4 & TẦNG 5: ACTIVITY FEED & LEADERBOARD */}
+      {(settings.show_activities !== "false" || settings.show_leaderboard !== "false") && (
+        <section className="max-w-7xl mx-auto px-4 py-20 grid grid-cols-1 lg:grid-cols-3 gap-12 relative z-10">
+          
+          {/* TẦNG 4: COMMUNITY ACTIVITY FEED (Facebook mini) */}
+          {settings.show_activities !== "false" && (
+            <div className={`${settings.show_leaderboard !== "false" ? "lg:col-span-2" : "lg:col-span-3"} space-y-8`}>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-2 h-8 bg-primary rounded-full"></div>
+                <div>
+                  <h2 className="text-3xl font-black text-white tracking-tight">Hoạt động Câu Lạc Bộ</h2>
+                  <p className="text-slate-500 text-sm mt-1">Dòng tin tức tự động ghi nhận trực tiếp mọi khoảnh khắc tranh tài, thăng hạng ELO.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {liveData.activities.length > 0 ? (
+                  liveData.activities.map((act: any) => (
+                    <div 
+                      key={act.id} 
+                      className="p-5 rounded-2xl bg-slate-900/40 border border-slate-850/50 flex gap-4 items-start hover:border-slate-800 transition-colors group relative overflow-hidden"
+                    >
+                      {/* Left Icon indicator */}
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-850 text-xl group-hover:scale-105 transition-transform duration-300">
+                        {act.type === 'match' ? '🏸' : act.type === 'promotion' ? '👑' : '🔥'}
+                      </div>
+
+                      {/* Text Details */}
+                      <div className="flex-grow space-y-1">
+                        <p className="text-sm md:text-base font-bold text-slate-200 group-hover:text-white transition-colors">
+                          {act.text}
+                        </p>
+                        <p className="text-[10px] text-slate-500 font-bold">
+                          {new Date(act.timestamp).toLocaleTimeString("vi-VN", {
+                            hour: "2-digit", minute: "2-digit"
+                          })} - {new Date(act.timestamp).toLocaleDateString("vi-VN")}
+                        </p>
+                      </div>
+
+                      {/* Like Button */}
+                      <button 
+                        onClick={() => handleLike(act.id)}
+                        className={`p-2.5 rounded-xl border flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${
+                          likedActivities[act.id]
+                            ? "bg-rose-500/10 border-rose-500/30 text-rose-500"
+                            : "bg-slate-950 border-slate-850 text-slate-500 hover:text-slate-400"
+                        }`}
+                      >
+                        <Heart className={`w-3.5 h-3.5 ${likedActivities[act.id] ? "fill-rose-500" : ""}`} />
+                        <span>{likeCounts[act.id] || 0}</span>
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-slate-400 text-sm italic">Hôm nay chưa có bản tin hoạt động mới...</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TẦNG 5: HALL OF FAME TABBED 3D CARDS (Leaderboards Widget Overhaul) */}
+          {settings.show_leaderboard !== "false" && (
+            <div className={`space-y-8 ${settings.show_activities !== "false" ? "lg:col-span-1" : "lg:col-span-3"}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-8 bg-primary rounded-full"></div>
+                <div>
+                  <h2 className="text-3xl font-black text-white tracking-tight">Hall of Fame</h2>
+                  <p className="text-slate-500 text-sm mt-1">Nơi vinh danh các cá nhân xuất sắc nhất trong CLB.</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/60 rounded-3xl p-6 border border-slate-850 relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-bl-full -z-0 pointer-events-none"></div>
+
+                {/* Grid Tabs Switcher */}
+                <div className="relative z-10 grid grid-cols-2 gap-1.5 p-1 bg-slate-950 rounded-xl mb-6 border border-slate-850">
+                  {hofTabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveHofTab(tab.key as any)}
+                      className={`py-2 text-[10px] font-black rounded-lg transition-all duration-300 cursor-pointer ${
+                        activeHofTab === tab.key
+                          ? "bg-primary text-white shadow-md shadow-primary/20 scale-[1.02]"
+                          : "text-slate-500 hover:text-slate-300"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Podium details */}
+                <div className="space-y-4 relative z-10">
+                  {getActiveHofData().length > 0 ? (
+                    getActiveHofData().map((user: any, index: number) => (
+                      <div 
+                        key={user.id} 
+                        className={`p-4 rounded-2xl bg-slate-950 border flex items-center justify-between transition-all group ${getRankGlowClass(user.rank_name)}`}
+                      >
+                        <div className="flex items-center gap-3.5">
+                          {/* Trophy indicator */}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0 border
+                            ${index === 0 ? 'bg-amber-400/10 border-amber-400/30 text-amber-400' : 
+                              index === 1 ? 'bg-slate-300/10 border-slate-300/30 text-slate-300' : 
+                              'bg-amber-800/10 border-amber-800/30 text-amber-600'}`}
+                          >
+                            {index + 1}
+                          </div>
+
+                          {/* Avatar with rank border */}
+                          <div className="relative w-11 h-11 rounded-full overflow-hidden border-2 border-slate-800 shrink-0">
+                            {user.avatar_url ? (
+                              <Image src={user.avatar_url} alt={user.full_name} fill sizes="44px" className="object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white font-bold text-xs">
+                                {user.full_name?.substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-extrabold text-white group-hover:text-primary transition-colors text-sm">{user.full_name}</p>
+                              <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(user.rank_name)}`}>
+                                {user.rank_name}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-bold mt-0.5">
+                              {activeHofTab === 'elo' ? 'Xếp hạng ELO' : 
+                               activeHofTab === 'attendance' ? 'Chuyên cần' : 
+                               activeHofTab === 'rookie' ? 'Tân binh nổi bật' : 
+                               'Nhiệm vụ CLB'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <p className="font-black text-sm text-white">{getHofScoreUnit(user.score)}</p>
+                          <p className="text-[8px] uppercase tracking-wider text-slate-500 font-bold">Thành tích</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-slate-400 text-xs italic text-center py-6">Hiện chưa có thống kê cho hạng mục này.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* TẦNG 6: SMASHTEAM IN NUMBERS & GALLERY */}
       <section className="border-t border-slate-900 bg-slate-950 py-20 relative z-10">
@@ -762,37 +783,39 @@ export default function Home() {
           </div>
 
           {/* Gallery carousel section */}
-          <div className="space-y-6 pt-10">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-8 bg-primary rounded-full"></div>
-              <div>
-                <h2 className="text-3xl font-black text-white tracking-tight">Khoảnh Khắc Đời Thường</h2>
-                <p className="text-slate-500 text-sm mt-1">Chúng mình cùng cười, cùng ăn và cùng lưu giữ những kỷ niệm đẹp.</p>
+          {settings.show_gallery !== "false" && (
+            <div className="space-y-6 pt-10">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-8 bg-primary rounded-full"></div>
+                <div>
+                  <h2 className="text-3xl font-black text-white tracking-tight">Khoảnh Khắc Đời Thường</h2>
+                  <p className="text-slate-500 text-sm mt-1">Chúng mình cùng cười, cùng ăn và cùng lưu giữ những kỷ niệm đẹp.</p>
+                </div>
+              </div>
+
+              {/* Spotify style horizontal scroll */}
+              <div className="flex gap-6 overflow-x-auto pb-6 scrollbar-thin snap-x pr-4">
+                {galleryPhotos.map((photo, i) => (
+                  <div 
+                    key={i} 
+                    className="min-w-[280px] md:min-w-[320px] aspect-[4/3] rounded-3xl overflow-hidden bg-slate-900 border border-slate-850/80 snap-start group relative"
+                  >
+                    <Image 
+                      src={photo.url} 
+                      alt={photo.caption} 
+                      fill 
+                      sizes="(max-width: 768px) 100vw, 320px"
+                      className="object-cover group-hover:scale-105 transition-transform duration-500" 
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 w-full p-4 pointer-events-none">
+                      <p className="text-white text-sm font-extrabold tracking-wide">{photo.caption}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-
-            {/* Spotify style horizontal scroll */}
-            <div className="flex gap-6 overflow-x-auto pb-6 scrollbar-thin snap-x pr-4">
-              {galleryPhotos.map((photo, i) => (
-                <div 
-                  key={i} 
-                  className="min-w-[280px] md:min-w-[320px] aspect-[4/3] rounded-3xl overflow-hidden bg-slate-900 border border-slate-850/80 snap-start group relative"
-                >
-                  <Image 
-                    src={photo.url} 
-                    alt={photo.caption} 
-                    fill 
-                    sizes="(max-width: 768px) 100vw, 320px"
-                    className="object-cover group-hover:scale-105 transition-transform duration-500" 
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent pointer-events-none" />
-                  <div className="absolute bottom-0 left-0 w-full p-4 pointer-events-none">
-                    <p className="text-white text-sm font-extrabold tracking-wide">{photo.caption}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
       </section>
 

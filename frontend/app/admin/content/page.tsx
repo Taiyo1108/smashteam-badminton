@@ -72,6 +72,28 @@ export default function ContentManagementPage() {
     }
   };
 
+  const handleToggleSetting = async (key: string, currentValue: string) => {
+    const newValue = currentValue === "false" ? "true" : "false";
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ key, value: newValue })
+      });
+      if (res.ok) {
+        setSettings((prev: any) => ({ ...prev, [key]: newValue }));
+      } else {
+        alert("Lỗi khi cập nhật cấu hình.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối mạng.");
+    }
+  };
+
   useEffect(() => {
     fetchSettings();
     fetchMediaPosts();
@@ -291,6 +313,79 @@ export default function ContentManagementPage() {
               <p className="text-xs text-slate-400">
                 * Khuyến nghị sử dụng ảnh ngang tỉ lệ 16:9, độ phân giải cao và được nén tối ưu để trang chủ tải nhanh nhất.
               </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <h2 className="text-lg font-bold text-secondary flex items-center gap-2">
+              <Star className="w-5 h-5 text-primary" /> Cấu hình hiển thị Trang chủ
+            </h2>
+
+            <div className="space-y-3 text-sm text-slate-700">
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200/50">
+                <div>
+                  <p className="font-bold text-secondary text-xs">Buổi tập gần nhất</p>
+                  <p className="text-[10px] text-slate-400">Hiển thị lịch tập kế tiếp & live check-in</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.show_next_session !== "false"}
+                  onChange={() => handleToggleSetting("show_next_session", settings.show_next_session)}
+                  className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200/50">
+                <div>
+                  <p className="font-bold text-secondary text-xs">Bảng xếp hạng & Hall of Fame</p>
+                  <p className="text-[10px] text-slate-400">Hiển thị bảng vinh danh vận động viên</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.show_leaderboard !== "false"}
+                  onChange={() => handleToggleSetting("show_leaderboard", settings.show_leaderboard)}
+                  className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200/50">
+                <div>
+                  <p className="font-bold text-secondary text-xs">Teaser Battle Pass</p>
+                  <p className="text-[10px] text-slate-400">Hiển thị tiến trình Smash Pass mùa giải</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.show_battle_pass !== "false"}
+                  onChange={() => handleToggleSetting("show_battle_pass", settings.show_battle_pass)}
+                  className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200/50">
+                <div>
+                  <p className="font-bold text-secondary text-xs">Bản tin hoạt động</p>
+                  <p className="text-[10px] text-slate-400">Hiển thị feed tự động từ lịch sử thi đấu</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.show_activities !== "false"}
+                  onChange={() => handleToggleSetting("show_activities", settings.show_activities)}
+                  className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200/50">
+                <div>
+                  <p className="font-bold text-secondary text-xs">Thư viện ảnh</p>
+                  <p className="text-[10px] text-slate-400">Hiển thị khoảnh khắc sinh hoạt CLB</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.show_gallery !== "false"}
+                  onChange={() => handleToggleSetting("show_gallery", settings.show_gallery)}
+                  className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary cursor-pointer"
+                />
+              </div>
             </div>
           </div>
         </div>

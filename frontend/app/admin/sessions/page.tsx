@@ -18,6 +18,7 @@ export default function AdminSessionsPage() {
   const [attendees, setAttendees] = useState<any[]>([]);
   const [isLoadingAttendees, setIsLoadingAttendees] = useState(false);
   const [viewMode, setViewMode] = useState<"upcoming" | "history">("upcoming");
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // Form states
   const [title, setTitle] = useState("");
@@ -26,6 +27,25 @@ export default function AdminSessionsPage() {
   const [template, setTemplate] = useState<"dinh_ky" | "offline" | "khac">("khac");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleOpenEdit = () => {
+    if (!selectedSession) return;
+    setIsEditMode(true);
+    setTitle(selectedSession.title);
+    
+    // Format timezone-neutral datetime string
+    const d = new Date(selectedSession.date_time);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    setDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+    
+    setLocation(selectedSession.location);
+    setTemplate("khac");
+    setIsModalOpen(true);
+  };
 
   const fetchSessions = async (historyMode = false) => {
     setIsLoading(true);
@@ -76,8 +96,13 @@ export default function AdminSessionsPage() {
 
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/admin/sessions`, {
-        method: "POST",
+      const url = isEditMode 
+        ? `${API_URL}/api/admin/sessions/${selectedSession.id}` 
+        : `${API_URL}/api/admin/sessions`;
+      const method = isEditMode ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
@@ -96,9 +121,12 @@ export default function AdminSessionsPage() {
         setTitle("");
         setDateTime("");
         setLocation("");
-        fetchSessions();
+        if (isEditMode && data.session) {
+          setSelectedSession(data.session);
+        }
+        fetchSessions(viewMode === "history");
       } else {
-        setError(data.error || "Không thể tạo buổi tập.");
+        setError(data.error || "Không thể lưu buổi tập.");
       }
     } catch (err) {
       setError("Lỗi kết nối.");
@@ -137,8 +165,12 @@ export default function AdminSessionsPage() {
         </div>
         <button
           onClick={() => {
-            setIsModalOpen(true);
+            setIsEditMode(false);
+            setTitle("");
+            setDateTime("");
+            setLocation("");
             setTemplate("khac");
+            setIsModalOpen(true);
           }}
           className="flex items-center gap-2 px-5 py-2.5 bg-primary text-secondary hover:bg-primary-hover font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
         >
@@ -219,13 +251,21 @@ export default function AdminSessionsPage() {
         <div className="lg:col-span-2">
           {selectedSession ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-              <div className="border-b border-slate-100 pb-4">
-                <span className="text-[10px] bg-primary/20 text-secondary font-black px-2 py-0.5 rounded uppercase">Chi tiết buổi tập</span>
-                <h2 className="text-xl font-bold text-secondary mt-1">{selectedSession.title}</h2>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 mt-2">
-                  <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {new Date(selectedSession.date_time).toLocaleString("vi-VN")}</span>
-                  <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {selectedSession.location}</span>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <span className="text-[10px] bg-primary/20 text-secondary font-black px-2 py-0.5 rounded uppercase">Chi tiết buổi tập</span>
+                  <h2 className="text-xl font-bold text-secondary mt-1">{selectedSession.title}</h2>
                 </div>
+                <button
+                  onClick={handleOpenEdit}
+                  className="px-3.5 py-1.5 bg-slate-150 hover:bg-slate-200 border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1"
+                >
+                  Chỉnh sửa
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 mt-2">
+                <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {new Date(selectedSession.date_time).toLocaleString("vi-VN")}</span>
+                <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {selectedSession.location}</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
@@ -318,7 +358,7 @@ export default function AdminSessionsPage() {
             </button>
 
             <h3 className="text-lg font-black text-secondary mb-5 tracking-tight flex items-center gap-1.5">
-              <Calendar className="w-5 h-5 text-primary" /> Thiết lập buổi sinh hoạt mới
+              <Calendar className="w-5 h-5 text-primary" /> {isEditMode ? "Chỉnh sửa buổi sinh hoạt" : "Thiết lập buổi sinh hoạt mới"}
             </h3>
 
             <form onSubmit={handleCreateSession} className="space-y-4">
@@ -440,6 +480,8 @@ export default function AdminSessionsPage() {
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Đang lưu...
                   </>
+                ) : isEditMode ? (
+                  "Cập nhật Buổi Tập"
                 ) : (
                   "Tạo Buổi Tập"
                 )}
