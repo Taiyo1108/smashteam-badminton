@@ -133,14 +133,16 @@ export default function Home() {
     fetch(`${API_URL}/api/homepage/live-stats?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
-        if (data) {
+        if (data && !data.error) {
           setLiveData(data);
           
           // Generate initial random likes for activities
           const initialLikes: Record<string, number> = {};
-          data.activities.forEach((act: any) => {
-            initialLikes[act.id] = Math.floor(Math.random() * 8) + 2;
-          });
+          if (Array.isArray(data.activities)) {
+            data.activities.forEach((act: any) => {
+              initialLikes[act.id] = Math.floor(Math.random() * 8) + 2;
+            });
+          }
           setLikeCounts(initialLikes);
         }
       })
@@ -206,8 +208,8 @@ export default function Home() {
   const galleryPhotos = [
     { url: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800", caption: "Ăn lẩu đêm giao lưu sau buổi sinh hoạt 🍲" },
     { url: "https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=800", caption: "Teambuilding hè nảy lửa tại Vũng Tàu 🌊" },
-    { url: "https://images.unsplash.com/photo-1521537634581-175855047d44?w=800", caption: "Tiệc chúc mừng sinh nhật các thành viên tháng 7 🎂" },
-    { url: "https://images.unsplash.com/photo-1516880711640-ef7db81be3e1?w=800", caption: "Giao lưu thi đấu cọ xát với CLB bạn 🏸" }
+    { url: "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=800", caption: "Tiệc chúc mừng sinh nhật các thành viên tháng 7 🎂" },
+    { url: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=800", caption: "Giao lưu thi đấu cọ xát với CLB bạn 🏸" }
   ];
 
   // Tab configurations for Hall of Fame
@@ -249,6 +251,7 @@ export default function Home() {
                 src="/logo.png"
                 alt="Smash Team Logo"
                 fill
+                sizes="36px"
                 className="object-cover"
               />
             </div>
@@ -295,6 +298,7 @@ export default function Home() {
                 src={coverUrl}
                 alt="Badminton Hero"
                 fill
+                sizes="100vw"
                 className="object-cover"
                 priority
               />
@@ -463,7 +467,7 @@ export default function Home() {
                 {isTodaySession ? "Đang có mặt trên sân:" : "Ai sẽ tham gia buổi này?"}
               </h4>
 
-              {liveData.rsvpList.length > 0 ? (
+              {liveData?.rsvpList?.length > 0 ? (
                 <div className="space-y-4">
                   {/* Stack design */}
                   <div className="flex items-center">
@@ -478,11 +482,12 @@ export default function Home() {
                               src={user.avatar_url} 
                               alt={user.full_name} 
                               fill 
+                              sizes="40px"
                               className="object-cover" 
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center bg-primary text-white text-xs font-bold">
-                              {user.full_name.substring(0, 2).toUpperCase()}
+                              {user.full_name?.substring(0, 2).toUpperCase()}
                             </div>
                           )}
                           
@@ -497,7 +502,7 @@ export default function Home() {
                         </div>
                       ))}
 
-                      {liveData.rsvpList.length > 8 && (
+                      {liveData?.rsvpList?.length > 8 && (
                         <div className="w-10 h-10 rounded-full border-2 border-slate-900 bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-300">
                           +{liveData.rsvpList.length - 8}
                         </div>
@@ -505,7 +510,7 @@ export default function Home() {
                     </div>
 
                     <span className="text-xs text-slate-400 font-bold ml-3">
-                      {liveData.rsvpList.length} người đã RSVP
+                      {liveData?.rsvpList?.length} người đã RSVP
                     </span>
                   </div>
 
@@ -679,10 +684,10 @@ export default function Home() {
                       {/* Avatar with rank border */}
                       <div className="relative w-11 h-11 rounded-full overflow-hidden border-2 border-slate-800 shrink-0">
                         {user.avatar_url ? (
-                          <Image src={user.avatar_url} alt={user.full_name} fill className="object-cover" />
+                          <Image src={user.avatar_url} alt={user.full_name} fill sizes="44px" className="object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-slate-800 text-white font-bold text-xs">
-                            {user.full_name.substring(0, 2).toUpperCase()}
+                            {user.full_name?.substring(0, 2).toUpperCase()}
                           </div>
                         )}
                       </div>
@@ -777,6 +782,7 @@ export default function Home() {
                     src={photo.url} 
                     alt={photo.caption} 
                     fill 
+                    sizes="(max-width: 768px) 100vw, 320px"
                     className="object-cover group-hover:scale-105 transition-transform duration-500" 
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent pointer-events-none" />
