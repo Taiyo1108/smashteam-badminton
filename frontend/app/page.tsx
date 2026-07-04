@@ -5,7 +5,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { 
   ChevronRight, Trophy, Play, Image as ImageIcon, Users, Flame, Calendar, Award, 
-  CheckCircle, Heart, Star, LogIn, ArrowRight, Zap, Target, Sparkles 
+  CheckCircle, Heart, Star, LogIn, ArrowRight, Zap, Target, Sparkles, X
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { API_URL } from "@/app/config";
@@ -59,6 +59,7 @@ export default function Home() {
   const [countdownText, setCountdownText] = useState("Đang tính toán...");
   const [isTodaySession, setIsTodaySession] = useState(false);
   const [settings, setSettings] = useState<any>({});
+  const [activeMedia, setActiveMedia] = useState<{ url: string; title: string; isVideo: boolean } | null>(null);
 
   // Heart likes simulation on feed
   const [likedActivities, setLikedActivities] = useState<Record<string, boolean>>({});
@@ -815,7 +816,7 @@ export default function Home() {
                 {galleryPhotos.map((photo, i) => (
                   <div 
                     key={i} 
-                    onClick={() => window.open(photo.url, '_blank')}
+                    onClick={() => setActiveMedia({ url: photo.url, title: photo.caption, isVideo: !!photo.isVideo })}
                     className="min-w-[280px] md:min-w-[320px] aspect-[4/3] rounded-3xl overflow-hidden bg-slate-900 border border-slate-850/80 snap-start group relative cursor-pointer"
                   >
                     {photo.isVideo ? (
@@ -980,6 +981,50 @@ export default function Home() {
         </div>
       </section>
       
+      {/* Immersive Media Modal / Lightbox */}
+      {activeMedia && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in"
+          onClick={() => setActiveMedia(null)}
+        >
+          <div 
+            className="relative w-full max-w-4xl aspect-video rounded-3xl overflow-hidden border border-slate-800 bg-slate-950 shadow-2xl flex flex-col justify-between"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setActiveMedia(null)}
+              className="absolute top-4 right-4 z-50 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-all cursor-pointer shadow-lg active:scale-95"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-full h-full flex-grow relative bg-slate-950 flex items-center justify-center">
+              {activeMedia.isVideo ? (
+                <iframe
+                  src={`${activeMedia.url}?autoplay=1`}
+                  title={activeMedia.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <img
+                  src={activeMedia.url}
+                  alt={activeMedia.title}
+                  className="max-w-full max-h-full object-contain rounded-2xl p-4"
+                />
+              )}
+            </div>
+            
+            {/* Caption bar */}
+            <div className="p-4 bg-slate-900/90 border-t border-slate-800 text-center relative z-30">
+              <p className="text-white text-sm font-extrabold tracking-wide">{activeMedia.title}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
       <footer className="bg-slate-950 text-slate-500 py-12 text-center border-t border-slate-900 text-xs font-bold">
         <p>© 2026 SmashTeam Badminton Club. All rights reserved.</p>
