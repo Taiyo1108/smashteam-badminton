@@ -13,6 +13,7 @@ const sessionRoutes = require('./routes/sessions');
 const adminRoutes = require('./routes/admin');
 const gamificationRoutes = require('./routes/gamification');
 const shopRoutes = require('./routes/shop');
+const homepageRoutes = require('./routes/homepage');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -50,6 +51,7 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/shop', shopRoutes);
+app.use('/api/homepage', homepageRoutes);
 
 // Base route
 app.get('/', (req, res) => {
