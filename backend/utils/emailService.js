@@ -1,7 +1,9 @@
 const { Resend } = require('resend');
 
-// Khởi tạo Resend SDK
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Khởi tạo Resend SDK an toàn
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
 /**
  * Gửi email chào mừng thành viên mới qua Resend API
@@ -17,8 +19,8 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
       return;
     }
 
-    if (!process.env.RESEND_API_KEY) {
-      console.warn('[EmailService] Lỗi: Chưa cấu hình RESEND_API_KEY. Vui lòng thêm vào biến môi trường.');
+    if (!resend) {
+      console.warn('[EmailService] Lỗi: Chưa cấu hình RESEND_API_KEY hoặc phím trống. Vui lòng thêm vào biến môi trường.');
       return;
     }
 
