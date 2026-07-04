@@ -15,13 +15,24 @@ const getRankName = (elo) => {
 // GET /api/homepage/live-stats - Unified homepage aggregator API
 router.get('/live-stats', async (req, res) => {
   try {
+    // Format current local time as YYYY-MM-DD HH:MM:SS to align with database timestamp without time zone
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const localNowStr = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
     // 1. Get the closest session (upcoming or recently started)
     let sessionRes = await db.query(
       `SELECT id, title, date_time::text AS date_time_str, location 
        FROM sessions 
-       WHERE date_time >= NOW() - INTERVAL '2 hours' 
+       WHERE date_time >= $1::timestamp - INTERVAL '2 hours' 
        ORDER BY date_time ASC 
-       LIMIT 1`
+       LIMIT 1`,
+      [localNowStr]
     );
     
     let isUpcoming = true;
@@ -44,7 +55,7 @@ router.get('/live-stats', async (req, res) => {
       
       // Get members RSVPed 'going' for this session
       const rsvpRes = await db.query(
-        `SELECT u.id, u.full_name, u.nickname, u.academic_info, u.avatar_url, u.elo_score
+        `SELECT u.id, u.full_name, u.nickname, u.academic_info, u.avatar_url, GREATEST(u.elo_singles, u.elo_doubles) AS elo_score
          FROM attendances a
          JOIN users u ON a.user_id = u.id
          WHERE a.session_id = $1 AND a.status = 'going'
@@ -125,10 +136,10 @@ router.get('/live-stats', async (req, res) => {
 
     // 3b. Recent ELO Promotions (Users with ELO >= 1200)
     const recentPromosRes = await db.query(
-      `SELECT id, full_name, elo_score, created_at 
+      `SELECT id, full_name, GREATEST(elo_singles, elo_doubles) AS elo_score, created_at 
        FROM users 
-       WHERE elo_score >= 1200 AND role = 'member'
-       ORDER BY elo_score DESC 
+       WHERE GREATEST(elo_singles, elo_doubles) >= 1200 AND role = 'member'
+       ORDER BY GREATEST(elo_singles, elo_doubles) DESC 
        LIMIT 3`
     );
 
@@ -167,10 +178,10 @@ router.get('/live-stats', async (req, res) => {
     // 4. Hall of Fame Top 3 Categories
     // Category 1: Top Elo
     const topEloRes = await db.query(
-      `SELECT id, full_name, avatar_url, elo_score AS score
+      `SELECT id, full_name, avatar_url, GREATEST(elo_singles, elo_doubles) AS score, GREATEST(elo_singles, elo_doubles) AS elo_score
        FROM users 
        WHERE role = 'member' 
-       ORDER BY elo_score DESC 
+       ORDER BY score DESC 
        LIMIT 3`
     );
     const topElo = topEloRes.rows.map(user => ({
@@ -180,11 +191,11 @@ router.get('/live-stats', async (req, res) => {
 
     // Category 2: Top Attendance
     const topAttendanceRes = await db.query(
-      `SELECT u.id, u.full_name, u.avatar_url, COUNT(a.id)::int AS score, u.elo_score
+      `SELECT u.id, u.full_name, u.avatar_url, COUNT(a.id)::int AS score, GREATEST(u.elo_singles, u.elo_doubles) AS elo_score
        FROM attendances a
        JOIN users u ON a.user_id = u.id
        WHERE a.status = 'going' AND u.role = 'member'
-       GROUP BY u.id, u.full_name, u.avatar_url, u.elo_score
+       GROUP BY u.id, u.full_name, u.avatar_url, u.elo_singles, u.elo_doubles
        ORDER BY score DESC
        LIMIT 3`
     );
@@ -195,11 +206,11 @@ router.get('/live-stats', async (req, res) => {
 
     // Category 3: Rookie of the Month (Newest members sorted by signup date + attendance count)
     const topRookiesRes = await db.query(
-      `SELECT u.id, u.full_name, u.avatar_url, COUNT(a.id)::int AS score, u.elo_score, u.created_at
+      `SELECT u.id, u.full_name, u.avatar_url, COUNT(a.id)::int AS score, GREATEST(u.elo_singles, u.elo_doubles) AS elo_score, u.created_at
        FROM users u
        LEFT JOIN attendances a ON a.user_id = u.id AND a.status = 'going'
        WHERE u.role = 'member'
-       GROUP BY u.id, u.full_name, u.avatar_url, u.elo_score, u.created_at
+       GROUP BY u.id, u.full_name, u.avatar_url, u.elo_singles, u.elo_doubles, u.created_at
        ORDER BY u.created_at DESC, score DESC
        LIMIT 3`
     );
@@ -210,11 +221,11 @@ router.get('/live-stats', async (req, res) => {
 
     // Category 4: Community Hero / Quest Masters (Completed quests)
     let topCommunityRes = await db.query(
-      `SELECT u.id, u.full_name, u.avatar_url, COUNT(uq.id)::int AS score, u.elo_score
+      `SELECT u.id, u.full_name, u.avatar_url, COUNT(uq.id)::int AS score, GREATEST(u.elo_singles, u.elo_doubles) AS elo_score
        FROM user_quests uq
        JOIN users u ON uq.user_id = u.id
        WHERE uq.status IN ('completed', 'claimed') AND u.role = 'member'
-       GROUP BY u.id, u.full_name, u.avatar_url, u.elo_score
+       GROUP BY u.id, u.full_name, u.avatar_url, u.elo_singles, u.elo_doubles
        ORDER BY score DESC
        LIMIT 3`
     );
@@ -222,7 +233,7 @@ router.get('/live-stats', async (req, res) => {
     // Fallback if no quests completed yet
     if (topCommunityRes.rows.length === 0) {
       topCommunityRes = await db.query(
-        `SELECT id, full_name, avatar_url, smash_coins AS score, elo_score
+        `SELECT id, full_name, avatar_url, smash_coins AS score, GREATEST(elo_singles, elo_doubles) AS elo_score
          FROM users 
          WHERE role = 'member'
          ORDER BY smash_coins DESC

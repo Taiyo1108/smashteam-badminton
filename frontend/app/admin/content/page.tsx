@@ -241,8 +241,8 @@ export default function ContentManagementPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-secondary mb-2">Quản lý nội dung</h1>
-        <p className="text-slate-500">Cập nhật ảnh bìa giao diện và đăng các hoạt động truyền thông của câu lạc bộ.</p>
+        <h1 className="text-3xl font-bold text-secondary mb-2">Quản lý nội dung & Thư viện ảnh</h1>
+        <p className="text-slate-500">Cập nhật ảnh bìa, công tắc cấu hình trang chủ và quản lý hình ảnh/video trong Thư viện ảnh.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -390,21 +390,21 @@ export default function ContentManagementPage() {
           </div>
         </div>
 
-        {/* CỘT PHẢI: ĐĂNG BÀI MỚI & DANH SÁCH BÀI VIẾT */}
+        {/* CỘT PHẢI: THÊM ẢNH/VIDEO & DANH SÁCH THƯ VIỆN */}
         <div className="lg:col-span-2 space-y-6">
           {/* Biểu mẫu đăng bài */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-secondary mb-4 flex items-center gap-2">
-              <Plus className="w-5 h-5 text-primary" /> Đăng bài viết / Hoạt động mới
+              <Plus className="w-5 h-5 text-primary" /> Thêm hình ảnh / video Thư viện
             </h2>
 
             <form onSubmit={handleCreatePost} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Tiêu đề bài đăng</label>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Tiêu đề / Caption hiển thị</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ví dụ: Giải đấu Mùa Xuân 2026, Tập luyện hàng tuần..."
+                  placeholder="Ví dụ: Ăn lẩu đêm giao lưu sau buổi sinh hoạt 🍲"
                   value={postForm.title}
                   onChange={(e) => setPostForm({ ...postForm, title: e.target.value })}
                   className="w-full p-3 border rounded-xl text-sm outline-none focus:border-primary"
@@ -413,7 +413,7 @@ export default function ContentManagementPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Loại bài đăng</label>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Loại file</label>
                   <select
                     value={postForm.type}
                     onChange={(e) => setPostForm({ ...postForm, type: e.target.value })}
@@ -459,13 +459,13 @@ export default function ContentManagementPage() {
                   <label className="block text-xs font-bold text-slate-600 mb-1">Đường dẫn video YouTube</label>
                   <input
                     type="text"
-                    placeholder="Dán link YouTube (Ví dụ: https://www.youtube.com/watch?v=... hoặc https://youtu.be/...)"
+                    placeholder="Dán link YouTube (Ví dụ: https://www.youtube.com/watch?v=...)"
                     value={postForm.videoUrl}
                     onChange={(e) => setPostForm({ ...postForm, videoUrl: e.target.value })}
                     className="w-full p-3 border rounded-xl text-sm outline-none focus:border-primary"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
-                    * Hệ thống sẽ tự động chuyển đổi thành link nhúng Embed dạng chuẩn.
+                    * Hệ thống sẽ tự động hiển thị nút Play và phát video khi nhấp ngoài trang chủ.
                   </p>
                 </div>
               )}
@@ -487,7 +487,7 @@ export default function ContentManagementPage() {
                       <Loader2 className="w-4 h-4 animate-spin" /> Đang xử lý...
                     </>
                   ) : (
-                    <>Lưu & Đăng bài</>
+                    <>Thêm vào Thư viện</>
                   )}
                 </button>
               </div>
@@ -496,14 +496,14 @@ export default function ContentManagementPage() {
 
           {/* Danh sách bài viết */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-secondary mb-4">Danh sách Hoạt động nổi bật</h2>
+            <h2 className="text-lg font-bold text-secondary mb-4">Danh sách Hình ảnh & Video trong Thư viện</h2>
 
             {postsLoading ? (
               <div className="py-12 flex justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
               </div>
             ) : mediaPosts.length === 0 ? (
-              <p className="text-sm text-slate-400 italic text-center py-8">Chưa có bài viết nào được đăng.</p>
+              <p className="text-sm text-slate-400 italic text-center py-8">Chưa có hình ảnh/video nào trong Thư viện.</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {mediaPosts.map((post) => {

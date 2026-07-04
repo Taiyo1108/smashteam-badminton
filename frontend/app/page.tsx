@@ -151,6 +151,23 @@ export default function Home() {
         }
       })
       .catch(e => console.error("Error loading homepage live stats:", e));
+
+    // Fetch DB Media posts for gallery
+    fetch(`${API_URL}/api/media?t=${Date.now()}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          const mapped = data.map((item: any) => ({
+            url: item.content_url,
+            caption: item.title,
+            isVideo: item.content_url.includes("youtube.com") || 
+                     item.content_url.includes("youtu.be") || 
+                     item.content_url.includes("embed")
+          }));
+          setGalleryPhotos(mapped);
+        }
+      })
+      .catch(e => console.error("Error loading gallery photos:", e));
   }, []);
 
   // Timer logic for Countdown
@@ -208,13 +225,13 @@ export default function Home() {
     daysLeft: 12
   };
 
-  // Mock Gallery data
-  const galleryPhotos = [
-    { url: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800", caption: "Ăn lẩu đêm giao lưu sau buổi sinh hoạt 🍲" },
-    { url: "https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=800", caption: "Teambuilding hè nảy lửa tại Vũng Tàu 🌊" },
-    { url: "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=800", caption: "Tiệc chúc mừng sinh nhật các thành viên tháng 7 🎂" },
-    { url: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=800", caption: "Giao lưu thi đấu cọ xát với CLB bạn 🏸" }
-  ];
+  // Dynamic Gallery data loaded from DB (with fallbacks)
+  const [galleryPhotos, setGalleryPhotos] = useState<any[]>([
+    { url: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800", caption: "Ăn lẩu đêm giao lưu sau buổi sinh hoạt 🍲", isVideo: false },
+    { url: "https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=800", caption: "Teambuilding hè nảy lửa tại Vũng Tàu 🌊", isVideo: false },
+    { url: "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=800", caption: "Tiệc chúc mừng sinh nhật các thành viên tháng 7 🎂", isVideo: false },
+    { url: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=800", caption: "Giao lưu thi đấu cọ xát với CLB bạn 🏸", isVideo: false }
+  ]);
 
   // Tab configurations for Hall of Fame
   const hofTabs = [
@@ -798,17 +815,34 @@ export default function Home() {
                 {galleryPhotos.map((photo, i) => (
                   <div 
                     key={i} 
-                    className="min-w-[280px] md:min-w-[320px] aspect-[4/3] rounded-3xl overflow-hidden bg-slate-900 border border-slate-850/80 snap-start group relative"
+                    onClick={() => window.open(photo.url, '_blank')}
+                    className="min-w-[280px] md:min-w-[320px] aspect-[4/3] rounded-3xl overflow-hidden bg-slate-900 border border-slate-850/80 snap-start group relative cursor-pointer"
                   >
-                    <Image 
-                      src={photo.url} 
-                      alt={photo.caption} 
-                      fill 
-                      sizes="(max-width: 768px) 100vw, 320px"
-                      className="object-cover group-hover:scale-105 transition-transform duration-500" 
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent pointer-events-none" />
-                    <div className="absolute bottom-0 left-0 w-full p-4 pointer-events-none">
+                    {photo.isVideo ? (
+                      <>
+                        <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center z-20 group-hover:bg-slate-950/20 transition-colors">
+                          <div className="w-12 h-12 rounded-full bg-primary/95 text-secondary flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform duration-300">
+                            <Play className="w-5 h-5 fill-secondary text-secondary ml-0.5" />
+                          </div>
+                        </div>
+                        <iframe
+                          src={photo.url}
+                          title={photo.caption}
+                          className="w-full h-full pointer-events-none opacity-50 group-hover:opacity-70 transition-opacity duration-300"
+                          frameBorder="0"
+                        />
+                      </>
+                    ) : (
+                      <Image 
+                        src={photo.url} 
+                        alt={photo.caption} 
+                        fill 
+                        sizes="(max-width: 768px) 100vw, 320px"
+                        className="object-cover group-hover:scale-105 transition-transform duration-500" 
+                      />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent pointer-events-none z-10" />
+                    <div className="absolute bottom-0 left-0 w-full p-4 pointer-events-none z-20">
                       <p className="text-white text-sm font-extrabold tracking-wide">{photo.caption}</p>
                     </div>
                   </div>
