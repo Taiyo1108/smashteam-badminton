@@ -802,15 +802,24 @@ export default function ProfilePage() {
               </div>
 
               {/* Stats badges inside card */}
-              <div className="flex items-center gap-3.5 mt-3.5 bg-slate-900/60 px-4 py-2 rounded-full border border-purple-950/30 text-xs">
+              <div className="flex flex-wrap items-center justify-center gap-x-3.5 gap-y-2 mt-3.5 bg-slate-900/60 px-4 py-2.5 rounded-2xl border border-purple-950/30 text-xs">
                 <div className="flex items-center gap-1 font-bold text-amber-500">
                   <span className="text-base select-none">🪙</span> {gamProfile?.smash_coins ?? 0} xu
                 </div>
-                <div className="w-px h-3.5 bg-slate-800" />
-                <div className="flex items-center gap-1 font-bold text-orange-500">
-                  <Flame className="w-4 h-4 text-orange-500 animate-pulse" /> {gamProfile?.current_streak ?? 0} ngày
+                <div className="w-px h-3.5 bg-slate-800 hidden sm:block" />
+                
+                <div className={`flex items-center gap-1.5 font-bold ${
+                  (gamProfile?.current_streak ?? 0) === 0 ? "text-slate-400" : "text-orange-500"
+                }`}>
+                  <Flame className={`w-4 h-4 transition-all duration-300 ${
+                    (gamProfile?.current_streak ?? 0) === 0 ? "text-slate-600 opacity-60" : 
+                    (gamProfile?.current_streak ?? 0) >= 5 ? "text-orange-400 animate-bounce filter drop-shadow-[0_0_8px_rgba(249,115,22,0.95)]" :
+                    "text-orange-500 animate-pulse"
+                  }`} />
+                  <span>Chuỗi chuyên cần: {gamProfile?.current_streak ?? 0} buổi liên tục</span>
                 </div>
-                <div className="w-px h-3.5 bg-slate-800" />
+                
+                <div className="w-px h-3.5 bg-slate-800 hidden sm:block" />
                 <div className="flex items-center gap-1 font-bold text-indigo-400">
                   🛡️ {gamProfile?.streak_shields ?? 0} khiên
                 </div>

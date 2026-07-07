@@ -364,4 +364,123 @@ router.delete('/quests/:id', async (req, res) => {
   }
 });
 
+// POST /api/admin/sessions/:id/close - Đóng buổi tập và tính toán chuỗi chuyên cần
+router.post('/sessions/:id/close', async (req, res) => {
+  const { id } = req.params;
+  const client = await db.connect();
+ 
+  try {
+    // 1. Kiểm tra session có tồn tại và đã đóng chưa
+    const sessionRes = await client.query('SELECT is_closed FROM sessions WHERE id = $1', [id]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy buổi tập.' });
+    }
+    if (sessionRes.rows[0].is_closed) {
+      return res.status(400).json({ error: 'Buổi tập này đã được đóng trước đó rồi.' });
+    }
+ 
+    // Bắt đầu Transaction
+    await client.query('BEGIN');
+ 
+    // 2. Cập nhật buổi tập thành đã đóng
+    await client.query('UPDATE sessions SET is_closed = true WHERE id = $1', [id]);
+ 
+    // 3. Lấy danh sách toàn bộ thành viên
+    const membersRes = await client.query(
+      `SELECT id, current_streak, max_streak, streak_shields FROM users WHERE role = 'member'`
+    );
+    const members = membersRes.rows;
+ 
+    // 4. Lấy danh sách thành viên thực tế đã checked_in ở buổi tập này
+    const attendeesRes = await client.query(
+      `SELECT user_id FROM attendances WHERE session_id = $1 AND status = 'checked_in'`,
+      [id]
+    );
+    const attendeeIds = new Set(attendeesRes.rows.map(a => a.user_id));
+ 
+    // 5. Duyệt qua từng thành viên để áp dụng logic
+    for (const member of members) {
+      const isPresent = attendeeIds.has(member.id);
+ 
+      if (isPresent) {
+        // Đi tập đầy đủ: Tăng chuỗi. Nếu chuỗi cũ là 0, khởi động lại là 1.
+        let newStreak = (member.current_streak || 0) + 1;
+        if ((member.current_streak || 0) === 0) {
+          newStreak = 1;
+        }
+        const newMaxStreak = Math.max(member.max_streak || 0, newStreak);
+ 
+        await client.query(
+          `UPDATE users 
+           SET current_streak = $1, max_streak = $2 
+           WHERE id = $3`,
+          [newStreak, newMaxStreak, member.id]
+        );
+      } else {
+        // Vắng mặt:
+        // Kiểm tra xem trước đây thành viên đã từng có buổi check-in thành công nào chưa
+        const checkInCountRes = await client.query(
+          `SELECT COUNT(*)::int AS count 
+           FROM attendances 
+           WHERE user_id = $1 AND status = 'checked_in'`,
+          [member.id]
+        );
+        const hasCheckedInBefore = checkInCountRes.rows[0].count > 0;
+ 
+        if (!hasCheckedInBefore) {
+          // Bỏ quan không phạt nếu chưa từng đi tập buổi nào trước đây
+          continue;
+        }
+ 
+        // Đã từng đi tập trước đây: Kiểm tra khiên bảo vệ
+        let hasShield = false;
+        
+        // Cách 1: Kiểm tra cột streak_shields trực tiếp trong bảng users
+        if ((member.streak_shields || 0) > 0) {
+          hasShield = true;
+          await client.query(
+            `UPDATE users SET streak_shields = streak_shields - 1 WHERE id = $1`,
+            [member.id]
+          );
+        } else {
+          // Cách 2: Kiểm tra vật phẩm streak_shield trong user_inventory
+          const shieldInvRes = await client.query(
+            `SELECT id FROM user_inventory 
+             WHERE user_id = $1 AND item_type = 'streak_shield' AND status = 'unused' 
+             LIMIT 1`,
+            [member.id]
+          );
+          if (shieldInvRes.rows.length > 0) {
+            hasShield = true;
+            const shieldId = shieldInvRes.rows[0].id;
+            await client.query(
+              `UPDATE user_inventory 
+               SET status = 'used', used_in_session_id = $1, redeemed_at = CURRENT_TIMESTAMP 
+               WHERE id = $2`,
+              [id, shieldId]
+            );
+          }
+        }
+ 
+        if (!hasShield) {
+          // Reset chuỗi về 0
+          await client.query(
+            `UPDATE users SET current_streak = 0 WHERE id = $1`,
+            [member.id]
+          );
+        }
+      }
+    }
+ 
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Đóng buổi tập và cập nhật chuỗi chuyên cần thành công!' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error closing session:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi đóng buổi tập.' });
+  } finally {
+    client.release();
+  }
+});
+ 
 module.exports = router;

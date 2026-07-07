@@ -33,57 +33,17 @@ const getStartOfMonth = (date) => {
 // Check and Update Streak on Profile load
 async function checkAndUpdateStreak(userId, client = db) {
   const userRes = await client.query(
-    'SELECT last_active_date, current_streak, max_streak, streak_shields FROM users WHERE id = $1',
+    'SELECT current_streak, max_streak, streak_shields FROM users WHERE id = $1',
     [userId]
   );
   if (userRes.rows.length === 0) return null;
   
   const user = userRes.rows[0];
-  const lastActiveDateStr = user.last_active_date;
-  let currentStreak = user.current_streak || 0;
-  let maxStreak = user.max_streak || 0;
-  let streakShields = user.streak_shields || 0;
-  let streakNotification = null;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const lastActive = new Date(lastActiveDateStr);
-  lastActive.setHours(0, 0, 0, 0);
-
-  const diffTime = today.getTime() - lastActive.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) {
-    // Already active today
-  } else if (diffDays === 1) {
-    // Active yesterday, increment streak
-    currentStreak += 1;
-    maxStreak = Math.max(maxStreak, currentStreak);
-    await client.query(
-      'UPDATE users SET current_streak = $1, max_streak = $2, last_active_date = CURRENT_DATE WHERE id = $3',
-      [currentStreak, maxStreak, userId]
-    );
-  } else {
-    // Missed a day
-    if (streakShields > 0) {
-      streakShields -= 1;
-      streakNotification = "Mất mát suýt xảy ra! Một chiếc Khiên Streak đã được kích hoạt để bảo vệ chuỗi 🔥 của bạn.";
-      await client.query(
-        'UPDATE users SET streak_shields = $1, last_active_date = CURRENT_DATE WHERE id = $2',
-        [streakShields, userId]
-      );
-    } else {
-      currentStreak = 1;
-      await client.query(
-        'UPDATE users SET current_streak = $1, last_active_date = CURRENT_DATE WHERE id = $2',
-        [currentStreak, userId]
-      );
-      streakNotification = "Chuỗi ngày hoạt động 🔥 của bạn đã bị reset do không hoạt động.";
-    }
-  }
-
-  return { currentStreak, streakShields, streakNotification };
+  return { 
+    currentStreak: user.current_streak || 0, 
+    streakShields: user.streak_shields || 0, 
+    streakNotification: null 
+  };
 }
 
 // GET /api/gamification/profile

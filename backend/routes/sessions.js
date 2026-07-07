@@ -69,17 +69,17 @@ router.post('/:id/qr-check-in', authenticateToken, async (req, res) => {
       [sessionId, userId]
     );
 
-    const wasGoing = existingRes.rows.length > 0 && existingRes.rows[0].status === 'going';
-    if (wasGoing) {
+    const wasCheckedIn = existingRes.rows.length > 0 && existingRes.rows[0].status === 'checked_in';
+    if (wasCheckedIn) {
       return res.status(400).json({ error: 'Bạn đã điểm danh thành công cho buổi tập này rồi.' });
     }
-
-    // 4. Thực hiện UPSERT ghi nhận điểm danh status = 'going'
+ 
+    // 4. Thực hiện UPSERT ghi nhận điểm danh status = 'checked_in'
     await db.query(
       `INSERT INTO attendances (session_id, user_id, status)
-       VALUES ($1, $2, 'going')
+       VALUES ($1, $2, 'checked_in')
        ON CONFLICT (session_id, user_id)
-       DO UPDATE SET status = 'going', created_at = CURRENT_TIMESTAMP`,
+       DO UPDATE SET status = 'checked_in', created_at = CURRENT_TIMESTAMP`,
       [sessionId, userId]
     );
 

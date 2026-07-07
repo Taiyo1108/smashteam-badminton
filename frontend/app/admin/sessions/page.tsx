@@ -27,7 +27,8 @@ export default function AdminSessionsPage() {
   const [template, setTemplate] = useState<"dinh_ky" | "offline" | "khac">("khac");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const [isClosing, setIsClosing] = useState(false);
+ 
   const handleOpenEdit = () => {
     if (!selectedSession) return;
     setIsEditMode(true);
@@ -46,7 +47,7 @@ export default function AdminSessionsPage() {
     setTemplate("khac");
     setIsModalOpen(true);
   };
-
+ 
   const fetchSessions = async (historyMode = false) => {
     setIsLoading(true);
     try {
@@ -64,7 +65,7 @@ export default function AdminSessionsPage() {
       setIsLoading(false);
     }
   };
-
+ 
   const fetchAttendees = async (sessionId: string) => {
     setIsLoadingAttendees(true);
     try {
@@ -82,25 +83,25 @@ export default function AdminSessionsPage() {
       setIsLoadingAttendees(false);
     }
   };
-
+ 
   useEffect(() => {
     fetchSessions(viewMode === "history");
   }, [viewMode]);
-
+ 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !dateTime || !location) return;
-
+ 
     setIsSubmitting(true);
     setError(null);
-
+ 
     try {
       const token = localStorage.getItem("admin_token");
       const url = isEditMode 
         ? `${API_URL}/api/admin/sessions/${selectedSession.id}` 
         : `${API_URL}/api/admin/sessions`;
       const method = isEditMode ? "PUT" : "POST";
-
+ 
       const res = await fetch(url, {
         method,
         headers: {
@@ -113,9 +114,9 @@ export default function AdminSessionsPage() {
           location
         })
       });
-
+ 
       const data = await res.json();
-
+ 
       if (res.ok) {
         setIsModalOpen(false);
         setTitle("");
@@ -134,7 +135,31 @@ export default function AdminSessionsPage() {
       setIsSubmitting(false);
     }
   };
-
+ 
+  const handleCloseSession = async () => {
+    if (!selectedSession || !window.confirm("Bạn có chắc chắn muốn đóng buổi tập này? Hành động này sẽ tính toán chuỗi chuyên cần (Streak) cho toàn bộ thành viên và KHÔNG THỂ HOÀN TÁC.")) return;
+    setIsClosing(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/sessions/${selectedSession.id}/close`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || "Đã đóng buổi tập thành công!");
+        setSelectedSession((prev: any) => ({ ...prev, is_closed: true }));
+        fetchSessions(viewMode === "history");
+      } else {
+        alert(data.error || "Lỗi đóng buổi tập.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    } finally {
+      setIsClosing(false);
+    }
+  };
+ 
   const selectSession = (session: any) => {
     setSelectedSession(session);
     fetchAttendees(session.id);
@@ -253,43 +278,73 @@ export default function AdminSessionsPage() {
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div>
-                  <span className="text-[10px] bg-primary/20 text-secondary font-black px-2 py-0.5 rounded uppercase">Chi tiết buổi tập</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] bg-primary/20 text-secondary font-black px-2 py-0.5 rounded uppercase">Chi tiết buổi tập</span>
+                    {selectedSession.is_closed && (
+                      <span className="text-[10px] bg-rose-100 text-rose-600 font-extrabold px-2 py-0.5 rounded uppercase border border-rose-200">Đã chốt chuỗi 🔒</span>
+                    )}
+                  </div>
                   <h2 className="text-xl font-bold text-secondary mt-1">{selectedSession.title}</h2>
                 </div>
-                <button
-                  onClick={handleOpenEdit}
-                  className="px-3.5 py-1.5 bg-slate-150 hover:bg-slate-200 border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1"
-                >
-                  Chỉnh sửa
-                </button>
+                <div className="flex items-center gap-2">
+                  {!selectedSession.is_closed ? (
+                    <>
+                      <button
+                        onClick={handleOpenEdit}
+                        className="px-3.5 py-1.5 bg-slate-150 hover:bg-slate-200 border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1"
+                      >
+                        Chỉnh sửa
+                      </button>
+                      <button
+                        onClick={handleCloseSession}
+                        disabled={isClosing}
+                        className="px-3.5 py-1.5 bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-1"
+                      >
+                        {isClosing ? "Đang đóng..." : "Đóng buổi tập"}
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-xs font-bold text-slate-400 italic">Buổi tập đã khóa</span>
+                  )}
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 mt-2">
                 <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {new Date(selectedSession.date_time).toLocaleString("vi-VN")}</span>
                 <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {selectedSession.location}</span>
               </div>
-
+ 
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                 {/* QR CODE DISPLAY */}
                 <div className="md:col-span-2 flex flex-col items-center justify-center p-4 border border-slate-100 rounded-2xl bg-slate-50 text-center">
                   <span className="text-xs font-bold text-secondary mb-3">MÃ QR CHECK-IN SÂN</span>
                   
-                  <div className="bg-white p-4 rounded-xl shadow-inner border border-slate-200/50">
-                    <QRCodeCanvas
-                      id="session-qr-canvas"
-                      value={qrCodeUrl}
-                      size={180}
-                      level={"H"}
-                      includeMargin={true}
-                    />
-                  </div>
-
-                  <button
-                    onClick={downloadQRCode}
-                    className="mt-4 flex items-center gap-1.5 px-4 py-2 bg-secondary text-white hover:bg-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Tải mã QR
-                  </button>
-                  <p className="text-[9px] text-slate-400 mt-2 leading-relaxed">Admin in hoặc hiển thị mã QR này lên máy tính bảng tại sân để thành viên check-in.</p>
+                  {selectedSession.is_closed ? (
+                    <div className="flex flex-col items-center justify-center py-8 px-4 border border-rose-100 rounded-2xl bg-rose-50/50 text-center space-y-2">
+                      <div className="text-3xl">🔒</div>
+                      <span className="text-xs font-bold text-rose-600">ĐÃ ĐÓNG CỔNG</span>
+                      <p className="text-[10px] text-slate-400 leading-relaxed">Buổi sinh hoạt đã kết thúc và chốt chuyên cần. Cổng điểm danh không hoạt động.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="bg-white p-4 rounded-xl shadow-inner border border-slate-200/50">
+                        <QRCodeCanvas
+                          id="session-qr-canvas"
+                          value={qrCodeUrl}
+                          size={180}
+                          level={"H"}
+                          includeMargin={true}
+                        />
+                      </div>
+ 
+                      <button
+                        onClick={downloadQRCode}
+                        className="mt-4 flex items-center gap-1.5 px-4 py-2 bg-secondary text-white hover:bg-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Tải mã QR
+                      </button>
+                      <p className="text-[9px] text-slate-400 mt-2 leading-relaxed">Admin in hoặc hiển thị mã QR này lên máy tính bảng tại sân để thành viên check-in.</p>
+                    </>
+                  )}
                 </div>
 
                 {/* ATTENDEES TABLE */}
