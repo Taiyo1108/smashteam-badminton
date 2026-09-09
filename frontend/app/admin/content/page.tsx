@@ -14,6 +14,18 @@ export default function ContentManagementPage() {
   const [coverSuccess, setCoverSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
+  // States cho Giới thiệu & Liên hệ trang chủ (About)
+  const [aboutBlocks, setAboutBlocks] = useState([
+    { lead: "", tail: "" },
+    { lead: "", tail: "" },
+    { lead: "", tail: "" },
+  ]);
+  const [contactAddress, setContactAddress] = useState("");
+  const [contactOrg, setContactOrg] = useState("");
+  const [contacts, setContacts] = useState([{ name: "", phone: "", role: "" }]);
+  const [aboutSaving, setAboutSaving] = useState(false);
+  const [aboutError, setAboutError] = useState("");
+
   // States for Media Posts
   const [mediaPosts, setMediaPosts] = useState<any[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -55,6 +67,28 @@ export default function ContentManagementPage() {
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
+        // Nạp form About/Liên hệ từ settings (giữ trống để trang chủ dùng mặc định)
+        try {
+          const blocks = typeof data.about_blocks === "string" ? JSON.parse(data.about_blocks) : data.about_blocks;
+          if (Array.isArray(blocks) && blocks.length > 0) {
+            setAboutBlocks([0, 1, 2].map((i) => ({
+              lead: String(blocks[i]?.lead ?? ""),
+              tail: String(blocks[i]?.tail ?? ""),
+            })));
+          }
+        } catch {}
+        if (typeof data.contact_address === "string") setContactAddress(data.contact_address);
+        if (typeof data.contact_org === "string") setContactOrg(data.contact_org);
+        try {
+          const list = typeof data.contacts === "string" ? JSON.parse(data.contacts) : data.contacts;
+          if (Array.isArray(list) && list.length > 0) {
+            setContacts(list.map((c: any) => ({
+              name: String(c?.name ?? ""),
+              phone: String(c?.phone ?? ""),
+              role: String(c?.role ?? ""),
+            })));
+          }
+        } catch {}
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
@@ -223,6 +257,41 @@ export default function ContentManagementPage() {
       setDeletingPost(null);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // Lưu Giới thiệu & Liên hệ trang chủ (4 keys trong site_settings)
+  const handleSaveAbout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAboutError("");
+    setAboutSaving(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const payloads = [
+        { key: "about_blocks", value: JSON.stringify(aboutBlocks) },
+        { key: "contact_address", value: contactAddress },
+        { key: "contact_org", value: contactOrg },
+        { key: "contacts", value: JSON.stringify(contacts.filter((c) => c.name.trim() || c.phone.trim())) },
+      ];
+      const results = await Promise.all(
+        payloads.map((p) =>
+          fetch(`${API_URL}/api/settings`, {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify(p),
+          })
+        )
+      );
+      if (results.every((r) => r.ok)) {
+        setNotice("Cập nhật Giới thiệu & Liên hệ trang chủ thành công!");
+        fetchSettings();
+      } else {
+        setAboutError("Lưu chưa trọn vẹn, vui lòng thử lại.");
+      }
+    } catch (e) {
+      setAboutError("Lỗi kết nối mạng khi lưu.");
+    } finally {
+      setAboutSaving(false);
     }
   };
 
@@ -513,6 +582,140 @@ export default function ContentManagementPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* GIỚI THIỆU & LIÊN HỆ TRANG CHỦ (About) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <h2 className="text-lg font-bold text-secondary mb-1">Giới thiệu & Liên hệ trang chủ</h2>
+        <p className="text-xs text-slate-400 mb-5">
+          Nội dung hiển thị ở mục About trang chủ. Bỏ trống để dùng mặc định. Phần chữ mờ hỗ trợ{" "}
+          <code className="px-1 bg-slate-100 rounded font-bold">{"{members}"}</code> (số hội viên thật),{" "}
+          <code className="px-1 bg-slate-100 rounded font-bold">{"{address}"}</code> (địa chỉ),{" "}
+          <code className="px-1 bg-slate-100 rounded font-bold">{"{org}"}</code> (đơn vị).
+        </p>
+
+        <form onSubmit={handleSaveAbout} className="space-y-5">
+          {aboutBlocks.map((b, i) => (
+            <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+              <div className="md:col-span-2 text-xs font-black text-slate-500 uppercase tracking-wider">
+                Đoạn {i + 1}
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Chữ nổi bật (trắng)</label>
+                <input
+                  type="text"
+                  value={b.lead}
+                  onChange={(e) => setAboutBlocks(aboutBlocks.map((x, j) => (j === i ? { ...x, lead: e.target.value } : x)))}
+                  placeholder="Câu mở đầu nổi bật..."
+                  className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Chữ mờ (xám)</label>
+                <textarea
+                  value={b.tail}
+                  onChange={(e) => setAboutBlocks(aboutBlocks.map((x, j) => (j === i ? { ...x, tail: e.target.value } : x)))}
+                  placeholder="Phần chữ mờ phía sau..."
+                  rows={2}
+                  className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black resize-y"
+                />
+              </div>
+            </div>
+          ))}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Địa chỉ</label>
+              <input
+                type="text"
+                value={contactAddress}
+                onChange={(e) => setContactAddress(e.target.value)}
+                placeholder="304 ĐT743A, Đông Hòa, Hồ Chí Minh"
+                className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Đơn vị</label>
+              <input
+                type="text"
+                value={contactOrg}
+                onChange={(e) => setContactOrg(e.target.value)}
+                placeholder="Đơn vị chủ quản (nếu có)"
+                className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-slate-600">Main contact</label>
+              <button
+                type="button"
+                onClick={() => setContacts([...contacts, { name: "", phone: "", role: "" }])}
+                className="text-xs font-bold text-slate-600 hover:text-black flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Thêm liên hệ
+              </button>
+            </div>
+            <div className="space-y-2">
+              {contacts.map((c, i) => (
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2">
+                  <input
+                    type="text"
+                    value={c.name}
+                    onChange={(e) => setContacts(contacts.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                    placeholder="Họ tên"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <input
+                    type="text"
+                    value={c.phone}
+                    onChange={(e) => setContacts(contacts.map((x, j) => (j === i ? { ...x, phone: e.target.value } : x)))}
+                    placeholder="SĐT"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <input
+                    type="text"
+                    value={c.role}
+                    onChange={(e) => setContacts(contacts.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))}
+                    placeholder="Vai trò"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setContacts(contacts.filter((_, j) => j !== i))}
+                    className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                    title="Xóa liên hệ"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {aboutError && (
+            <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+              <AlertCircle className="w-4 h-4 shrink-0" /> {aboutError}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={aboutSaving}
+              className="px-6 h-12 bg-black hover:bg-black/85 text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+            >
+              {aboutSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu...
+                </>
+              ) : (
+                <>Lưu Giới thiệu & Liên hệ</>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* DELETE CONFIRM MODAL */}

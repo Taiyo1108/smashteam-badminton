@@ -23,6 +23,7 @@ export default function RootLayout({
     <html
       lang="vi"
       className={`${inter.variable} font-sans h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
         {/* Áp dụng chế độ ban đêm đã lưu (trừ trang chính luôn sáng) để tránh nháy */}

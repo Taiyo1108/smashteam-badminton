@@ -119,13 +119,29 @@ const FAQS = [
   },
 ] as const;
 
-const CONTACTS = [
-  { name: "Phạm Đình Nhật", phone: "0942 031 639", role: "President" },
-  { name: "Nguyễn Văn Khê", phone: "0967 557 028", role: "Head of External Relations" },
-  { name: "Đoàn Nguyễn Ngọc Bảo", phone: "0819 254 309", role: "Head of Human Resources" },
-  { name: "Phước", phone: "0961 035 520", role: "Vice President" },
-  { name: "Nguyễn Sơn Tân", phone: "0899 339 354", role: "Head of Content & Logistics" },
+// Đoạn giới thiệu About mặc định (admin sửa trong Quản lý nội dung).
+// tail hỗ trợ token {members} (số hội viên thật) và {address} (địa chỉ).
+const ABOUT_FALLBACK = [
+  { lead: "SmashTeam khởi nguồn từ đam mê cầu lông.", tail: "Từ những buổi tập phong trào, nay là cộng đồng {members} tay vợt cùng tiến bộ." },
+  { lead: "Xếp hạng Elo minh bạch, lịch tập & sự kiện đều đặn", tail: " giúp mỗi thành viên theo dõi tiến bộ và leo hạng công bằng." },
+  { lead: "Cùng nhau bứt phá giới hạn và tỏa sáng", tail: " — {address}. {org}." },
 ] as const;
+
+const ADDRESS_FALLBACK = "304 ĐT743A, Đông Hòa, Hồ Chí Minh";
+const ORG_FALLBACK = "";
+
+// Parse chuỗi JSON từ site_settings, rớt về fallback khi lỗi/thiếu.
+function parseJsonSetting<T>(value: unknown, fallback: T): T {
+  if (typeof value !== "string" || !value) return fallback;
+  try {
+    const parsed = JSON.parse(value) as T;
+    return Array.isArray(fallback)
+      ? (Array.isArray(parsed) && parsed.length > 0 ? parsed : fallback)
+      : (parsed ?? fallback);
+  } catch {
+    return fallback;
+  }
+}
 
 // ===== Server-side data fetching (song song, có cache, có fallback) =====
 async function fetchJson<T>(url: string, fallback: T): Promise<T> {
@@ -166,6 +182,43 @@ export default async function Home() {
     value: formatStat(stats[s.key], s.fallback),
   }));
   const memberLabel = formatStat(stats.activeMembers, "150+");
+
+  // About & Liên hệ do admin chỉnh (Quản lý nội dung), rớt về mặc định khi chưa cấu hình.
+  const address = typeof settings?.contact_address === "string" && settings.contact_address
+    ? settings.contact_address
+    : ADDRESS_FALLBACK;
+  const org = typeof settings?.contact_org === "string" && settings.contact_org
+    ? settings.contact_org
+    : ORG_FALLBACK;
+  const applyTokens = (text: string) =>
+    text
+      .replaceAll("{members}", memberLabel)
+      .replaceAll("{address}", address)
+      .replaceAll("{org}", org)
+      .replaceAll(". .", ".")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  const rawAbout = parseJsonSetting<{ lead: string; tail: string }[]>(
+    settings?.about_blocks,
+    [...ABOUT_FALLBACK] as unknown as { lead: string; tail: string }[]
+  )
+    .map((b) => ({
+      lead: String(b?.lead ?? ""),
+      tail: applyTokens(String(b?.tail ?? "")),
+    }))
+    // Bỏ đoạn trống hoàn toàn (admin lưu form trắng) để rớt về mặc định
+    .filter((b) => b.lead.trim() || b.tail.trim());
+  const aboutBlocks = rawAbout.length > 0
+    ? rawAbout
+    : ([...ABOUT_FALLBACK] as unknown as { lead: string; tail: string }[]).map((b) => ({
+        lead: String(b?.lead ?? ""),
+        tail: applyTokens(String(b?.tail ?? "")),
+      }));
+  // Main contact do admin cấu hình, không còn danh sách cứng trong code.
+  const contacts = parseJsonSetting<{ name: string; phone: string; role: string }[]>(
+    settings?.contacts,
+    []
+  ).filter((c) => c && (String(c.name || "").trim() || String(c.phone || "").trim()));
 
   const heroBg =
     typeof settings?.homepage_cover_url === "string" && settings.homepage_cover_url
@@ -365,29 +418,26 @@ export default async function Home() {
       <section id="about" className="bg-black text-white py-20 md:py-[100px] scroll-mt-24">
         <div className="max-w-[1120px] mx-auto px-6 md:px-10 grid md:grid-cols-2 gap-12">
           <div className="space-y-16">
-            <p className="text-[28px] md:text-[32px] leading-[1.35] tracking-[-0.02em] font-medium">
-              SmashTeam khởi nguồn từ đam mê cầu lông.{" "}
-              <span className="text-[#999]">
-                Từ những buổi tập phong trào, nay là cộng đồng {memberLabel} tay vợt cùng tiến bộ.
-              </span>
-            </p>
-            <p className="text-[28px] md:text-[32px] leading-[1.35] tracking-[-0.02em] font-medium text-[#999]">
-              <span className="text-white">Xếp hạng Elo minh bạch, lịch tập & sự kiện đều đặn</span> giúp
-              mỗi thành viên theo dõi tiến bộ và leo hạng công bằng.
-            </p>
-            <p className="text-[28px] md:text-[32px] leading-[1.35] tracking-[-0.02em] font-medium text-[#999]">
-              <span className="text-white">Cùng nhau bứt phá giới hạn và tỏa sáng</span> — 304 ĐT743A, Đông
-              Hòa, Hồ Chí Minh. Ban Phong Trào Đoàn Viện ISB.
-            </p>
+            {aboutBlocks.map((b, i) => (
+              <p
+                key={i}
+                className="text-[28px] md:text-[32px] leading-[1.35] tracking-[-0.02em] font-medium text-[#999]"
+              >
+                <span className="text-white">{b.lead}</span>
+                {b.tail ? ` ${b.tail}` : ""}
+              </p>
+            ))}
           </div>
           <div>
             <address className="flex items-start gap-3 text-white/70 mb-8 not-italic">
               <MapPin className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" aria-hidden />
-              <span>304 ĐT743A, Đông Hòa, Hồ Chí Minh, Việt Nam</span>
+              <span>{address}, Việt Nam</span>
             </address>
-            <h3 className="font-bold mb-4">Main contact</h3>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {CONTACTS.map((c) => (
+            {contacts.length > 0 && (
+              <>
+                <h3 className="font-bold mb-4">Main contact</h3>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {contacts.map((c) => (
                 <div
                   key={c.phone}
                   className="rounded-2xl bg-white/5 border border-white/10 p-4 hover:bg-white/10 transition-colors"
@@ -402,7 +452,9 @@ export default async function Home() {
                   <p className="text-[11px] text-yellow-400/80 mt-1">{c.role}</p>
                 </div>
               ))}
-            </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -535,7 +587,7 @@ export default async function Home() {
           </nav>
         </div>
         <div className="max-w-[1120px] mx-auto px-6 md:px-10 mt-10 pt-6 border-t border-white/10 text-center text-xs text-white/40">
-          © 2026 SmashTeam Badminton Club. All rights reserved. • Ban Phong Trào Đoàn Viện ISB
+          © 2026 SmashTeam Badminton Club. All rights reserved.
         </div>
       </footer>
     </main>
