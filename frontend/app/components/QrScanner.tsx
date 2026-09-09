@@ -43,10 +43,14 @@ export default function QrScanner({ onScanSuccess, onScanFailure, onClose }: QrS
       scannerRef.current = null;
       if (scanner) {
         // stop rồi clear để giải phóng camera + DOM đúng cách
+        // (clear() có thể trả void hoặc Promise tùy bản html5-qrcode)
         scanner.stop()
           .catch(() => {})
           .finally(() => {
-            scanner.clear().catch(() => {});
+            try {
+              const result = scanner.clear() as unknown;
+              if (result instanceof Promise) result.catch(() => {});
+            } catch {}
           });
       }
     };

@@ -78,6 +78,11 @@ export default function PersonnelPage() {
   const [cForm, setCForm] = useState({ name: "", start: "", end: "", active: true });
   const [sForm, setSForm] = useState({ time: "", location: "", max: "20" });
 
+  // States xem danh sách ứng viên theo Ca Casting
+  const [viewingSlot, setViewingSlot] = useState<any>(null);
+  const [slotCandidates, setSlotCandidates] = useState<any[]>([]);
+  const [isLoadingSlotC, setIsLoadingSlotC] = useState(false);
+
   const fetchCampaigns = async () => {
     try {
       const token = localStorage.getItem("admin_token");
@@ -189,6 +194,24 @@ export default function PersonnelPage() {
       }
     } catch (e) {
       alert("Lỗi kết nối mạng.");
+    }
+  };
+
+  // Xem danh sách ứng viên đã đăng ký 1 ca casting
+  const openSlotCandidates = async (slot: any) => {
+    setViewingSlot(slot);
+    setSlotCandidates([]);
+    setIsLoadingSlotC(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/users/candidates?slot_id=${slot.id}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) setSlotCandidates(await res.json());
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingSlotC(false);
     }
   };
 
@@ -1312,6 +1335,9 @@ export default function PersonnelPage() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
+                                  <button onClick={() => openSlotCandidates(slot)} className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl cursor-pointer text-slate-500 hover:text-slate-800" title={`Xem danh sách ứng viên (${slot.registered_count})`}>
+                                    <Users className="w-4 h-4" />
+                                  </button>
                                   <button onClick={() => handleToggleSlot(slot)} className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl cursor-pointer text-slate-500 hover:text-slate-800" title={slot.is_active ? "Đóng nhận đăng ký" : "Mở nhận đăng ký"}>
                                     {slot.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4 text-emerald-500" />}
                                   </button>
@@ -1333,6 +1359,47 @@ export default function PersonnelPage() {
                 <Calendar className="w-12 h-12 text-slate-200 mb-3" />
                 <p className="font-bold text-slate-500">Chưa chọn đợt tuyển quân</p>
                 <p className="text-xs text-slate-400 mt-1">Chọn một chiến dịch ở danh sách bên trái hoặc nhấn nút "Đợt mới" để thiết lập.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Danh sách ứng viên theo Ca Casting */}
+      {viewingSlot && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setViewingSlot(null)}>
+          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 max-h-[85vh] overflow-y-auto animate-fade-up" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-base font-black text-secondary">Ứng viên ca casting</h3>
+              <button onClick={() => setViewingSlot(null)} aria-label="Đóng" className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mb-4">
+              {format(new Date(viewingSlot.casting_time), "HH:mm - dd/MM/yyyy")} • {viewingSlot.location} • {slotCandidates.length}/{viewingSlot.max_capacity} đã đăng ký
+            </p>
+            {isLoadingSlotC ? (
+              <div className="flex items-center justify-center py-10 text-slate-400 gap-2 text-sm">
+                <Loader2 className="w-5 h-5 animate-spin" /> Đang tải danh sách...
+              </div>
+            ) : slotCandidates.length === 0 ? (
+              <div className="text-center py-10 text-slate-400 text-xs border border-dashed border-slate-200 rounded-2xl">Chưa có ứng viên nào đăng ký ca này.</div>
+            ) : (
+              <div className="space-y-2">
+                {slotCandidates.map((c: any) => (
+                  <div key={c.id} className="flex items-center justify-between gap-3 p-3 border border-slate-200 rounded-2xl hover:border-slate-300 transition-colors">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-secondary truncate">{c.full_name}</p>
+                      <p className="text-[11px] text-slate-500 flex items-center gap-2 mt-1">
+                        <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone_zalo}</span>
+                        <span className="px-1.5 py-0.5 bg-slate-100 rounded font-bold">{c.badminton_level}</span>
+                      </p>
+                    </div>
+                    <button onClick={() => { setViewingSlot(null); openAssessmentModal(c); }} className="shrink-0 px-3 py-1.5 text-[11px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer" title="Duyệt ứng viên">
+                      Duyệt
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
