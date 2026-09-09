@@ -1,418 +1,517 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { motion } from "framer-motion";
-import { ChevronRight, Trophy, Play, Image as ImageIcon } from "lucide-react";
-import { useState, useEffect } from "react";
+import {
+  ArrowUpRight,
+  CalendarDays,
+  ChevronRight,
+  MapPin,
+  Phone,
+  Star,
+  TrendingUp,
+  Trophy,
+  Users,
+  Zap,
+} from "lucide-react";
 import { API_URL } from "@/app/config";
+import SiteNav from "@/app/components/home/SiteNav";
+import LeaderboardSection from "@/app/components/home/LeaderboardSection";
+import FaqSection from "@/app/components/home/FaqSection";
+import MediaSection from "@/app/components/home/MediaSection";
+import {
+  getRankBadgeClass,
+  getRankName,
+  isVideoUrl,
+  type LeaderboardPlayer,
+  type MediaItem,
+} from "@/app/components/home/rank-utils";
 
-export default function Home() {
-  // Mock data for display before backend is connected
-  const [leaderboard, setLeaderboard] = useState<any[]>([
-    { id: 1, full_name: "Nguyễn Văn A", elo_score: 1540, win_rate: 68.5, rank_name: "Gold", total_matches: 12 },
-    { id: 2, full_name: "Trần Thị B", elo_score: 1480, win_rate: 62.0, rank_name: "Gold", total_matches: 10 },
-    { id: 3, full_name: "Lê Hoàng C", elo_score: 1420, win_rate: 55.5, rank_name: "Gold", total_matches: 8 },
-    { id: 4, full_name: "Phạm D", elo_score: 1350, win_rate: 51.0, rank_name: "Gold", total_matches: 6 },
-    { id: 5, full_name: "Đặng E", elo_score: 1290, win_rate: 49.2, rank_name: "Gold", total_matches: 4 },
+export const revalidate = 60;
+
+export const metadata: Metadata = {
+  title: "SmashTeam | Câu lạc bộ cầu lông",
+  description:
+    "SmashTeam — CLB cầu lông năng động: xếp hạng Elo minh bạch, lịch tập đều đặn, cộng đồng 150+ tay vợt cùng tiến bộ.",
+  openGraph: {
+    title: "SmashTeam | Đam mê hội tụ",
+    description: "Xếp hạng Elo minh bạch, cộng đồng cầu lông năng động tại TP.HCM.",
+    type: "website",
+  },
+};
+
+// ===== Static constants (ngoài component để tránh tạo lại mỗi render) =====
+const FALLBACK_COVER =
+  "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?ixlib=rb-4.0.3&auto=format&fit=crop&w=1600&q=75";
+const FALLBACK_TRAINING =
+  "https://images.unsplash.com/photo-1611224923853-80b023f02d71?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=70";
+
+const CLUB_STATS = [
+  { label: "Hội viên đang hoạt động", value: "150+", icon: Users },
+  { label: "Trận đấu đã ghi nhận", value: "1.200+", icon: Zap },
+  { label: "Buổi tập mỗi tuần", value: "6", icon: CalendarDays },
+  { label: "Bậc xếp hạng Elo", value: "6", icon: TrendingUp },
+] as const;
+
+const RANK_TIERS = [
+  { name: "Bronze", range: "< 1100", desc: "Mới gia nhập, làm quen với hệ thống thi đấu." },
+  { name: "Silver", range: "1100 - 1199", desc: "Đã có kinh nghiệm thi đấu cơ bản." },
+  { name: "Gold", range: "1200 - 1399", desc: "Kỹ năng ổn định, thường xuyên thi đấu." },
+  { name: "Platinum", range: "1400 - 1599", desc: "Trình độ khá, tỷ lệ thắng cao." },
+  { name: "Diamond", range: "1600 - 1799", desc: "Nhóm tay vợt xuất sắc của CLB." },
+  { name: "Challenger", range: "≥ 1800", desc: "Đỉnh cao — vị trí được săn đón nhất." },
+] as const;
+
+const FEATURES = [
+  {
+    icon: TrendingUp,
+    title: "Xếp hạng Elo minh bạch",
+    desc: "Mọi trận đấu đều được ghi nhận và tính điểm Elo công bằng, cập nhật theo thời gian thực.",
+  },
+  {
+    icon: Users,
+    title: "Cộng đồng năng động",
+    desc: "Kết nối với các tay vợt cùng trình độ, giao lưu và cùng nhau tiến bộ mỗi ngày.",
+  },
+  {
+    icon: CalendarDays,
+    title: "Lịch tập & sự kiện đều đặn",
+    desc: "Các buổi tập, giải giao hữu và sự kiện được cập nhật thường xuyên trên trang cá nhân.",
+  },
+  {
+    icon: Trophy,
+    title: "Theo dõi tiến bộ cá nhân",
+    desc: "Xem lại lịch sử thi đấu, tỷ lệ thắng và hành trình leo hạng của chính mình.",
+  },
+] as const;
+
+const FAQS = [
+  {
+    q: "Làm sao để gia nhập SmashTeam?",
+    a: 'Bạn chỉ cần bấm nút "Gia nhập ngay", tạo tài khoản và bắt đầu tham gia các buổi tập, trận đấu để được ghi nhận điểm Elo.',
+  },
+  {
+    q: "Điểm Elo được tính như thế nào?",
+    a: "Điểm Elo tăng giảm dựa trên kết quả từng trận đấu và trình độ của đối thủ, giúp phản ánh chính xác năng lực hiện tại của bạn.",
+  },
+  {
+    q: "CLB có tổ chức thi đấu đơn và đôi không?",
+    a: "Có. Bảng xếp hạng được tách riêng cho nội dung đơn và đôi, bạn có thể theo dõi cả hai ngay trên trang chủ.",
+  },
+  {
+    q: "Tôi cần chuẩn bị gì khi mới tham gia?",
+    a: "Chỉ cần mang vợt và tinh thần thoải mái — CLB sẽ hỗ trợ ghép trận phù hợp với trình độ của bạn.",
+  },
+] as const;
+
+const CONTACTS = [
+  { name: "Phạm Đình Nhật", phone: "0942 031 639", role: "President" },
+  { name: "Nguyễn Văn Khê", phone: "0967 557 028", role: "Head of External Relations" },
+  { name: "Đoàn Nguyễn Ngọc Bảo", phone: "0819 254 309", role: "Head of Human Resources" },
+  { name: "Phước", phone: "0961 035 520", role: "Vice President" },
+  { name: "Nguyễn Sơn Tân", phone: "0899 339 354", role: "Head of Content & Logistics" },
+] as const;
+
+// ===== Server-side data fetching (song song, có cache, có fallback) =====
+async function fetchJson<T>(url: string, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(url, { next: { revalidate: 60 } });
+    if (!res.ok) return fallback;
+    return (await res.json()) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeBoard(data: any[]): LeaderboardPlayer[] {
+  if (!Array.isArray(data)) return [];
+  return data.map((item: any) => ({
+    id: item.id,
+    full_name: String(item.full_name ?? ""),
+    elo_score: Number(item.elo_score ?? 1000),
+    win_rate: item.win_rate ? parseFloat(item.win_rate) : 0,
+    rank_name: item.rank_name || getRankName(Number(item.elo_score ?? 1000)),
+    total_matches: Number(item.total_matches ?? 0),
+  }));
+}
+
+export default async function Home() {
+  const [settings, mediaRaw, singlesRaw, doublesRaw] = await Promise.all([
+    fetchJson<any>(`${API_URL}/api/settings`, {}),
+    fetchJson<any[]>(`${API_URL}/api/media`, []),
+    fetchJson<any[]>(`${API_URL}/api/users/leaderboard?type=singles`, []),
+    fetchJson<any[]>(`${API_URL}/api/users/leaderboard?type=doubles`, []),
   ]);
 
-  const [mediaFeed, setMediaFeed] = useState<any[]>([
-    { id: 1, title: "Giải đấu Mùa Xuân 2026", type: "image", url: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" },
-    { id: 2, title: "Tập luyện hằng ngày", type: "image", url: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" },
-    { id: 3, title: "Highlight Smash", type: "video", url: "https://www.youtube.com/embed/dQw4w9WgXcQ" }
-  ]);
+  const heroBg =
+    typeof settings?.homepage_cover_url === "string" && settings.homepage_cover_url
+      ? settings.homepage_cover_url
+      : FALLBACK_COVER;
 
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userRole, setUserRole] = useState("");
+  const mediaFeed: MediaItem[] = Array.isArray(mediaRaw)
+    ? mediaRaw.slice(0, 6).map((item: any) => ({
+        id: item.id,
+        title: String(item.title ?? ""),
+        type: isVideoUrl(String(item.content_url ?? "")) ? "video" : "image",
+        url: String(item.content_url ?? ""),
+      }))
+    : [];
 
-  const [coverUrl, setCoverUrl] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [leaderboardType, setLeaderboardType] = useState<"singles" | "doubles">("singles");
+  const singles = normalizeBoard(singlesRaw);
+  const doubles = normalizeBoard(doublesRaw);
 
-  const getRankName = (elo: number) => {
-    if (elo >= 1800) return 'Challenger';
-    if (elo >= 1600) return 'Diamond';
-    if (elo >= 1400) return 'Platinum';
-    if (elo >= 1200) return 'Gold';
-    if (elo >= 1100) return 'Silver';
-    return 'Bronze';
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SportsClub",
+    name: "SmashTeam Badminton Club",
+    sport: "Badminton",
+    address: "304 ĐT743A, Đông Hòa, Hồ Chí Minh, Việt Nam",
   };
-
-  const getRankBadgeClass = (rank: string) => {
-    switch (rank) {
-      case 'Challenger':
-        return 'bg-gradient-to-r from-red-500 to-purple-600 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)] border border-red-400';
-      case 'Diamond':
-        return 'bg-blue-500 text-white shadow-[0_0_8px_rgba(59,130,246,0.3)]';
-      case 'Platinum':
-        return 'bg-teal-500 text-white';
-      case 'Gold':
-        return 'bg-amber-500 text-white font-bold';
-      case 'Silver':
-        return 'bg-slate-300 text-slate-800';
-      default:
-        return 'bg-amber-800/20 text-amber-900'; // Bronze
-    }
-  };
-
-  useEffect(() => {
-    // Check login state
-    const token = localStorage.getItem("admin_token");
-    const role = localStorage.getItem("user_role");
-    if (token) {
-      setIsLoggedIn(true);
-      if (role) setUserRole(role);
-    }
-
-    // Check local storage immediately on client mount to prevent flash of empty screen
-    const cachedCover = localStorage.getItem("homepage_cover_url");
-    if (cachedCover) {
-      setCoverUrl(cachedCover);
-    }
-
-    // Fetch Cover URL
-    fetch(`${API_URL}/api/settings?t=${Date.now()}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.homepage_cover_url) {
-          setCoverUrl(data.homepage_cover_url);
-          localStorage.setItem("homepage_cover_url", data.homepage_cover_url);
-        }
-      })
-      .catch(e => console.error("Error loading settings:", e));
-
-    // Fetch Media Feed
-    fetch(`${API_URL}/api/media?t=${Date.now()}`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          const mapped = data.map((item: any) => {
-            const isVideo = item.content_url.includes("youtube.com") || 
-                            item.content_url.includes("youtu.be") || 
-                            item.content_url.includes("embed");
-            return {
-              id: item.id,
-              title: item.title,
-              type: isVideo ? "video" : "image",
-              url: item.content_url
-            };
-          });
-          setMediaFeed(mapped);
-        }
-      })
-      .catch(e => console.error("Error loading media:", e));
-  }, []);
-
-  useEffect(() => {
-    // Fetch Leaderboard based on Singles or Doubles type
-    fetch(`${API_URL}/api/users/leaderboard?type=${leaderboardType}&t=${Date.now()}`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          const formatted = data.map((item: any) => ({
-            id: item.id,
-            full_name: item.full_name,
-            elo_score: item.elo_score,
-            win_rate: item.win_rate ? parseFloat(item.win_rate) : 0,
-            rank_name: item.rank_name || getRankName(item.elo_score),
-            total_matches: item.total_matches || 0
-          }));
-          setLeaderboard(formatted);
-        }
-      })
-      .catch(e => console.error("Error loading leaderboard:", e));
-  }, [leaderboardType]);
 
   return (
-    <main className="flex-1 w-full bg-background">
-      {/* Navbar Minimalist */}
-      <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="relative w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center shadow-[0_0_10px_rgba(122,34,224,0.3)] border border-smash-purple/20">
+    <main className="w-full bg-white text-black antialiased scroll-smooth">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <SiteNav />
+
+      {/* ===== HERO ===== */}
+      <header id="hero" className="relative w-full min-h-[100svh] flex items-center overflow-hidden bg-black text-white scroll-mt-24">
+        <div className="absolute inset-0">
+          <Image
+            src={heroBg}
+            alt="Sân cầu lông SmashTeam"
+            fill
+            priority
+            fetchPriority="high"
+            sizes="100vw"
+            quality={75}
+            className="object-cover opacity-70"
+          />
+          <div className="absolute inset-0 bg-[radial-gradient(35%_42%_at_50%_50%,rgba(0,0,0,0.4)_0%,rgba(0,0,0,0)_100%)]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/30" />
+        </div>
+        <div className="relative w-full max-w-[1120px] mx-auto px-6 md:px-10 pt-36 pb-20">
+          <div className="max-w-[560px]">
+            <div className="flex items-center gap-3 mb-6 animate-fade-up">
+              <span className="w-12 h-px bg-white" aria-hidden />
+              <span className="text-sm text-white/80 tracking-wide">Câu lạc bộ cầu lông SmashTeam</span>
+            </div>
+            <h1
+              className="font-medium tracking-[-0.05em] leading-[1.05] text-[54px] md:text-[72px] animate-fade-up"
+              style={{ animationDelay: "80ms" }}
+            >
+              ĐAM MÊ
+              <br />
+              HỘI TỤ
+            </h1>
+            <p
+              className="mt-6 text-white/70 text-[16px] leading-[1.6] max-w-[480px] animate-fade-up"
+              style={{ animationDelay: "160ms" }}
+            >
+              Nơi tập hợp những tay vợt tài năng, một môi trường năng động để bạn tỏa sáng và giao lưu.
+            </p>
+            <div
+              className="mt-8 flex flex-wrap gap-3 animate-fade-up"
+              style={{ animationDelay: "240ms" }}
+            >
+              <Link
+                href="/register"
+                className="group flex items-center gap-3 h-12 pl-6 pr-1.5 rounded-full bg-white text-black text-[15px] font-bold hover:bg-white/90 transition-colors"
+              >
+                Trở thành Thành viên
+                <span className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center group-hover:rotate-45 transition-transform">
+                  <ArrowUpRight className="w-4 h-4" aria-hidden />
+                </span>
+              </Link>
+              <a
+                href="#rankings"
+                className="flex items-center h-12 px-6 rounded-full border border-white/25 text-white text-[15px] font-semibold hover:bg-white/10 transition-colors"
+              >
+                Xem bảng xếp hạng
+              </a>
+            </div>
+            <div className="mt-10 pl-6 border-l-2 border-white/20 animate-fade-up" style={{ animationDelay: "320ms" }}>
+              <div className="flex gap-1 text-white mb-1" aria-label="Đánh giá 5 sao">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star key={i} className="w-4 h-4 fill-white" aria-hidden />
+                ))}
+              </div>
+              <p className="text-sm text-white/70">150+ Hội viên đang hoạt động</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ===== STATS ===== */}
+      <section id="trust" className="bg-white py-24 md:py-[120px] scroll-mt-24">
+        <div className="max-w-[1120px] mx-auto px-6 md:px-10">
+          <div className="grid md:grid-cols-5 gap-10 items-center mb-16">
+            <h2 className="md:col-span-3 text-[28px] md:text-[32px] leading-[1.3] tracking-[-0.03em] font-medium text-[#777]">
+              <span className="text-black">
+                Từ người mới đến tay vợt kỳ cựu, SmashTeam tạo môi trường công bằng
+              </span>{" "}
+              để bạn bứt phá và tỏa sáng cùng cộng đồng cầu lông năng động.
+            </h2>
+            <div className="md:col-span-2 relative rounded-2xl overflow-hidden aspect-[5/3] bg-slate-100">
+              <Image
+                src={FALLBACK_TRAINING}
+                alt="Buổi tập của SmashTeam"
+                fill
+                sizes="(max-width: 768px) 100vw, 420px"
+                loading="lazy"
+                decoding="async"
+                quality={70}
+                className="object-cover"
+              />
+            </div>
+          </div>
+          <dl className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {CLUB_STATS.map((s) => (
+              <div key={s.label} className="pt-8 border-t-2 border-[#e1e1e1]">
+                <dd className="text-[40px] md:text-[52px] leading-none font-medium tracking-tight tabular-nums">
+                  {s.value}
+                </dd>
+                <dt className="mt-2 text-[15px] text-black/70">{s.label}</dt>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      {/* ===== RANKINGS ===== */}
+      <section id="rankings" className="bg-white pb-24 md:pb-[100px] scroll-mt-24">
+        <div className="max-w-[1120px] mx-auto px-6 md:px-10">
+          <h2 className="text-center text-[36px] md:text-[52px] font-medium tracking-[-0.03em]">
+            Bảng Xếp Hạng Elo
+          </h2>
+          <p className="text-center text-black/50 mt-3 mb-12">
+            Theo dõi top tay vợt xuất sắc nhất câu lạc bộ qua từng trận đấu.
+          </p>
+
+          <LeaderboardSection initialSingles={singles} initialDoubles={doubles} />
+
+          <div className="mt-16">
+            <h3 className="text-center text-[28px] font-medium tracking-tight">Hệ Thống Xếp Hạng</h3>
+            <p className="text-center text-black/50 mt-2 mb-8">
+              6 bậc phản ánh đúng trình độ thi đấu thực tế của bạn.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {RANK_TIERS.map((tier, i) => (
+                <div
+                  key={tier.name}
+                  className="rounded-2xl border border-black/5 bg-white p-5 text-center shadow-sm hover:shadow-md hover:-translate-y-1 transition-all"
+                >
+                  <div
+                    className={`mx-auto mb-3 w-10 h-10 rounded-full flex items-center justify-center font-black text-xs tabular-nums ${getRankBadgeClass(
+                      tier.name
+                    )}`}
+                  >
+                    {i + 1}
+                  </div>
+                  <h4 className="font-bold">{tier.name}</h4>
+                  <p className="text-[11px] font-semibold text-black/50 mt-0.5 tabular-nums">{tier.range}</p>
+                  <p className="text-xs text-black/50 mt-2 leading-relaxed">{tier.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== MEDIA ===== */}
+      {mediaFeed.length > 0 && (
+        <section id="media" className="bg-white py-20 scroll-mt-24">
+          <div className="max-w-[736px] mx-auto px-6 text-center">
+            <div className="flex justify-center gap-1 text-[#f5b614] mb-6" aria-hidden>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Star key={i} className="w-5 h-5 fill-current" />
+              ))}
+            </div>
+            <h2 className="text-[28px] md:text-[32px] font-medium tracking-[-0.03em] leading-[1.3]">
+              Hoạt động nổi bật
+            </h2>
+            <p className="text-black/50 mt-3 mb-10">
+              Những khoảnh khắc đáng nhớ trong các buổi tập và giải đấu của SmashTeam.
+            </p>
+            <MediaSection items={mediaFeed} />
+          </div>
+        </section>
+      )}
+
+      {/* ===== ABOUT ===== */}
+      <section id="about" className="bg-black text-white py-20 md:py-[100px] scroll-mt-24">
+        <div className="max-w-[1120px] mx-auto px-6 md:px-10 grid md:grid-cols-2 gap-12">
+          <div className="space-y-16">
+            <p className="text-[28px] md:text-[32px] leading-[1.35] tracking-[-0.02em] font-medium">
+              SmashTeam khởi nguồn từ đam mê cầu lông.{" "}
+              <span className="text-[#999]">
+                Từ những buổi tập phong trào, nay là cộng đồng 150+ tay vợt cùng tiến bộ.
+              </span>
+            </p>
+            <p className="text-[28px] md:text-[32px] leading-[1.35] tracking-[-0.02em] font-medium text-[#999]">
+              <span className="text-white">Xếp hạng Elo minh bạch, lịch tập & sự kiện đều đặn</span> giúp
+              mỗi thành viên theo dõi tiến bộ và leo hạng công bằng.
+            </p>
+            <p className="text-[28px] md:text-[32px] leading-[1.35] tracking-[-0.02em] font-medium text-[#999]">
+              <span className="text-white">Cùng nhau bứt phá giới hạn và tỏa sáng</span> — 304 ĐT743A, Đông
+              Hòa, Hồ Chí Minh. Ban Phong Trào Đoàn Viện ISB.
+            </p>
+          </div>
+          <div>
+            <address className="flex items-start gap-3 text-white/70 mb-8 not-italic">
+              <MapPin className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" aria-hidden />
+              <span>304 ĐT743A, Đông Hòa, Hồ Chí Minh, Việt Nam</span>
+            </address>
+            <h3 className="font-bold mb-4">Main contact</h3>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {CONTACTS.map((c) => (
+                <div
+                  key={c.phone}
+                  className="rounded-2xl bg-white/5 border border-white/10 p-4 hover:bg-white/10 transition-colors"
+                >
+                  <p className="font-bold text-sm">{c.name}</p>
+                  <p className="flex items-center gap-1.5 text-xs text-white/60 mt-1">
+                    <Phone className="w-3.5 h-3.5 text-yellow-400" aria-hidden />
+                    <a href={`tel:${c.phone.replace(/\s/g, "")}`} className="hover:text-white">
+                      {c.phone}
+                    </a>
+                  </p>
+                  <p className="text-[11px] text-yellow-400/80 mt-1">{c.role}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== FEATURES ===== */}
+      <section className="bg-white py-20" aria-labelledby="features-title">
+        <div className="max-w-[1120px] mx-auto px-6 md:px-10">
+          <h2
+            id="features-title"
+            className="text-center text-[36px] md:text-[40px] font-medium tracking-[-0.03em]"
+          >
+            Vì sao gia nhập SmashTeam
+          </h2>
+          <p className="text-center text-black/50 mt-3 mb-12">
+            Môi trường thi đấu công bằng, cộng đồng gắn kết và luôn đồng hành cùng bạn tiến bộ.
+          </p>
+          <div className="grid md:grid-cols-4 gap-5">
+            {FEATURES.map((f) => {
+              const Icon = f.icon;
+              return (
+                <div
+                  key={f.title}
+                  className="rounded-2xl border border-black/5 p-6 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-black flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-yellow-400" aria-hidden />
+                  </div>
+                  <h3 className="font-bold mb-1.5">{f.title}</h3>
+                  <p className="text-sm text-black/55 leading-relaxed">{f.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ===== FAQ ===== */}
+      <section id="faq" className="bg-white pb-24 md:pb-[120px] scroll-mt-24">
+        <div className="max-w-[736px] mx-auto px-6">
+          <p className="text-center text-sm text-[#555]">FAQ</p>
+          <h2 className="text-center text-[36px] md:text-[40px] font-medium tracking-[-0.03em] mt-2">
+            Câu Hỏi Thường Gặp
+          </h2>
+          <FaqSection faqs={[...FAQS]} />
+        </div>
+      </section>
+
+      {/* ===== CTA ===== */}
+      <section className="relative overflow-hidden bg-black text-white py-28 md:py-40">
+        <div className="absolute inset-0" aria-hidden>
+          <Image
+            src={FALLBACK_COVER}
+            alt=""
+            fill
+            sizes="100vw"
+            loading="lazy"
+            decoding="async"
+            quality={60}
+            className="object-cover opacity-50"
+          />
+          <div className="absolute inset-0 bg-[radial-gradient(35%_42%_at_50%_50%,rgba(0,0,0,0.4)_0%,rgba(0,0,0,0)_100%)]" />
+        </div>
+        <div className="relative max-w-[720px] mx-auto px-6 text-center">
+          <h2 className="text-[36px] md:text-[52px] font-medium tracking-[-0.03em] leading-[1.15]">
+            Sẵn Sàng Bứt Phá Cùng SmashTeam?
+          </h2>
+          <p className="mt-4 text-white/70">
+            Gia nhập ngay hôm nay để bắt đầu hành trình leo hạng và giao lưu cùng cộng đồng cầu lông năng động.
+          </p>
+          <div className="mt-8 flex justify-center">
+            <Link
+              href="/register"
+              className="group flex items-center gap-3 h-12 pl-6 pr-1.5 rounded-full bg-white text-black font-bold hover:bg-white/90 transition-colors"
+            >
+              Trở thành Thành viên
+              <span className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center group-hover:rotate-45 transition-transform">
+                <ChevronRight className="w-4 h-4" aria-hidden />
+              </span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== FOOTER ===== */}
+      <footer className="bg-black text-white/60 py-16">
+        <div className="max-w-[1120px] mx-auto px-6 md:px-10 flex flex-col md:flex-row justify-between gap-10">
+          <div className="max-w-[320px]">
+            <div className="flex items-center gap-2 mb-4">
               <Image
                 src="/logo.png"
-                alt="Smash Team Logo"
-                fill
-                className="object-cover"
+                alt="SmashTeam logo"
+                width={32}
+                height={32}
+                loading="lazy"
+                className="w-8 h-8 rounded-xl object-cover"
               />
+              <span className="font-bold text-white">SmashTeam</span>
             </div>
-            <span className="font-bold text-xl tracking-tight text-secondary">SmashTeam</span>
+            <p className="text-sm leading-relaxed">
+              Nơi tập hợp những tay vợt tài năng, môi trường năng động để bạn tỏa sáng và giao lưu.
+            </p>
+            <p className="text-xs mt-4 text-white/40">Designed by SmashTeam • Copyright 2026 © SmashTeam</p>
           </div>
-          <div className="flex gap-4 items-center">
-            {isLoggedIn ? (
-              <Link href={userRole === "admin" ? "/admin" : "/profile"}>
-                <button className="px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-medium transition-all transform hover:scale-105 shadow-md text-sm">
-                  {userRole === "admin" ? "Trang quản trị" : "Trang cá nhân"}
-                </button>
-              </Link>
-            ) : (
-              <>
-                <Link href="/login">
-                  <button className="px-4 py-2 text-secondary hover:text-primary transition-all font-semibold text-sm">
-                    Đăng nhập
-                  </button>
-                </Link>
-                <Link href="/register">
-                  <button className="px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-medium transition-all transform hover:scale-105 shadow-md text-sm">
-                    Gia nhập ngay
-                  </button>
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="relative h-screen flex items-center justify-center overflow-hidden bg-slate-900">
-        <div className="absolute inset-0 z-0">
-          {coverUrl && (
-            <motion.div
-              key={coverUrl}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.4 }}
-              transition={{ duration: 0.8 }}
-              className="absolute inset-0"
-            >
-              <Image
-                src={coverUrl}
-                alt="Badminton Hero"
-                fill
-                className="object-cover"
-                priority
-              />
-            </motion.div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
-        </div>
-
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto mt-16">
-          <motion.h1 
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="text-5xl md:text-7xl font-extrabold text-white tracking-tight mb-6"
-          >
-            ĐAM MÊ <span className="text-primary">HỘI TỤ</span>
-          </motion.h1>
-          <motion.p 
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-lg md:text-2xl text-slate-300 mb-10 max-w-2xl mx-auto"
-          >
-            Nơi tập hợp những tay vợt tài năng, một môi trường năng động để bạn tỏa sáng và giao lưu.
-          </motion.p>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-          >
-            <Link href="/register">
-              <button className="group relative px-8 py-4 bg-primary text-white text-lg font-bold rounded-full overflow-hidden shadow-[0_0_40px_rgba(122,34,224,0.4)] hover:shadow-[0_0_60px_rgba(157,78,221,0.6)] transition-all">
-                <span className="relative z-10 flex items-center gap-2">
-                  Trở thành Thành viên <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </span>
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
-              </button>
-            </Link>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Main Content Area */}
-      <section className="max-w-7xl mx-auto px-4 py-20 grid grid-cols-1 lg:grid-cols-3 gap-12">
-        
-        {/* Media Feed (Left Side - 2 columns) */}
-        <div className="lg:col-span-2 space-y-10">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-2 h-8 bg-primary rounded-full"></div>
-            <h2 className="text-3xl font-bold text-secondary">Hoạt động nổi bật</h2>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {mediaFeed.map((media, index) => (
-              <motion.div 
-                key={media.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-                className="group relative rounded-2xl overflow-hidden bg-slate-100 aspect-square md:aspect-[4/5] shadow-sm hover:shadow-xl transition-all effect-shimmer"
-              >
-                {media.type === 'image' ? (
-                  <Image src={media.url} alt={media.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
-                ) : (
-                  <iframe
-                    src={media.url}
-                    title={media.title}
-                    className="w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80 pointer-events-none" />
-                <div className="absolute bottom-0 left-0 w-full p-6 pointer-events-none">
-                  <div className="flex items-center gap-2 text-primary mb-2">
-                    {media.type === 'image' ? <ImageIcon className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                    <span className="text-xs font-bold uppercase tracking-wider">{media.type}</span>
-                  </div>
-                  <h3 className="text-white font-bold text-xl">{media.title}</h3>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
-        {/* Leaderboard Widget (Right Side - 1 column) */}
-        <div className="space-y-8">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-2 h-8 bg-primary rounded-full"></div>
-            <h2 className="text-3xl font-bold text-secondary">Bảng Xếp Hạng</h2>
-          </div>
-
-          <div className="bg-white rounded-3xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-bl-full -z-0 pointer-events-none"></div>
-            
-            <div className="flex items-center justify-between mb-4 relative z-10">
-              <div className="flex items-center gap-2 text-primary">
-                <Trophy className="w-6 h-6" />
-                <span className="font-bold">Hạng Elo Câu Lạc Bộ</span>
+          <nav className="flex gap-20" aria-label="Footer">
+            <div>
+              <p className="text-white font-semibold mb-4 text-[15px]">Danh mục</p>
+              <div className="space-y-2.5 text-sm">
+                <a href="#about" className="block hover:text-white">
+                  Về chúng tôi
+                </a>
+                <a href="#rankings" className="block hover:text-white">
+                  Bảng xếp hạng
+                </a>
+                <a href="#media" className="block hover:text-white">
+                  Hoạt động
+                </a>
+                <a href="#faq" className="block hover:text-white">
+                  FAQ
+                </a>
               </div>
             </div>
-
-            {/* Segmented Control / Tab Switcher */}
-            <div className="relative z-10 flex p-1 bg-slate-100/80 backdrop-blur-sm rounded-xl mb-6 border border-slate-200/50 shadow-inner">
-              <button
-                onClick={() => setLeaderboardType("singles")}
-                className={`flex-grow py-2.5 text-xs font-bold rounded-lg transition-all duration-300 transform active:scale-95 ${
-                  leaderboardType === "singles"
-                    ? "bg-white text-primary shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-200/20 scale-[1.02]"
-                    : "text-slate-500 hover:text-slate-800 hover:bg-white/40"
-                }`}
-              >
-                Bảng Xếp Hạng Đơn
-              </button>
-              <button
-                onClick={() => setLeaderboardType("doubles")}
-                className={`flex-grow py-2.5 text-xs font-bold rounded-lg transition-all duration-300 transform active:scale-95 ${
-                  leaderboardType === "doubles"
-                    ? "bg-white text-primary shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-200/20 scale-[1.02]"
-                    : "text-slate-500 hover:text-slate-800 hover:bg-white/40"
-                }`}
-              >
-                Bảng Xếp Hạng Đôi
-              </button>
-            </div>
-
-            {/* Podium for Top 3 */}
-            {leaderboard.length >= 3 && (
-              <div className="grid grid-cols-3 gap-2 items-end mb-6 pt-4 pb-4 border-b border-slate-100 relative z-10">
-                {/* 2nd Place */}
-                <div className="flex flex-col items-center">
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-smash-purple/60 shadow-[0_0_15px_rgba(122,34,224,0.4)] flex items-center justify-center bg-purple-50 text-smash-purple/80 font-bold text-sm">
-                    {leaderboard[1].full_name.substring(0, 2).toUpperCase()}
-                  </div>
-                  <span className="text-[10px] font-black text-smash-purple/80 uppercase mt-1">2nd</span>
-                  <p className="text-xs font-bold text-secondary truncate max-w-[80px] text-center">{leaderboard[1].full_name}</p>
-                  <p className="text-xs font-black text-smash-purple/95">{leaderboard[1].elo_score}</p>
-                  <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded mt-1 scale-90 ${getRankBadgeClass(leaderboard[1].rank_name)}`}>
-                    {leaderboard[1].rank_name}
-                  </span>
-                </div>
-
-                {/* 1st Place */}
-                <div className="flex flex-col items-center transform -translate-y-2 scale-105">
-                  <div className="relative">
-                    {/* Trophy/Crown icon */}
-                    <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-smash-violet fill-smash-violet animate-bounce">
-                      <Trophy className="w-5 h-5 fill-smash-violet" />
-                    </div>
-                    {/* Glowing effect */}
-                    <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-smash-violet shadow-[0_0_25px_rgba(157,78,221,0.7)] flex items-center justify-center bg-purple-50 text-smash-purple font-black text-lg">
-                      {leaderboard[0].full_name.substring(0, 2).toUpperCase()}
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black text-smash-violet uppercase mt-1">1st</span>
-                  <p className="text-xs font-black text-secondary truncate max-w-[90px] text-center">{leaderboard[0].full_name}</p>
-                  <p className="text-sm font-black text-smash-purple">{leaderboard[0].elo_score}</p>
-                  <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded mt-1 ${getRankBadgeClass(leaderboard[0].rank_name)}`}>
-                    {leaderboard[0].rank_name}
-                  </span>
-                </div>
-
-                {/* 3rd Place */}
-                <div className="flex flex-col items-center">
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-smash-purple/30 shadow-[0_0_10px_rgba(122,34,224,0.2)] flex items-center justify-center bg-purple-50/50 text-smash-purple/70 font-bold text-sm">
-                    {leaderboard[2].full_name.substring(0, 2).toUpperCase()}
-                  </div>
-                  <span className="text-[10px] font-black text-smash-purple/60 uppercase mt-1">3rd</span>
-                  <p className="text-xs font-bold text-secondary truncate max-w-[80px] text-center">{leaderboard[2].full_name}</p>
-                  <p className="text-xs font-black text-smash-purple/70">{leaderboard[2].elo_score}</p>
-                  <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded mt-1 scale-90 ${getRankBadgeClass(leaderboard[2].rank_name)}`}>
-                    {leaderboard[2].rank_name}
-                  </span>
-                </div>
+            <div>
+              <p className="text-white font-semibold mb-4 text-[15px]">Liên hệ</p>
+              <div className="space-y-2.5 text-sm">
+                <span className="block">Facebook</span>
+                <span className="block">Instagram</span>
+                <span className="block">Youtube</span>
               </div>
-            )}
-
-            {/* Search Input */}
-            <div className="mb-4 relative z-10">
-              <input
-                type="text"
-                placeholder="Tìm tay vợt..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-slate-800"
-              />
             </div>
-
-            {/* Scrollable list of players */}
-            <div className="space-y-3 relative z-10 max-h-[350px] overflow-y-auto pr-1">
-              {leaderboard.filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).map((user, index) => {
-                // Find overall index from full leaderboard
-                const overallIndex = leaderboard.findIndex(u => u.id === user.id);
-                return (
-                  <div key={user.id} className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 border border-slate-100/30 transition-colors group">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0
-                        ${overallIndex === 0 ? 'bg-purple-100 text-smash-purple' : 
-                          overallIndex === 1 ? 'bg-purple-50 text-smash-purple/80' : 
-                          overallIndex === 2 ? 'bg-purple-50/50 text-smash-purple/60' : 'bg-slate-100 text-slate-400'}`}
-                      >
-                        {overallIndex + 1}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-secondary group-hover:text-primary transition-colors text-sm">{user.full_name}</p>
-                          <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(user.rank_name)}`}>
-                            {user.rank_name}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400">Tỷ lệ thắng: {user.win_rate.toFixed(1)}% ({user.total_matches} trận)</p>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-black text-base text-secondary">{user.elo_score}</p>
-                      <p className="text-[9px] uppercase tracking-wider text-slate-400">Elo</p>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {leaderboard.filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
-                <p className="text-xs text-slate-400 italic text-center py-4">Không tìm thấy thành viên nào phù hợp.</p>
-              )}
-            </div>
-          </div>
+          </nav>
         </div>
-
-      </section>
-      
-      <footer className="bg-slate-900 text-slate-400 py-12 text-center">
-        <p>© 2026 SmashTeam Badminton Club. All rights reserved.</p>
+        <div className="max-w-[1120px] mx-auto px-6 md:px-10 mt-10 pt-6 border-t border-white/10 text-center text-xs text-white/40">
+          © 2026 SmashTeam Badminton Club. All rights reserved. • Ban Phong Trào Đoàn Viện ISB
+        </div>
       </footer>
     </main>
   );

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Swords, Trophy, Save, ArrowDownUp, AlertCircle, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
-import confetti from "canvas-confetti";
 import { API_URL } from "@/app/config";
 
 interface SearchablePlayerSelectProps {
@@ -92,7 +91,7 @@ function SearchablePlayerSelect({
               onChange("");
             }
           }}
-          className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-primary font-bold text-slate-800"
+          className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black font-bold text-slate-800"
         />
         
         {/* Toggle icon */}
@@ -126,10 +125,10 @@ function SearchablePlayerSelect({
                   }`}
                 >
                   <div>
-                    <div>{m.full_name} <span className="text-[10px] text-slate-400 font-mono">({shortId})</span></div>
+                    <div>{m.full_name} <span className="text-[10px] text-slate-400 tabular-nums">({shortId})</span></div>
                     <div className="text-[9px] text-slate-400 font-medium">SĐT: {m.phone_zalo || "N/A"}</div>
                   </div>
-                  <span className="text-[10px] font-black text-amber-500 font-mono shrink-0">
+                  <span className="text-[10px] font-black text-amber-500 tabular-nums shrink-0">
                     Elo {isDoubles ? `Đôi: ${m.elo_doubles}` : `Đơn: ${m.elo_singles}`}
                   </span>
                 </button>
@@ -158,6 +157,8 @@ export default function MatchesPage() {
   const [winner, setWinner] = useState(""); // player1 = Team 1 wins, player2 = Team 2 wins
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Fetch actual members for dropdown selection
@@ -283,20 +284,22 @@ export default function MatchesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+    setFormSuccess(null);
     if (player1 === player2) {
-      alert("Hai người chơi chính của 2 đội phải khác nhau!");
+      setFormError("Hai người chơi chính của 2 đội phải khác nhau!");
       return;
     }
     if (isDoubles && (!player1Partner || !player2Partner)) {
-      alert("Vui lòng chọn đầy đủ 4 người chơi cho trận đánh đôi!");
+      setFormError("Vui lòng chọn đầy đủ 4 người chơi cho trận đánh đôi!");
       return;
     }
     if (scoreP1 === "" || scoreP2 === "") {
-      alert("Vui lòng nhập điểm số hợp lệ!");
+      setFormError("Vui lòng nhập điểm số hợp lệ!");
       return;
     }
     if (!winner) {
-      alert("Vui lòng chọn đội thắng!");
+      setFormError("Vui lòng chọn đội thắng!");
       return;
     }
 
@@ -322,13 +325,14 @@ export default function MatchesPage() {
       });
 
       if (res.ok) {
+        const { default: confetti } = await import("canvas-confetti");
         confetti({
           particleCount: 100,
           spread: 70,
           origin: { y: 0.6 }
         });
-        alert("Lưu kết quả trận đấu và cập nhật điểm Elo thành công!");
-        
+        setFormSuccess("Lưu kết quả trận đấu và cập nhật điểm Elo thành công!");
+
         // Reset forms
         setPlayer1("");
         setPlayer1Partner("");
@@ -337,14 +341,14 @@ export default function MatchesPage() {
         setScoreP1("");
         setScoreP2("");
         setWinner("");
-        
+
         fetchMembers();
       } else {
         const err = await res.json();
-        alert(err.error || "Gặp lỗi khi lưu kết quả trận đấu.");
+        setFormError(err.error || "Gặp lỗi khi lưu kết quả trận đấu.");
       }
     } catch (e) {
-      alert("Lỗi kết nối mạng.");
+      setFormError("Lỗi kết nối mạng.");
     } finally {
       setIsSubmitting(false);
     }
@@ -353,7 +357,7 @@ export default function MatchesPage() {
   if (loading) {
     return (
       <div className="min-h-[400px] flex flex-col items-center justify-center gap-4 text-slate-500">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Loader2 className="w-8 h-8 animate-spin text-black" />
         <p className="text-sm font-medium">Đang tải danh sách thành viên...</p>
       </div>
     );
@@ -401,7 +405,7 @@ export default function MatchesPage() {
         <form onSubmit={handleSubmit} className="relative z-10 space-y-8">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-8 items-stretch">
             {/* ĐỘI A (ĐỘI 1) */}
-            <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${winner === player1 && player1 !== "" ? 'bg-primary/5 border-primary shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'bg-slate-50/50 border-slate-200'}`}>
+            <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${winner === player1 && player1 !== "" ? 'bg-black/5 border-black shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'bg-slate-50/50 border-slate-200'}`}>
               <div className="space-y-4">
                 <SearchablePlayerSelect
                   label={isDoubles ? "Đội A (Thành viên 1)" : "Người chơi 1 (Đội A)"}
@@ -464,7 +468,7 @@ export default function MatchesPage() {
                     placeholder="0"
                     value={scoreP1}
                     onChange={(e) => handleScoreChange(e.target.value, scoreP2)}
-                    className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-primary text-center font-black text-slate-800 text-lg"
+                    className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black text-center font-black text-slate-800 text-lg"
                   />
                 </div>
 
@@ -489,7 +493,7 @@ export default function MatchesPage() {
                 <button 
                   type="button"
                   onClick={() => setWinner(player1)}
-                  className={`w-full py-2.5 mt-4 rounded-xl text-xs font-black tracking-wider transition-colors border ${winner === player1 ? 'bg-primary border-primary text-white shadow-md shadow-primary/20' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  className={`w-full py-2.5 mt-4 rounded-xl text-xs font-black tracking-wider transition-colors border ${winner === player1 ? 'bg-black border-black text-white shadow-md shadow-black/20' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                 >
                   {winner === player1 ? '✓ ĐỘI A THẮNG' : 'CHỌN ĐỘI A THẮNG'}
                 </button>
@@ -568,7 +572,7 @@ export default function MatchesPage() {
             </div>
 
             {/* ĐỘI B (ĐỘI 2) */}
-            <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${winner === player2 && player2 !== "" ? 'bg-primary/5 border-primary shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'bg-slate-50/50 border-slate-200'}`}>
+            <div className={`p-5 rounded-2xl border transition-all flex flex-col justify-between ${winner === player2 && player2 !== "" ? 'bg-black/5 border-black shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'bg-slate-50/50 border-slate-200'}`}>
               <div className="space-y-4">
                 <SearchablePlayerSelect
                   label={isDoubles ? "Đội B (Thành viên 1)" : "Người chơi 2 (Đội B)"}
@@ -631,7 +635,7 @@ export default function MatchesPage() {
                     placeholder="0"
                     value={scoreP2}
                     onChange={(e) => handleScoreChange(scoreP1, e.target.value)}
-                    className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-primary text-center font-black text-slate-800 text-lg"
+                    className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black text-center font-black text-slate-800 text-lg"
                   />
                 </div>
 
@@ -656,7 +660,7 @@ export default function MatchesPage() {
                 <button 
                   type="button"
                   onClick={() => setWinner(player2)}
-                  className={`w-full py-2.5 mt-4 rounded-xl text-xs font-black tracking-wider transition-colors border ${winner === player2 ? 'bg-primary border-primary text-white shadow-md shadow-primary/20' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  className={`w-full py-2.5 mt-4 rounded-xl text-xs font-black tracking-wider transition-colors border ${winner === player2 ? 'bg-black border-black text-white shadow-md shadow-black/20' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                 >
                   {winner === player2 ? '✓ ĐỘI B THẮNG' : 'CHỌN ĐỘI B THẮNG'}
                 </button>
@@ -664,11 +668,22 @@ export default function MatchesPage() {
             </div>
           </div>
 
-          <div className="pt-4 flex justify-end">
+          <div className="pt-4 space-y-3">
+            {formError && (
+              <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 px-4 py-3 rounded-2xl font-medium">
+                {formError}
+              </p>
+            )}
+            {formSuccess && (
+              <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 px-4 py-3 rounded-2xl font-medium">
+                {formSuccess}
+              </p>
+            )}
+            <div className="flex justify-end">
             <button
               type="submit"
               disabled={isSubmitting || !player1 || !player2 || !winner || scoreP1 === "" || scoreP2 === "" || (isDoubles && (!player1Partner || !player2Partner))}
-              className="px-8 py-4 bg-secondary hover:bg-slate-900 disabled:opacity-50 text-white rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg cursor-pointer"
+              className="px-8 h-12 bg-black hover:bg-black/85 disabled:opacity-50 text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-lg cursor-pointer"
             >
               {isSubmitting ? (
                 <>
@@ -681,6 +696,7 @@ export default function MatchesPage() {
                 </>
               )}
             </button>
+            </div>
           </div>
         </form>
       </div>

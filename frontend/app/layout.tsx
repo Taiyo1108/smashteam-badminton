@@ -25,6 +25,12 @@ export default function RootLayout({
       className={`${inter.variable} font-sans h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* Áp dụng chế độ ban đêm đã lưu (trừ trang chính luôn sáng) để tránh nháy */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem("smash-theme")==="dark"&&window.location.pathname!=="/")document.documentElement.classList.add("dark")}catch(e){}`,
+          }}
+        />
         {children}
         <BgmPlayer />
       </body>

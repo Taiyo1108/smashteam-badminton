@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle } from "lucide-react";
 import { API_URL } from "@/app/config";
+import { PageHeader, Modal, PillButton, EmptyState, CardSkeleton } from "@/app/components/ui";
 
 export default function ContentManagementPage() {
   // States for Site settings (Cover Image)
@@ -27,6 +29,9 @@ export default function ContentManagementPage() {
   });
   const [postFile, setPostFile] = useState<File | null>(null);
   const postFileInputRef = useRef<HTMLInputElement>(null);
+  const [notice, setNotice] = useState("");
+  const [deletingPost, setDeletingPost] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Parse YouTube URL to Standard Embed URL
   const normalizeYoutubeUrl = (url: string): string => {
@@ -167,7 +172,7 @@ export default function ContentManagementPage() {
       });
 
       if (res.ok) {
-        alert("Đăng bài viết mới thành công!");
+        setNotice("Đăng bài viết mới thành công!");
         // Reset form
         setPostForm({
           title: "",
@@ -177,7 +182,7 @@ export default function ContentManagementPage() {
         });
         setPostFile(null);
         if (postFileInputRef.current) postFileInputRef.current.value = "";
-        
+
         // Refresh posts list
         fetchMediaPosts();
       } else {
@@ -192,12 +197,12 @@ export default function ContentManagementPage() {
   };
 
   // Handle Delete Post
-  const handleDeletePost = async (postId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa bài viết này không? Điều này sẽ gỡ bài khỏi Trang chủ và xóa file ảnh liên quan.")) return;
-
+  const handleDeletePost = async () => {
+    if (!deletingPost) return;
+    setIsDeleting(true);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/media/${postId}`, {
+      const res = await fetch(`${API_URL}/api/media/${deletingPost.id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -205,41 +210,55 @@ export default function ContentManagementPage() {
       });
 
       if (res.ok) {
-        alert("Xóa bài viết thành công!");
+        setDeletingPost(null);
+        setNotice("Xóa bài viết thành công!");
         fetchMediaPosts();
       } else {
-        const err = await res.json();
-        alert(err.error || "Lỗi khi xóa bài viết.");
+        const err = await res.json().catch(() => ({}));
+        setCreateError(err.error || "Lỗi khi xóa bài viết.");
+        setDeletingPost(null);
       }
     } catch (e) {
-      alert("Lỗi kết nối mạng.");
+      setCreateError("Lỗi kết nối mạng.");
+      setDeletingPost(null);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-secondary mb-2">Quản lý nội dung</h1>
-        <p className="text-slate-500">Cập nhật ảnh bìa giao diện và đăng các hoạt động truyền thông của câu lạc bộ.</p>
-      </div>
+      <PageHeader
+        title="Nội dung"
+        desc="Cập nhật ảnh bìa giao diện và đăng các hoạt động truyền thông của câu lạc bộ."
+      />
+
+      {notice && (
+        <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 px-4 py-3 rounded-2xl font-medium">
+          {notice}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* CỘT TRÁI: THAY THẾ ẢNH BÌA */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-secondary mb-4 flex items-center gap-2">
-              <ImageIcon className="w-5 h-5 text-primary" /> Ảnh bìa Trang chủ
+              <ImageIcon className="w-5 h-5 text-black" /> Ảnh bìa Trang chủ
             </h2>
 
             <div className="space-y-4">
               {/* Cover Photo Preview */}
               <div className="relative aspect-[16/9] rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
                 {settings.homepage_cover_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
                     src={settings.homepage_cover_url}
                     alt="Homepage Cover"
-                    className="w-full h-full object-cover"
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 380px"
+                    loading="lazy"
+                    unoptimized
+                    className="object-cover"
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
@@ -268,7 +287,7 @@ export default function ContentManagementPage() {
                   type="button"
                   onClick={() => coverInputRef.current?.click()}
                   disabled={coverLoading}
-                  className="w-full py-3 px-4 border border-dashed border-slate-300 hover:border-primary hover:bg-slate-50 text-slate-600 hover:text-primary rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3 px-4 border border-dashed border-slate-300 hover:border-black hover:bg-slate-50 text-slate-600 hover:text-black rounded-xl font-bold transition-all flex items-center justify-center gap-2"
                 >
                   <Upload className="w-4 h-4" />
                   {coverLoading ? "Đang tải lên..." : "Tải ảnh bìa mới"}
@@ -300,7 +319,7 @@ export default function ContentManagementPage() {
           {/* Biểu mẫu đăng bài */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-secondary mb-4 flex items-center gap-2">
-              <Plus className="w-5 h-5 text-primary" /> Đăng bài viết / Hoạt động mới
+              <Plus className="w-5 h-5 text-black" /> Đăng bài viết / Hoạt động mới
             </h2>
 
             <form onSubmit={handleCreatePost} className="space-y-4">
@@ -312,7 +331,7 @@ export default function ContentManagementPage() {
                   placeholder="Ví dụ: Giải đấu Mùa Xuân 2026, Tập luyện hàng tuần..."
                   value={postForm.title}
                   onChange={(e) => setPostForm({ ...postForm, title: e.target.value })}
-                  className="w-full p-3 border rounded-xl text-sm outline-none focus:border-primary"
+                  className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
                 />
               </div>
 
@@ -322,7 +341,7 @@ export default function ContentManagementPage() {
                   <select
                     value={postForm.type}
                     onChange={(e) => setPostForm({ ...postForm, type: e.target.value })}
-                    className="w-full p-3 border rounded-xl text-sm outline-none focus:border-primary bg-white"
+                    className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-black bg-white"
                   >
                     <option value="image">Hình ảnh (Upload)</option>
                     <option value="video">Video (YouTube URL)</option>
@@ -335,7 +354,7 @@ export default function ContentManagementPage() {
                       type="checkbox"
                       checked={postForm.isFeatured}
                       onChange={(e) => setPostForm({ ...postForm, isFeatured: e.target.checked })}
-                      className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary"
+                      className="w-4 h-4 text-black rounded border-slate-300 focus:ring-black"
                     />
                     <span className="text-sm font-medium text-slate-700 flex items-center gap-1">
                       Đánh dấu nổi bật <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
@@ -353,7 +372,7 @@ export default function ContentManagementPage() {
                     accept="image/*"
                     ref={postFileInputRef}
                     onChange={(e) => setPostFile(e.target.files?.[0] || null)}
-                    className="w-full p-2.5 border rounded-xl text-sm outline-none bg-slate-50"
+                    className="w-full p-2.5 border border-slate-200 rounded-xl text-sm outline-none bg-slate-50"
                   />
                   {postFile && (
                     <p className="text-xs text-green-600 mt-1">Đã chọn: {postFile.name} ({(postFile.size / 1024 / 1024).toFixed(2)} MB)</p>
@@ -367,7 +386,7 @@ export default function ContentManagementPage() {
                     placeholder="Dán link YouTube (Ví dụ: https://www.youtube.com/watch?v=... hoặc https://youtu.be/...)"
                     value={postForm.videoUrl}
                     onChange={(e) => setPostForm({ ...postForm, videoUrl: e.target.value })}
-                    className="w-full p-3 border rounded-xl text-sm outline-none focus:border-primary"
+                    className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
                     * Hệ thống sẽ tự động chuyển đổi thành link nhúng Embed dạng chuẩn.
@@ -385,7 +404,7 @@ export default function ContentManagementPage() {
                 <button
                   type="submit"
                   disabled={createLoading}
-                  className="px-6 py-3 bg-secondary hover:bg-slate-900 text-white rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm"
+                  className="px-6 h-12 bg-black hover:bg-black/85 text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-sm"
                 >
                   {createLoading ? (
                     <>
@@ -404,11 +423,9 @@ export default function ContentManagementPage() {
             <h2 className="text-lg font-bold text-secondary mb-4">Danh sách Hoạt động nổi bật</h2>
 
             {postsLoading ? (
-              <div className="py-12 flex justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              </div>
+              <CardSkeleton rows={2} />
             ) : mediaPosts.length === 0 ? (
-              <p className="text-sm text-slate-400 italic text-center py-8">Chưa có bài viết nào được đăng.</p>
+              <EmptyState title="Chưa có bài viết nào" desc="Đăng hoạt động đầu tiên để hiển thị lên trang chủ." />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {mediaPosts.map((post) => {
@@ -431,16 +448,20 @@ export default function ContentManagementPage() {
                             <iframe
                               src={post.content_url}
                               title={post.title}
+                              loading="lazy"
                               className="w-full h-full pointer-events-none opacity-40"
                               frameBorder="0"
                             />
                           </>
                         ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <Image
                             src={post.content_url}
                             alt={post.title}
-                            className="w-full h-full object-cover"
+                            fill
+                            sizes="(max-width: 768px) 100vw, 400px"
+                            loading="lazy"
+                            unoptimized
+                            className="object-cover"
                           />
                         )}
 
@@ -477,7 +498,7 @@ export default function ContentManagementPage() {
                             {post.content_url}
                           </span>
                           <button
-                            onClick={() => handleDeletePost(post.id)}
+                            onClick={() => setDeletingPost(post)}
                             className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                             title="Xóa bài viết"
                           >
@@ -493,6 +514,25 @@ export default function ContentManagementPage() {
           </div>
         </div>
       </div>
+
+      {/* DELETE CONFIRM MODAL */}
+      <Modal
+        open={!!deletingPost}
+        onClose={() => setDeletingPost(null)}
+        title="Xóa bài viết?"
+      >
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Xóa bài <strong>“{deletingPost?.title}”</strong>? Bài sẽ bị gỡ khỏi trang chủ và xóa file ảnh liên quan.
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <PillButton variant="ghost" onClick={() => setDeletingPost(null)}>
+            Hủy
+          </PillButton>
+          <PillButton variant="danger" loading={isDeleting} onClick={handleDeletePost}>
+            Xóa bài viết
+          </PillButton>
+        </div>
+      </Modal>
     </div>
   );
 }

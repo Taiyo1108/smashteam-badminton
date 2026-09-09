@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft, CheckCircle2, QrCode, Loader2, MapPin, Calendar, AlertCircle } from "lucide-react";
-import confetti from "canvas-confetti";
+import { ArrowRight, CheckCircle2, Loader2, MapPin, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
+import BrandLogo from "@/app/components/BrandLogo";
 
 const levels = [
   { id: "Mới chơi", label: "Mới chơi", desc: "Chưa biết nhiều về kỹ thuật, muốn học hỏi thêm" },
@@ -35,6 +34,7 @@ export default function RegisterPage() {
   }, []);
 
   const [phoneError, setPhoneError] = useState("");
+  const [formError, setFormError] = useState("");
   const [formData, setFormData] = useState({
     fullName: "",
     phoneZalo: "",
@@ -82,24 +82,25 @@ export default function RegisterPage() {
   };
 
   const nextStep = () => {
+    setFormError("");
     if (step === 1) {
       if (!formData.fullName || !formData.phoneZalo || !formData.gender || !formData.email) {
-        alert("Vui lòng điền đầy đủ Họ tên, Số điện thoại, Email và Giới tính.");
+        setFormError("Vui lòng điền đầy đủ Họ tên, Số điện thoại, Email và Giới tính.");
         return;
       }
       const phoneRegex = /^0\d{9}$/;
       if (!phoneRegex.test(formData.phoneZalo)) {
-        alert("Số điện thoại không đúng định dạng (phải có 10 chữ số và bắt đầu bằng số 0).");
+        setFormError("Số điện thoại không đúng định dạng (phải có 10 chữ số và bắt đầu bằng số 0).");
         return;
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.email)) {
-        alert("Địa chỉ Email không đúng định dạng (Ví dụ: user@example.com).");
+        setFormError("Địa chỉ Email không đúng định dạng (Ví dụ: user@example.com).");
         return;
       }
     }
     if (step === 2 && (!formData.university || !formData.level)) {
-      alert("Vui lòng chọn trường và trình độ.");
+      setFormError("Vui lòng chọn trường và trình độ.");
       return;
     }
     setStep(prev => prev + 1);
@@ -108,11 +109,12 @@ export default function RegisterPage() {
 
   const handleSubmit = async () => {
     if (!formData.selectedSlot) {
-      alert("Vui lòng chọn 1 ca Casting.");
+      setFormError("Vui lòng chọn 1 ca Casting.");
       return;
     }
 
     setIsSubmitting(true);
+    setFormError("");
     
     try {
       const response = await fetch(`${API_URL}/api/users/register`, {
@@ -137,9 +139,10 @@ export default function RegisterPage() {
 
       setIsSubmitting(false);
       setIsSuccess(true);
+      const { default: confetti } = await import("canvas-confetti");
       confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#eab308', '#ca8a04', '#1e293b', '#ffffff'] });
     } catch (error: any) {
-      alert(error.message || 'Đã có lỗi xảy ra. Vui lòng thử lại sau.');
+      setFormError(error.message || 'Đã có lỗi xảy ra. Vui lòng thử lại sau.');
       setIsSubmitting(false);
     }
   };
@@ -148,8 +151,8 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col relative overflow-hidden">
       {/* Navbar Minimal */}
       <nav className="absolute top-0 w-full z-50 p-6">
-        <Link href="/" className="flex items-center gap-2 font-bold text-xl text-secondary">
-          <ArrowLeft className="w-5 h-5" /> Trở về
+        <Link href="/" className="flex items-center gap-2 font-bold text-xl">
+          <BrandLogo size={32} /> SmashTeam
         </Link>
       </nav>
 
@@ -161,38 +164,30 @@ export default function RegisterPage() {
             <div className="mb-12">
               <div className="flex justify-between mb-2">
                 <span className="text-sm font-bold text-slate-400">Bước {step}/3</span>
-                <span className="text-sm font-bold text-primary">
+                <span className="text-sm font-bold text-black">
                   {step === 1 ? "Thông tin cơ bản" : step === 2 ? "Học vấn" : "Chọn Ca Casting"}
                 </span>
               </div>
               <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                <motion.div 
-                  className="h-full bg-primary"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(step / 3) * 100}%` }}
-                  transition={{ duration: 0.3 }}
+                <div
+                  className="h-full bg-black transition-all duration-300"
+                  style={{ width: `${(step / 3) * 100}%` }}
                 />
               </div>
             </div>
 
             {/* Form Area */}
             <div className="min-h-[300px]">
-              <AnimatePresence mode="wait">
+              <div key={step} className="animate-fade-up">
                 {step === 1 && (
-                  <motion.div
-                    key="step1"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    className="space-y-6"
-                  >
+                  <div className="space-y-6">
                     <h2 className="text-3xl font-bold text-secondary mb-8">Thông tin của bạn</h2>
                     <div>
                       <label className="block text-sm font-bold text-slate-600 mb-2">Họ và tên</label>
                       <input 
                         type="text" 
                         placeholder="Nguyễn Văn A"
-                        className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800"
+                        className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-black focus:ring-2 focus:ring-black/10 outline-none transition-all text-slate-800"
                         value={formData.fullName}
                         onChange={(e) => updateForm("fullName", e.target.value)}
                       />
@@ -205,7 +200,7 @@ export default function RegisterPage() {
                         className={`w-full px-5 py-4 rounded-xl border outline-none transition-all text-slate-800 ${
                           phoneError 
                             ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100" 
-                            : "border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                            : "border-slate-200 focus:border-black focus:ring-2 focus:ring-black/10"
                         }`}
                         value={formData.phoneZalo}
                         onChange={(e) => {
@@ -226,7 +221,7 @@ export default function RegisterPage() {
                       <input 
                         type="email" 
                         placeholder="example@domain.com"
-                        className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800 mb-4"
+                        className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-black focus:ring-2 focus:ring-black/10 outline-none transition-all text-slate-800 mb-4"
                         value={formData.email}
                         onChange={(e) => updateForm("email", e.target.value)}
                       />
@@ -241,7 +236,7 @@ export default function RegisterPage() {
                             onClick={() => updateForm("gender", g)}
                             className={`flex-1 py-3.5 text-sm font-bold border-2 rounded-xl transition-all ${
                               formData.gender === g
-                                ? "border-primary bg-primary/5 text-primary shadow-sm scale-[1.02]"
+                                ? "border-black bg-black/5 text-black shadow-sm scale-[1.02]"
                                 : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
                             }`}
                           >
@@ -250,17 +245,11 @@ export default function RegisterPage() {
                         ))}
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 )}
 
                 {step === 2 && (
-                  <motion.div
-                    key="step2"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    className="space-y-6"
-                  >
+                  <div className="space-y-6">
                     <h2 className="text-3xl font-bold text-secondary mb-8">Trường & Chuyên môn</h2>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -268,7 +257,7 @@ export default function RegisterPage() {
                         <input 
                           type="text" 
                           placeholder="VD: ĐH Bách Khoa"
-                          className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800"
+                          className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-black focus:ring-2 focus:ring-black/10 outline-none transition-all text-slate-800"
                           value={formData.university}
                           onChange={(e) => updateForm("university", e.target.value)}
                         />
@@ -278,7 +267,7 @@ export default function RegisterPage() {
                         <input 
                           type="text" 
                           placeholder="VD: K64"
-                          className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800"
+                          className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-black focus:ring-2 focus:ring-black/10 outline-none transition-all text-slate-800"
                           value={formData.courseYear}
                           onChange={(e) => updateForm("courseYear", e.target.value)}
                         />
@@ -291,31 +280,25 @@ export default function RegisterPage() {
                           <div 
                             key={lvl.id}
                             onClick={() => updateForm("level", lvl.id)}
-                            className={`cursor-pointer p-4 rounded-2xl border-2 transition-all duration-300 ${formData.level === lvl.id ? 'border-primary bg-primary/5 shadow-md scale-[1.02]' : 'border-slate-100 hover:border-slate-300 bg-white'}`}
+                            className={`cursor-pointer p-4 rounded-2xl border-2 transition-all duration-300 ${formData.level === lvl.id ? 'border-black bg-black/5 shadow-md scale-[1.02]' : 'border-slate-100 hover:border-slate-300 bg-white'}`}
                           >
-                            <h3 className={`font-bold mb-1 text-sm ${formData.level === lvl.id ? 'text-primary' : 'text-secondary'}`}>{lvl.label}</h3>
+                            <h3 className={`font-bold mb-1 text-sm ${formData.level === lvl.id ? 'text-black' : 'text-secondary'}`}>{lvl.label}</h3>
                             <p className="text-xs text-slate-500 leading-relaxed">{lvl.desc}</p>
                           </div>
                         ))}
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 )}
 
                 {step === 3 && (
-                  <motion.div
-                    key="step3"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    className="space-y-8"
-                  >
+                  <div className="space-y-8">
                     <h2 className="text-3xl font-bold text-secondary mb-2">Ca Casting & Kỹ năng</h2>
                     
                     <div>
                       <label className="block text-sm font-bold text-slate-600 mb-4">Chọn 1 Ca Casting phù hợp với bạn <span className="text-red-500">*</span></label>
                       {isLoadingSlots ? (
-                        <div className="flex justify-center p-6 text-primary"><Loader2 className="animate-spin w-8 h-8" /></div>
+                        <div className="flex justify-center p-6 text-black"><Loader2 className="animate-spin w-8 h-8" /></div>
                       ) : slots.length === 0 ? (
                         <div className="p-6 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200 text-sm">
                           Hiện chưa có khung giờ Casting nào. Vui lòng quay lại sau hoặc liên hệ Fanpage.
@@ -326,7 +309,7 @@ export default function RegisterPage() {
                             <div 
                               key={slot.id} 
                               onClick={() => slot.is_active && updateForm("selectedSlot", slot.id)}
-                              className={`p-4 border-2 rounded-xl transition-all ${!slot.is_active ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed' : formData.selectedSlot === slot.id ? 'bg-primary/5 border-primary shadow-sm cursor-pointer' : 'bg-white border-slate-100 hover:border-slate-300 cursor-pointer'}`}
+                              className={`p-4 border-2 rounded-xl transition-all ${!slot.is_active ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed' : formData.selectedSlot === slot.id ? 'bg-black/5 border-black shadow-sm cursor-pointer' : 'bg-white border-slate-100 hover:border-slate-300 cursor-pointer'}`}
                             >
                               <div className="font-bold text-secondary mb-2 flex justify-between items-center">
                                 <div className="flex items-center gap-2">
@@ -336,7 +319,7 @@ export default function RegisterPage() {
                                 <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">{format(new Date(slot.casting_time), "dd/MM/yyyy")}</span>
                               </div>
                               <div className="text-sm text-slate-600 flex items-center gap-1">
-                                <MapPin className="w-4 h-4 text-primary/70" /> {slot.location}
+                                <MapPin className="w-4 h-4 text-black/70" /> {slot.location}
                               </div>
                             </div>
                           ))}
@@ -353,7 +336,7 @@ export default function RegisterPage() {
                             onClick={() => handleSkillToggle(skill)}
                             className={`px-4 py-2 text-sm font-bold border-2 rounded-full transition-all ${
                               formData.selectedSkills.includes(skill) 
-                                ? 'bg-primary border-primary text-white shadow-md' 
+                                ? 'bg-black border-black text-white shadow-md' 
                                 : 'bg-white border-slate-100 text-slate-600 hover:border-slate-300'
                             }`}
                           >
@@ -362,10 +345,18 @@ export default function RegisterPage() {
                         ))}
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 )}
-              </AnimatePresence>
+              </div>
             </div>
+
+            {/* Inline error */}
+            {formError && (
+              <p className="mt-6 text-sm text-red-600 bg-red-50 border border-red-100 px-4 py-3 rounded-2xl font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{formError}</span>
+              </p>
+            )}
 
             {/* Navigation Buttons */}
             <div className="mt-12 flex justify-between items-center pt-8 border-t border-slate-100">
@@ -381,7 +372,7 @@ export default function RegisterPage() {
               {step < 3 ? (
                 <button 
                   onClick={nextStep}
-                  className="px-8 py-3 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                  className="px-8 py-3 bg-black hover:bg-black/85 text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5"
                 >
                   Tiếp tục <ArrowRight className="w-4 h-4" />
                 </button>
@@ -397,12 +388,8 @@ export default function RegisterPage() {
             </div>
           </div>
         ) : (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-10 text-center relative overflow-hidden mt-16"
-          >
-            <div className="absolute top-0 left-0 w-full h-2 bg-primary"></div>
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-10 text-center relative overflow-hidden mt-16 animate-fade-up">
+            <div className="absolute top-0 left-0 w-full h-2 bg-black"></div>
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 className="w-10 h-10 text-green-500" />
             </div>
@@ -411,16 +398,16 @@ export default function RegisterPage() {
               Hồ sơ của bạn đã được ghi nhận. Đừng quên đến tham gia Casting đúng theo khung giờ bạn đã chọn nhé!
             </p>
             
-            <button onClick={() => window.location.href = "/"} className="block w-full py-4 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-colors shadow-lg">
+            <button onClick={() => window.location.href = "/"} className="block w-full py-4 bg-black hover:bg-black/85 text-white rounded-full font-bold transition-colors shadow-lg">
               Quay lại Trang Chủ
             </button>
-          </motion.div>
+          </div>
         )}
       </div>
 
       {/* Decorative Background Elements */}
       <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-0 overflow-hidden">
-        <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-primary/5 rounded-full blur-3xl"></div>
+        <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-black/5 rounded-full blur-3xl"></div>
         <div className="absolute bottom-[-10%] left-[-5%] w-[30rem] h-[30rem] bg-slate-200/50 rounded-full blur-3xl"></div>
       </div>
     </div>

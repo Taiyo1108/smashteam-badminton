@@ -1,19 +1,26 @@
 import Image from 'next/image';
+import { useId } from 'react';
 
 interface AvatarWithFrameProps {
   avatarUrl: string;
   frameStyle: string | null;
   sizeClass?: string; // e.g. "w-24 h-24"
   alt?: string;
+  eager?: boolean; // chỉ bật priority cho avatar chính trong viewport
 }
 
-export default function AvatarWithFrame({ 
-  avatarUrl, 
-  frameStyle, 
-  sizeClass = "w-24 h-24", 
-  alt = "User avatar" 
+export default function AvatarWithFrame({
+  avatarUrl,
+  frameStyle,
+  sizeClass = "w-24 h-24",
+  alt = "User avatar",
+  eager = false
 }: AvatarWithFrameProps) {
-  
+  // id duy nhất cho gradient để không trùng khi render nhiều avatar
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const silverId = `silverGrad-${uid}`;
+  const purpleId = `purpleGrad-${uid}`;
+
   let borderStyle = "";
   let decoratorSvg = null;
 
@@ -23,9 +30,9 @@ export default function AvatarWithFrame({
     decoratorSvg = (
       <div className="absolute -inset-2.5 pointer-events-none z-20">
         <svg className="w-full h-full animate-spin-slow" viewBox="0 0 100 100" style={{ animationDuration: '12s' }}>
-          <circle cx="50" cy="50" r="47" fill="none" stroke="url(#silverGrad)" strokeWidth="2.5" strokeDasharray="30 15 10 15" />
+          <circle cx="50" cy="50" r="47" fill="none" stroke={`url(#${silverId})`} strokeWidth="2.5" strokeDasharray="30 15 10 15" />
           <defs>
-            <linearGradient id="silverGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={silverId} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#e2e8f0" stopOpacity="0.8" />
               <stop offset="50%" stopColor="#94a3b8" stopOpacity="0.9" />
               <stop offset="100%" stopColor="#cbd5e1" stopOpacity="0.8" />
@@ -40,10 +47,10 @@ export default function AvatarWithFrame({
     decoratorSvg = (
       <div className="absolute -inset-3.5 pointer-events-none z-20">
         <svg className="w-full h-full animate-pulse" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="46" fill="none" stroke="url(#purpleGrad)" strokeWidth="3" strokeDasharray="20 10 40 10" />
+          <circle cx="50" cy="50" r="46" fill="none" stroke={`url(#${purpleId})`} strokeWidth="3" strokeDasharray="20 10 40 10" />
           <circle cx="50" cy="50" r="48" fill="none" stroke="#d8b4fe" strokeWidth="1" strokeOpacity="0.5" />
           <defs>
-            <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id={purpleId} x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#c084fc" />
               <stop offset="50%" stopColor="#a855f7" />
               <stop offset="100%" stopColor="#e879f9" />
@@ -58,7 +65,7 @@ export default function AvatarWithFrame({
     <div className={`relative ${sizeClass} aspect-square flex items-center justify-center shrink-0`}>
       {/* Decorative absolute SVG border */}
       {decoratorSvg}
-      
+
       {/* Avatar image container */}
       <div className={`w-full h-full rounded-full overflow-hidden relative z-10 ${borderStyle} bg-slate-800 flex items-center justify-center`}>
         {avatarUrl ? (
@@ -66,8 +73,11 @@ export default function AvatarWithFrame({
             src={avatarUrl}
             alt={alt}
             fill
+            sizes="96px"
+            loading={eager ? undefined : "lazy"}
+            priority={eager}
+            unoptimized
             className="object-cover"
-            priority
           />
         ) : (
           <div className="text-white text-xl font-bold uppercase select-none">

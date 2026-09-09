@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -13,6 +13,7 @@ import {
 import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
+import ThemeToggle from "@/app/components/ThemeToggle";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -71,14 +72,52 @@ export default function ProfilePage() {
 
   // Toast Notification state
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Trigger Toast helper
   const showToast = (message: string, type: "success" | "error" = "success") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, type });
-    setTimeout(() => {
+    toastTimer.current = setTimeout(() => {
       setToast(null);
     }, 4000);
   };
+
+  // Danh sách derived đắt tiền — memo để không sort/filter mỗi render
+  const sortedQuests = useMemo(() => {
+    const typeWeight: Record<string, number> = { daily: 1, weekly: 2, monthly: 3, seasonal: 4 };
+    return [...quests].sort((a: any, b: any) => {
+      if (a.is_claimed && !b.is_claimed) return 1;
+      if (!a.is_claimed && b.is_claimed) return -1;
+      if (!a.is_claimed && !b.is_claimed) {
+        const aDone = a.current_count >= a.target_count;
+        const bDone = b.current_count >= b.target_count;
+        if (aDone && !bDone) return -1;
+        if (!aDone && bDone) return 1;
+      }
+      return (typeWeight[a.quest_type] || 5) - (typeWeight[b.quest_type] || 5);
+    });
+  }, [quests]);
+
+  const filteredMatches = useMemo(() => {
+    const list: any[] = playerData?.matches ?? [];
+    if (matchFilter === "all") return list;
+    const now = new Date();
+    return list.filter((m: any) => {
+      const matchDate = new Date(m.created_at);
+      if (matchFilter === "month") {
+        return matchDate.getMonth() === now.getMonth() && matchDate.getFullYear() === now.getFullYear();
+      }
+      // week: trong 7 ngày gần nhất
+      return Math.abs(now.getTime() - matchDate.getTime()) / (1000 * 60 * 60 * 24) <= 7;
+    });
+  }, [playerData, matchFilter]);
+
+  const matchStats = useMemo(() => {
+    const total = filteredMatches.length;
+    const won = filteredMatches.filter((m: any) => m.won).length;
+    return { total, won, winRate: total > 0 ? Math.round((won / total) * 100) : 0 };
+  }, [filteredMatches]);
 
   // Fetch dữ liệu từ API /api/profile/me
   const fetchProfileData = async () => {
@@ -89,7 +128,7 @@ export default function ProfilePage() {
         return;
       }
 
-      const res = await fetch(`${API_URL}/api/profile/me?t=${Date.now()}`, {
+      const res = await fetch(`${API_URL}/api/profile/me`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -143,8 +182,15 @@ export default function ProfilePage() {
 
       const headers = { Authorization: `Bearer ${token}` };
 
-      // 1. Fetch Profile
-      const profileRes = await fetch(`${API_URL}/api/gamification/profile`, { headers });
+      // Chạy song song thay vì nối tiếp để giảm ~5x RTT
+      const [profileRes, questsRes, passRes, invRes, shopRes] = await Promise.all([
+        fetch(`${API_URL}/api/gamification/profile`, { headers }),
+        fetch(`${API_URL}/api/gamification/quests`, { headers }),
+        fetch(`${API_URL}/api/gamification/smash-pass`, { headers }),
+        fetch(`${API_URL}/api/gamification/inventory`, { headers }),
+        fetch(`${API_URL}/api/shop/items`, { headers }),
+      ]);
+
       if (profileRes.ok) {
         const data = await profileRes.json();
         setGamProfile(data);
@@ -152,26 +198,14 @@ export default function ProfilePage() {
           showToast(data.streak_notification, "success");
         }
       }
-
-      // 2. Fetch Quests
-      const questsRes = await fetch(`${API_URL}/api/gamification/quests`, { headers });
       if (questsRes.ok) setQuests(await questsRes.json());
-
-      // 3. Fetch SmashPass
-      const passRes = await fetch(`${API_URL}/api/gamification/smash-pass`, { headers });
       if (passRes.ok) {
         const data = await passRes.json();
         setPassRewards(data.rewards || []);
         setClaimedPassLevels(data.claimed_levels || []);
         setIsPremiumPass(data.is_premium_unlocked || false);
       }
-
-      // 4. Fetch Inventory
-      const invRes = await fetch(`${API_URL}/api/gamification/inventory`, { headers });
       if (invRes.ok) setInventory(await invRes.json());
-
-      // 5. Fetch Shop Items
-      const shopRes = await fetch(`${API_URL}/api/shop/items`, { headers });
       if (shopRes.ok) setShopItems(await shopRes.json());
 
     } catch (e) {
@@ -249,39 +283,26 @@ export default function ProfilePage() {
     }
   };
 
-  // Cooldown timer for mystery box
+  // Cooldown timer for mystery box — chỉ tạo 1 interval cho mỗi lượt đếm
+  const cooldownActive = boxCooldown !== null && boxCooldown > 0;
   useEffect(() => {
-    if (boxCooldown === null || boxCooldown <= 0) return;
+    if (!cooldownActive) return;
     const timer = setInterval(() => {
-      setBoxCooldown(prev => {
-        if (prev === null || prev <= 1) {
-          clearInterval(timer);
-          return null;
-        }
-        return prev - 1;
-      });
+      setBoxCooldown(prev => (prev === null || prev <= 1 ? null : prev - 1));
     }, 1000);
     return () => clearInterval(timer);
-  }, [boxCooldown]);
+  }, [cooldownActive]);
 
-  // Calculate box cooldown from inventory
+  // Tính cooldown từ inventory — chỉ nạp khi chưa có countdown đang chạy
   useEffect(() => {
-    if (inventory.length > 0) {
-      const claims = inventory.filter(i => i.item_type === 'mystery_box_claim');
-      if (claims.length > 0) {
-        const lastClaim = new Date(claims[0].acquired_at);
-        const diffMs = new Date().getTime() - lastClaim.getTime();
-        const diffHours = diffMs / (1000 * 60 * 60);
-        if (diffHours < 24) {
-          const remainingSeconds = Math.ceil((24 - diffHours) * 60 * 60);
-          setBoxCooldown(remainingSeconds);
-        } else {
-          setBoxCooldown(null);
-        }
-      } else {
-        setBoxCooldown(null);
-      }
+    if (boxCooldown !== null || inventory.length === 0) return;
+    const claims = inventory.filter(i => i.item_type === 'mystery_box_claim');
+    if (claims.length === 0) return;
+    const diffHours = (Date.now() - new Date(claims[0].acquired_at).getTime()) / (1000 * 60 * 60);
+    if (diffHours < 24) {
+      setBoxCooldown(Math.ceil((24 - diffHours) * 60 * 60));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory]);
 
   // Gamification Claim Handlers
@@ -625,32 +646,32 @@ export default function ProfilePage() {
   // Loading Screen (FOUC Prevention)
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-smash-dark flex flex-col items-center justify-center text-white">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-900">
         <div className="relative flex items-center justify-center">
-          <div className="w-16 h-16 rounded-full border-4 border-smash-violet/20 border-t-smash-violet animate-spin shadow-[0_0_20px_rgba(157,78,221,0.5)]"></div>
-          <div className="absolute font-black text-xs text-smash-violet uppercase tracking-widest animate-pulse">Smash</div>
+          <div className="w-16 h-16 rounded-full border-4 border-black/10 border-t-black animate-spin"></div>
+          <div className="absolute font-black text-xs text-black uppercase tracking-widest animate-pulse">Smash</div>
         </div>
-        <p className="mt-6 text-slate-400 text-sm font-bold tracking-widest animate-pulse">ĐANG TẢI THẺ NGƯỜI CHƠI ELO...</p>
+        <p className="mt-6 text-slate-500 text-sm font-bold tracking-widest animate-pulse">ĐANG TẢI THẺ NGƯỜI CHƠI ELO...</p>
       </div>
     );
   }
 
   if (error || !playerData) {
     return (
-      <div className="min-h-screen bg-smash-dark flex flex-col items-center justify-center text-white p-6">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-900 p-6">
         <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center mb-4">
           <X className="w-6 h-6" />
         </div>
         <h2 className="text-xl font-bold mb-2">Đã xảy ra lỗi</h2>
-        <p className="text-slate-400 text-sm text-center mb-6 max-w-sm">{error || "Không thể lấy thông tin."}</p>
-        <button onClick={fetchProfileData} className="px-6 py-2.5 bg-primary text-white rounded-full font-bold hover:bg-primary-hover transition-all">
+        <p className="text-slate-500 text-sm text-center mb-6 max-w-sm">{error || "Không thể lấy thông tin."}</p>
+        <button onClick={fetchProfileData} className="px-6 py-2.5 bg-black text-white rounded-full font-bold hover:bg-black/85 transition-all">
           Thử lại
         </button>
       </div>
     );
   }
 
-  const { player, matches, upcomingSession, attendanceHistory } = playerData;
+  const { player, upcomingSession, attendanceHistory } = playerData;
   const maxElo = Math.max(player.elo_singles, player.elo_doubles);
   const rank = getRankConfig(maxElo);
 
@@ -687,7 +708,7 @@ export default function ProfilePage() {
     if (s.includes("code") || s.includes("lập trình") || s.includes("dev") || s.includes("web") || s.includes("phát triển")) {
       return { icon: <Shield className="w-5 h-5" />, label: "Lập trình viên", color: "from-emerald-500 to-teal-500" };
     }
-    return { icon: <Activity className="w-5 h-5" />, label: skill, color: "from-purple-500 to-smash-violet" };
+    return { icon: <Activity className="w-5 h-5" />, label: skill, color: "from-slate-900 to-black" };
   };
 
   // Real-time password validations
@@ -695,7 +716,7 @@ export default function ProfilePage() {
   const isPasswordMatchValid = newPassword === confirmPassword;
 
   return (
-    <main className="min-h-screen bg-smash-dark text-slate-100 flex flex-col relative">
+    <main className="min-h-screen bg-slate-50 text-slate-900 flex flex-col relative">
       
       {/* Toast Notification Popup */}
       {toast && (
@@ -710,26 +731,27 @@ export default function ProfilePage() {
       )}
 
       {/* Navigation Minimalist */}
-      <nav className="w-full bg-slate-950/60 backdrop-blur-md border-b border-purple-950/40 sticky top-0 z-40">
+      <nav className="w-full bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-smash-purple/30">
+              <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200">
                 <Image src="/logo.png" alt="Logo" fill className="object-cover" />
               </div>
-              <span className="font-extrabold text-lg text-white tracking-wider">SMASH TEAM</span>
+              <span className="font-extrabold text-lg text-slate-900 tracking-wider">SMASH TEAM</span>
             </Link>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <ThemeToggle />
             <Link href="/">
-              <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all text-sm font-semibold">
+              <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all text-sm font-semibold">
                 <Home className="w-4 h-4" /> Trang chủ
               </button>
             </Link>
             {playerData?.player?.role === "admin" && (
               <Link href="/admin">
-                <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-500/10 text-smash-violet hover:bg-purple-500/20 hover:text-white transition-all text-sm font-bold border border-purple-500/20">
+                <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-black/5 text-black hover:bg-black/10 transition-all text-sm font-bold border border-slate-200">
                   <Shield className="w-4 h-4" /> Trang Admin
                 </button>
               </Link>
@@ -751,14 +773,14 @@ export default function ProfilePage() {
         <div className="lg:col-span-1 space-y-8">
           
           {/* PLAYER CARD */}
-          <div className={`relative overflow-hidden rounded-3xl bg-slate-950/80 backdrop-blur-md border border-purple-950/40 p-6 ${rank.glowClass} flex flex-col`}>
+          <div className={`relative overflow-hidden rounded-2xl bg-white border border-slate-200 p-6 ${rank.glowClass} flex flex-col`}>
             {/* Background glowing gradient overlay */}
-            <div className="absolute top-0 right-0 w-36 h-36 bg-smash-purple/10 rounded-bl-full -z-0 pointer-events-none blur-xl"></div>
+            <div className="absolute top-0 right-0 w-36 h-36 bg-slate-100 rounded-bl-full -z-0 pointer-events-none"></div>
             
             {/* Settings Button */}
             <button
               onClick={() => setIsSettingsModalOpen(true)}
-              className="absolute top-4 right-4 p-2 rounded-xl bg-slate-900/60 border border-purple-950/30 text-slate-400 hover:text-smash-violet hover:border-smash-violet/50 hover:scale-115 active:scale-95 transition-all z-20 cursor-pointer shadow-sm"
+              className="absolute top-4 right-4 p-2 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-black hover:border-black/30 hover:scale-115 active:scale-95 transition-all z-20 cursor-pointer shadow-sm"
               title="Thiết lập tài khoản"
             >
               <Settings className="w-4 h-4" />
@@ -788,29 +810,29 @@ export default function ProfilePage() {
                 alt={player.full_name}
               />
               
-              <h2 className="text-2xl font-black text-white tracking-wide">{player.full_name}</h2>
+              <h2 className="text-2xl font-black text-slate-900 tracking-wide">{player.full_name}</h2>
               {(player.selected_title || gamProfile?.selected_title) && (
                 <div className="text-[10px] font-black text-amber-400 mt-1 uppercase tracking-widest bg-amber-400/10 px-2.5 py-0.5 rounded border border-amber-400/20">
                   👑 {player.selected_title || gamProfile?.selected_title}
                 </div>
               )}
               
-              <div className="flex items-center gap-1.5 mt-2 text-slate-400">
+              <div className="flex items-center gap-1.5 mt-2 text-slate-500">
                 <span className="text-sm font-medium italic">
                   {player.nickname ? `"${player.nickname}"` : "Chưa đặt biệt danh"}
                 </span>
               </div>
 
               {/* Stats badges inside card */}
-              <div className="flex items-center gap-3.5 mt-3.5 bg-slate-900/60 px-4 py-2 rounded-full border border-purple-950/30 text-xs">
+              <div className="flex items-center gap-3.5 mt-3.5 bg-slate-50 px-4 py-2 rounded-full border border-slate-200 text-xs">
                 <div className="flex items-center gap-1 font-bold text-amber-500">
                   <span className="text-base select-none">🪙</span> {gamProfile?.smash_coins ?? 0} xu
                 </div>
-                <div className="w-px h-3.5 bg-slate-800" />
+                <div className="w-px h-3.5 bg-slate-200" />
                 <div className="flex items-center gap-1 font-bold text-orange-500">
                   <Flame className="w-4 h-4 text-orange-500 animate-pulse" /> {gamProfile?.current_streak ?? 0} ngày
                 </div>
-                <div className="w-px h-3.5 bg-slate-800" />
+                <div className="w-px h-3.5 bg-slate-200" />
                 <div className="flex items-center gap-1 font-bold text-indigo-400">
                   🛡️ {gamProfile?.streak_shields ?? 0} khiên
                 </div>
@@ -818,17 +840,17 @@ export default function ProfilePage() {
             </div>
 
             {/* Elo Scores Table */}
-            <div className="grid grid-cols-2 gap-4 relative z-10 border-t border-purple-950/40 pt-6 mb-6">
-              <div className="text-center p-3 rounded-2xl bg-slate-900/40 border border-purple-950/20">
-                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Đấu Đơn</span>
-                <p className="text-2xl font-black text-smash-violet mt-1">{player.elo_singles}</p>
+            <div className="grid grid-cols-2 gap-4 relative z-10 border-t border-slate-200 pt-6 mb-6">
+              <div className="text-center p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Đấu Đơn</span>
+                <p className="text-2xl font-black text-black mt-1">{player.elo_singles}</p>
                 <p className="text-[9px] text-slate-500 mt-1">Win rate: {parseFloat(player.win_rate_singles).toFixed(1)}%</p>
                 <p className="text-[9px] text-slate-600">Trận: {player.matches_singles} ({player.win_singles}T - {player.loss_singles}B)</p>
               </div>
 
-              <div className="text-center p-3 rounded-2xl bg-slate-900/40 border border-purple-950/20">
-                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Đấu Đôi</span>
-                <p className="text-2xl font-black text-smash-violet mt-1">{player.elo_doubles}</p>
+              <div className="text-center p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Đấu Đôi</span>
+                <p className="text-2xl font-black text-black mt-1">{player.elo_doubles}</p>
                 <p className="text-[9px] text-slate-500 mt-1">Win rate: {parseFloat(player.win_rate_doubles).toFixed(1)}%</p>
                 <p className="text-[9px] text-slate-600">Trận: {player.matches_doubles} ({player.win_doubles}T - {player.loss_doubles}B)</p>
               </div>
@@ -838,11 +860,11 @@ export default function ProfilePage() {
             <div className="relative z-10 space-y-4">
               {/* Level XP Bar */}
               <div>
-                <div className="flex justify-between text-[10px] text-slate-400 font-bold mb-1.5 uppercase">
+                <div className="flex justify-between text-[10px] text-slate-500 font-bold mb-1.5 uppercase">
                   <span>Cấp độ {gamProfile?.level ?? 1}</span>
                   <span>{gamProfile?.xp ?? 0} / {gamProfile?.xp_needed ?? 80} XP</span>
                 </div>
-                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-purple-950/40 shadow-inner">
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
                   <div 
                     className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
                     style={{ width: `${gamProfile ? Math.min(100, (gamProfile.xp / gamProfile.xp_needed) * 100) : 0}%` }}
@@ -852,13 +874,13 @@ export default function ProfilePage() {
 
               {/* Rank ELO Bar */}
               <div>
-                <div className="flex justify-between text-[10px] text-slate-400 font-bold mb-1.5 uppercase">
+                <div className="flex justify-between text-[10px] text-slate-500 font-bold mb-1.5 uppercase">
                   <span>Rank ELO {maxElo}</span>
                   <span>Mục tiêu {rank.nextElo}</span>
                 </div>
-                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-purple-950/40 shadow-inner">
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
                   <div 
-                    className="h-full bg-gradient-to-r from-smash-purple to-smash-violet rounded-full shadow-[0_0_10px_rgba(157,78,221,0.5)] transition-all duration-1000"
+                    className="h-full bg-black rounded-full transition-all duration-1000"
                     style={{ width: `${progressPercent}%` }}
                   ></div>
                 </div>
@@ -871,9 +893,9 @@ export default function ProfilePage() {
           </div>
 
           {/* BADGES WIDGET */}
-          <div className="rounded-3xl bg-slate-950/80 backdrop-blur-md border border-purple-950/40 p-6 shadow-sm">
-            <h3 className="font-extrabold text-white text-lg mb-4 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-smash-violet" /> Huy hiệu Đóng góp
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
+            <h3 className="font-extrabold text-slate-900 text-lg mb-4 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-black" /> Huy hiệu Đóng góp
             </h3>
             
             {softSkills.length > 0 ? (
@@ -881,21 +903,21 @@ export default function ProfilePage() {
                 {softSkills.map((skill, index) => {
                   const b = getBadgeIcon(skill);
                   return (
-                    <div key={index} className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-slate-900/50 border border-purple-950/20 text-center hover:border-smash-violet/50 transition-colors group">
+                    <div key={index} className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-center hover:border-black/30 transition-colors group">
                       <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${b.color} text-white flex items-center justify-center mb-2 shadow-lg group-hover:scale-110 transition-transform`}>
                         {b.icon}
                       </div>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{b.label}</span>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{b.label}</span>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-900/30 border border-dashed border-purple-950/30 text-center">
-                <div className="w-10 h-10 rounded-full bg-purple-950/50 text-smash-violet flex items-center justify-center mb-2">
+              <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                <div className="w-10 h-10 rounded-full bg-black/5 text-black flex items-center justify-center mb-2">
                   <Trophy className="w-5 h-5" />
                 </div>
-                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Thành viên tích cực</span>
+                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Thành viên tích cực</span>
                 <p className="text-[9px] text-slate-500 mt-1 max-w-[150px]">Hãy tích cực tham gia CLB để nhận các huy hiệu đóng góp nhé!</p>
               </div>
             )}
@@ -907,24 +929,24 @@ export default function ProfilePage() {
           
           {/* RSVP WIDGET */}
           {false && (
-          <div className="rounded-3xl bg-slate-950/80 backdrop-blur-md border border-purple-950/40 p-6 relative overflow-hidden shadow-sm">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-smash-purple/5 rounded-bl-full pointer-events-none"></div>
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 relative overflow-hidden shadow-sm">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-slate-100 rounded-bl-full pointer-events-none"></div>
             
-            <h3 className="font-extrabold text-white text-lg mb-4 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-smash-violet" /> Đăng ký Lịch tập (RSVP)
+            <h3 className="font-extrabold text-slate-900 text-lg mb-4 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-black" /> Đăng ký Lịch tập (RSVP)
             </h3>
             
             {upcomingSession ? (
-              <div className="p-5 rounded-2xl bg-slate-900/60 border border-purple-950/30 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="space-y-2">
-                  <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-smash-purple/20 text-smash-violet border border-smash-purple/30">
+                  <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-black/5 text-black border border-slate-200">
                     Sắp diễn ra
                   </span>
-                  <h4 className="text-lg font-bold text-white tracking-wide">{upcomingSession.title}</h4>
+                  <h4 className="text-lg font-bold text-slate-900 tracking-wide">{upcomingSession.title}</h4>
                   
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-smash-violet" /> 
+                      <Clock className="w-3.5 h-3.5 text-black" /> 
                       {new Date(upcomingSession.date_time).toLocaleDateString("vi-VN", {
                         weekday: "long",
                         day: "numeric",
@@ -934,7 +956,7 @@ export default function ProfilePage() {
                       })}
                     </span>
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-smash-violet" /> 
+                      <MapPin className="w-3.5 h-3.5 text-black" /> 
                       {upcomingSession.location}
                     </span>
                   </div>
@@ -946,8 +968,8 @@ export default function ProfilePage() {
                     disabled={updatingRsvp}
                     className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
                       upcomingSession.rsvp_status === "going"
-                        ? "bg-smash-purple text-white shadow-[0_0_15px_rgba(122,34,224,0.6)] border border-smash-violet/50"
-                        : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-purple-950/50"
+                        ? "bg-black text-white border border-black"
+                        : "bg-white hover:bg-slate-100 text-slate-600 border border-slate-200"
                     }`}
                   >
                     <Check className="w-3.5 h-3.5" /> Tham gia
@@ -957,8 +979,8 @@ export default function ProfilePage() {
                     disabled={updatingRsvp}
                     className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer ${
                       upcomingSession.rsvp_status === "absent"
-                        ? "bg-slate-700 text-white"
-                        : "bg-slate-900 hover:bg-slate-800 text-slate-400 border border-purple-950/50"
+                        ? "bg-black text-white"
+                        : "bg-white hover:bg-slate-100 text-slate-500 border border-slate-200"
                     }`}
                   >
                     <X className="w-3.5 h-3.5" /> Bận
@@ -966,7 +988,7 @@ export default function ProfilePage() {
                 </div>
               </div>
             ) : (
-              <div className="p-6 rounded-2xl bg-slate-900/30 border border-dashed border-purple-950/20 text-center text-slate-400 text-sm">
+              <div className="p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-slate-500 text-sm">
                 Hiện chưa có lịch tập mới nào được sắp xếp sắp tới.
               </div>
             )}
@@ -974,9 +996,9 @@ export default function ProfilePage() {
           )}
 
           {/* SMASHPASS GAMIFICATION PORTAL */}
-          <div className="rounded-3xl bg-slate-950/80 backdrop-blur-md border border-purple-950/40 p-6 shadow-sm">
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
             {/* Tab selection */}
-            <div className="flex flex-wrap gap-2 border-b border-purple-950/30 pb-3 mb-6">
+            <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3 mb-6">
               {[
                 { id: "quests", label: "Nhiệm vụ", icon: Sparkles },
                 { id: "smashpass", label: "SmashPass", icon: Trophy },
@@ -991,8 +1013,8 @@ export default function ProfilePage() {
                     onClick={() => setActiveGamTab(t.id as any)}
                     className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-full border transition-all cursor-pointer ${
                       activeGamTab === t.id
-                        ? "bg-smash-purple border-smash-violet text-white shadow-[0_0_10px_rgba(122,34,224,0.4)]"
-                        : "bg-slate-900/60 border-purple-950/40 text-slate-400 hover:text-slate-200"
+                        ? "bg-black border-black text-white"
+                        : "bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-900"
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5" /> {t.label}
@@ -1002,36 +1024,9 @@ export default function ProfilePage() {
             </div>
 
             {/* TAB CONTENT: QUESTS */}
-            {activeGamTab === "quests" && (() => {
-              const sortedQuests = [...quests].sort((a: any, b: any) => {
-                // 1. Đã nhận quà cho xuống cuối cùng
-                if (a.is_claimed && !b.is_claimed) return 1;
-                if (!a.is_claimed && b.is_claimed) return -1;
-
-                // Nếu cả hai đều chưa nhận quà (hoặc cả hai đã nhận, nhưng quan trọng nhất là chưa nhận)
-                if (!a.is_claimed && !b.is_claimed) {
-                  const aDone = a.current_count >= a.target_count;
-                  const bDone = b.current_count >= b.target_count;
-                  // Đã hoàn thành (chưa nhận quà) cho lên đầu
-                  if (aDone && !bDone) return -1;
-                  if (!aDone && bDone) return 1;
-                }
-
-                // 2. Sắp xếp theo chu kỳ ngắn hạn lên trên (daily > weekly > monthly > seasonal)
-                const typeWeight: Record<string, number> = {
-                  daily: 1,
-                  weekly: 2,
-                  monthly: 3,
-                  seasonal: 4
-                };
-                const wA = typeWeight[a.quest_type] || 5;
-                const wB = typeWeight[b.quest_type] || 5;
-                return wA - wB;
-              });
-
-              return (
-                <div className="space-y-4">
-                  {sortedQuests.length === 0 ? (
+            {activeGamTab === "quests" && (
+              <div className="space-y-4">
+                {sortedQuests.length === 0 ? (
                     <div className="text-center py-8 text-slate-500 text-sm">Không có nhiệm vụ khả dụng.</div>
                   ) : (
                     sortedQuests.map((q: any) => {
@@ -1039,7 +1034,7 @@ export default function ProfilePage() {
                       const pct = Math.min(100, (q.current_count / q.target_count) * 100);
                       
                       return (
-                        <div key={q.id} className="p-4 rounded-2xl bg-slate-900/40 border border-purple-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-purple-900/30 transition-all">
+                        <div key={q.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-black/20 transition-all">
                           <div className="flex-1 space-y-1.5">
                             <div className="flex items-center gap-2">
                               <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
@@ -1057,17 +1052,17 @@ export default function ProfilePage() {
                                 Phần thưởng: <span className="text-emerald-400">+{q.xp_reward} XP</span> • <span className="text-amber-400">+{q.coin_reward} Xu</span>
                               </span>
                             </div>
-                            <h4 className="text-sm font-bold text-white tracking-wide">{q.title}</h4>
+                            <h4 className="text-sm font-bold text-slate-900 tracking-wide">{q.title}</h4>
                             <div className="flex items-center gap-3">
-                              <div className="flex-1 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-purple-950/30">
-                                <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                                <div className="h-full bg-black" style={{ width: `${pct}%` }} />
                               </div>
-                              <span className="text-xs font-mono font-bold text-slate-400 shrink-0">{q.current_count}/{q.target_count}</span>
+                              <span className="text-xs tabular-nums font-bold text-slate-500 shrink-0">{q.current_count}/{q.target_count}</span>
                             </div>
                           </div>
                           <div className="shrink-0 flex items-center justify-end">
                             {q.is_claimed ? (
-                              <span className="text-xs font-bold text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">Đã nhận</span>
+                              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Đã nhận</span>
                             ) : isDone ? (
                               <button
                                 onClick={() => handleClaimQuest(q.id)}
@@ -1077,7 +1072,7 @@ export default function ProfilePage() {
                                 {claimingQuestId === q.id ? "Đang nhận..." : "Nhận Quà"}
                               </button>
                             ) : (
-                              <span className="text-xs font-bold text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-purple-950/30">Đang làm</span>
+                              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Đang làm</span>
                             )}
                           </div>
                         </div>
@@ -1085,19 +1080,18 @@ export default function ProfilePage() {
                     })
                   )}
                 </div>
-              );
-            })()}
+            )}
 
             {/* TAB CONTENT: SMASHPASS */}
             {activeGamTab === "smashpass" && (
               <div className="space-y-6">
                 {/* Premium activation banner */}
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border border-purple-900/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div>
-                    <h4 className="font-extrabold text-sm text-white tracking-wide flex items-center gap-1.5">
+                    <h4 className="font-extrabold text-sm text-slate-900 tracking-wide flex items-center gap-1.5">
                       🏆 SmashPass Mùa 1: Khởi Đầu Hoàng Gia
                     </h4>
-                    <p className="text-[11px] text-slate-400 mt-1">Mở khóa quà Premium với khung viền lấp lánh và danh hiệu độc quyền.</p>
+                    <p className="text-[11px] text-slate-500 mt-1">Mở khóa quà Premium với khung viền lấp lánh và danh hiệu độc quyền.</p>
                   </div>
                   <div>
                     {isPremiumPass ? (
@@ -1127,47 +1121,47 @@ export default function ProfilePage() {
                     return (
                       <div key={item.id} className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
                         isClaimed 
-                          ? "bg-slate-900/20 border-purple-950/10 opacity-60" 
+                          ? "bg-slate-50 border-slate-200 opacity-60" 
                           : isLevelReached 
-                          ? "bg-purple-950/10 border-smash-purple/30" 
-                          : "bg-slate-900/40 border-purple-950/20"
+                          ? "bg-black/5 border-black/20" 
+                          : "bg-slate-50 border-slate-200"
                       }`}>
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shrink-0 border-2 ${
                             isLevelReached
-                              ? "bg-smash-purple border-smash-violet text-white shadow-[0_0_8px_rgba(157,78,221,0.5)]"
-                              : "bg-slate-950 border-purple-950/40 text-slate-500"
+                              ? "bg-black border-black text-white"
+                              : "bg-white border-slate-200 text-slate-500"
                           }`}>
                             Lvl {item.level_required}
                           </div>
                           <div>
-                            <h5 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <h5 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                               {item.reward_name}
                               {item.is_premium && (
                                 <span className="text-[9px] bg-amber-400/10 text-amber-400 border border-amber-400/20 px-1.5 py-0.5 rounded font-black uppercase">Premium</span>
                               )}
                             </h5>
-                            <p className="text-[10px] text-slate-400 mt-0.5">
-                              Loại: <span className="text-slate-300 font-medium">{item.reward_type === 'avatar_frame' ? 'Khung viền' : item.reward_type === 'title' ? 'Danh hiệu' : item.reward_type === 'coins' ? 'Xu' : 'Vật phẩm'}</span>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              Loại: <span className="text-slate-600 font-medium">{item.reward_type === 'avatar_frame' ? 'Khung viền' : item.reward_type === 'title' ? 'Danh hiệu' : item.reward_type === 'coins' ? 'Xu' : 'Vật phẩm'}</span>
                             </p>
                           </div>
                         </div>
 
                         <div>
                           {isClaimed ? (
-                            <span className="text-xs font-bold text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">Đã nhận</span>
+                            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Đã nhận</span>
                           ) : canClaim ? (
                             <button
                               onClick={() => handleClaimPass(item.level_required)}
                               disabled={claimingPassLevel === item.level_required}
-                              className="px-4 py-1.5 bg-gradient-to-r from-smash-purple to-smash-violet hover:from-smash-violet hover:to-smash-purple text-white text-xs font-black rounded-lg shadow-lg active:scale-95 transition-transform cursor-pointer"
+                              className="px-4 py-1.5 bg-black hover:bg-black/85 text-white text-xs font-black rounded-lg shadow-lg active:scale-95 transition-transform cursor-pointer"
                             >
                               {claimingPassLevel === item.level_required ? "Đang nhận..." : "Nhận quà"}
                             </button>
                           ) : isLocked ? (
                             <span className="text-xs font-bold text-amber-500/70 bg-amber-950/20 px-3 py-1.5 rounded-lg border border-amber-500/10">Khóa Premium</span>
                           ) : (
-                            <span className="text-xs font-bold text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-purple-950/10">Lvl {item.level_required}</span>
+                            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Lvl {item.level_required}</span>
                           )}
                         </div>
                       </div>
@@ -1200,13 +1194,13 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                   
                   {/* Phân mục Kho đồ */}
-                  <div className="flex gap-2 p-1 bg-slate-950/60 rounded-xl border border-purple-950/30">
+                  <div className="flex gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
                     <button
                       onClick={() => setInventorySubTab("physical")}
                       className={`flex-1 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
                         inventorySubTab === "physical"
-                          ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
-                          : "text-slate-400 hover:text-slate-200"
+                          ? "bg-black text-white shadow-md"
+                          : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
                       Vật phẩm (Quà vật lý)
@@ -1215,8 +1209,8 @@ export default function ProfilePage() {
                       onClick={() => setInventorySubTab("virtual")}
                       className={`flex-1 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
                         inventorySubTab === "virtual"
-                          ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
-                          : "text-slate-400 hover:text-slate-200"
+                          ? "bg-black text-white shadow-md"
+                          : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
                       Trang bị (Danh hiệu, Khung...)
@@ -1224,11 +1218,11 @@ export default function ProfilePage() {
                   </div>
 
                   {filteredAndSortedInventory.length === 0 ? (
-                    <div className="text-center py-10 rounded-2xl bg-slate-900/20 border border-dashed border-purple-950/20">
-                      <div className="w-12 h-12 rounded-full bg-purple-950/40 text-smash-violet flex items-center justify-center mx-auto mb-3">
+                    <div className="text-center py-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+                      <div className="w-12 h-12 rounded-full bg-black/5 text-black flex items-center justify-center mx-auto mb-3">
                         <Shield className="w-6 h-6" />
                       </div>
-                      <span className="text-sm font-bold text-slate-400">Kho đồ trống</span>
+                      <span className="text-sm font-bold text-slate-500">Kho đồ trống</span>
                       <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">
                         {inventorySubTab === "physical" 
                           ? "Hãy tích cực thi đấu, tích lũy xu để đổi những phần quà vật lý hấp dẫn tại Cửa hàng!"
@@ -1245,10 +1239,10 @@ export default function ProfilePage() {
                         
                         if (isPhysical) {
                           return (
-                            <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-3 relative overflow-hidden ${
+                            <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-3 relative overflow-hidden ${
                               isRedeemed 
-                                ? "border-slate-850 opacity-50 grayscale" 
-                                : "border-smash-purple shadow-[0_0_12px_rgba(122,34,224,0.2)]"
+                                ? "border-slate-200 opacity-50 grayscale" 
+                                : "border-black/20"
                             }`}>
                               {isRedeemed && (
                                 <div className="absolute -right-4 -bottom-4 w-24 h-24 border-4 border-dashed border-red-500/20 rounded-full flex items-center justify-center rotate-12 select-none pointer-events-none">
@@ -1260,8 +1254,8 @@ export default function ProfilePage() {
                                 <div className="flex items-center justify-between mb-2">
                                   <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
                                     isRedeemed
-                                      ? "bg-slate-800 text-slate-400"
-                                      : "bg-smash-purple/20 text-smash-violet border border-smash-purple/30"
+                                      ? "bg-slate-100 text-slate-500"
+                                      : "bg-black/5 text-black border border-slate-200"
                                   }`}>
                                     Quà Vật Lý
                                   </span>
@@ -1269,20 +1263,20 @@ export default function ProfilePage() {
                                     {isRedeemed ? "✓ Đã nhận" : "● Chưa sử dụng"}
                                   </span>
                                 </div>
-                                <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                                <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
+                                <h4 className="text-sm font-bold text-slate-900 tracking-wide">{item.item_name}</h4>
+                                <p className="text-[10px] text-slate-500 mt-1">Đổi lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
                               </div>
 
-                              <div className="bg-slate-950/60 p-2 rounded-xl border border-purple-950/30 flex items-center justify-between gap-2">
+                              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
                                 <div className="flex flex-col">
                                   <span className="text-[8px] text-slate-500 font-bold uppercase">Mã Coupon</span>
-                                  <span className="font-mono text-xs font-black text-smash-violet tracking-widest">{item.coupon_code}</span>
+                                  <span className="tabular-nums text-xs font-black text-black tracking-widest">{item.coupon_code}</span>
                                 </div>
                                 
                                 {!isRedeemed && (
                                   <button
                                     onClick={() => setQrModalItem(item)}
-                                    className="px-3 py-1.5 bg-gradient-to-r from-smash-purple to-smash-violet hover:from-smash-violet hover:to-smash-purple text-white text-[10px] font-black rounded-lg cursor-pointer transition-all active:scale-95"
+                                    className="px-3 py-1.5 bg-black hover:bg-black/85 text-white text-[10px] font-black rounded-lg cursor-pointer transition-all active:scale-95"
                                   >
                                     Xem mã QR
                                   </button>
@@ -1293,14 +1287,14 @@ export default function ProfilePage() {
                         }
 
                         return (
-                          <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-3 ${
-                            isEquipped ? "border-smash-purple shadow-[0_0_10px_rgba(157,78,221,0.2)]" : "border-purple-950/20 hover:border-purple-900/30"
+                          <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-3 ${
+                            isEquipped ? "border-black/30" : "border-slate-200 hover:border-black/20"
                           }`}>
                             <div>
                               <div className="flex items-center justify-between mb-2">
                                 <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
                                   item.item_type === 'avatar_frame'
-                                    ? "bg-purple-500/10 text-smash-violet border border-smash-purple/20"
+                                    ? "bg-black/5 text-black border border-slate-200"
                                     : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                                 }`}>
                                   {item.item_type === 'avatar_frame' ? 'Khung Viền' : 'Danh hiệu'}
@@ -1311,8 +1305,8 @@ export default function ProfilePage() {
                                   </span>
                                 )}
                               </div>
-                              <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                              <p className="text-[10px] text-slate-400 mt-1">Sở hữu lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
+                              <h4 className="text-sm font-bold text-slate-900 tracking-wide">{item.item_name}</h4>
+                              <p className="text-[10px] text-slate-500 mt-1">Sở hữu lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
                               {item.expires_at && (
                                 <p className="text-[9px] text-red-400 font-medium mt-1">
                                   Hết hạn: {new Date(item.expires_at).toLocaleString("vi-VN")}
@@ -1326,8 +1320,8 @@ export default function ProfilePage() {
                                 disabled={equippingItemId === item.id}
                                 className={`w-full py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
                                   isEquipped
-                                    ? "bg-slate-800 hover:bg-slate-700 text-slate-300"
-                                    : "bg-smash-purple hover:bg-smash-violet text-white shadow-md shadow-smash-purple/20 active:scale-95"
+                                    ? "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                                    : "bg-black hover:bg-black/85 text-white shadow-md active:scale-95"
                                 }`}
                               >
                                 {equippingItemId === item.id 
@@ -1345,13 +1339,13 @@ export default function ProfilePage() {
 
                   {/* QR Code Pop-up Modal */}
                   {qrModalItem && (
-                    <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-                      <div className="p-6 rounded-2xl bg-slate-950 border border-purple-500/40 max-w-sm w-full text-center relative overflow-hidden shadow-2xl">
-                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-smash-purple to-smash-violet animate-pulse"></div>
-                        <h4 className="text-sm font-black text-white tracking-wide">Mã QR Nhận Quà</h4>
-                        <p className="text-xs text-slate-400 mt-1">{qrModalItem.item_name}</p>
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-up">
+                      <div className="p-6 rounded-2xl bg-white border border-slate-200 max-w-sm w-full text-center relative overflow-hidden shadow-2xl">
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-black animate-pulse"></div>
+                        <h4 className="text-sm font-black text-slate-900 tracking-wide">Mã QR Nhận Quà</h4>
+                        <p className="text-xs text-slate-500 mt-1">{qrModalItem.item_name}</p>
                         
-                        <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl w-40 h-40 mx-auto my-5 border border-purple-500/25 shadow-lg">
+                        <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl w-40 h-40 mx-auto my-5 border border-slate-200 shadow-lg">
                           <QRCodeCanvas
                             value={`https://smashteam.id.vn/admin/shop?coupon_code=${qrModalItem.coupon_code}`}
                             size={136}
@@ -1360,18 +1354,18 @@ export default function ProfilePage() {
                           />
                         </div>
                         
-                        <div className="bg-slate-900/60 p-2.5 rounded-xl border border-purple-950/30 mb-4">
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 mb-4">
                           <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider block mb-1">Mã Coupon</span>
-                          <span className="font-mono text-sm font-black text-smash-violet tracking-widest">{qrModalItem.coupon_code}</span>
+                          <span className="tabular-nums text-sm font-black text-black tracking-widest">{qrModalItem.coupon_code}</span>
                         </div>
                         
-                        <p className="text-[10px] text-slate-400 mb-5 px-3">
+                        <p className="text-[10px] text-slate-500 mb-5 px-3">
                           Đưa mã QR này hoặc đọc mã Coupon cho Ban tổ chức tại sân để xác nhận trao quà.
                         </p>
                         
                         <button
                           onClick={() => setQrModalItem(null)}
-                          className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black rounded-lg cursor-pointer transition-colors border border-purple-950/20"
+                          className="w-full py-2 bg-black hover:bg-black/85 text-white text-xs font-black rounded-full cursor-pointer transition-colors"
                         >
                           Đóng
                         </button>
@@ -1388,18 +1382,18 @@ export default function ProfilePage() {
               <div className="space-y-6">
                 
                 {/* 1. Hộp quà bí ẩn hàng ngày (Daily Mystery Box) */}
-                <div className="p-5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-slate-950 to-amber-950/30 border box-glow-mystery flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full filter blur-2xl pointer-events-none"></div>
+                <div className="p-5 rounded-2xl bg-white border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-slate-100 rounded-full filter blur-2xl pointer-events-none"></div>
                   
                   <div className="flex items-center gap-4 flex-col sm:flex-row text-center sm:text-left">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-600 to-amber-500 flex items-center justify-center text-white text-3xl shadow-lg shadow-purple-500/25 shrink-0 animate-bounce">
+                    <div className="w-16 h-16 rounded-full bg-black flex items-center justify-center text-white text-3xl shadow-lg shrink-0 animate-bounce">
                       🎁
                     </div>
                     <div>
-                      <h4 className="text-base font-black text-white tracking-wide flex items-center justify-center sm:justify-start gap-1.5">
+                      <h4 className="text-base font-black text-slate-900 tracking-wide flex items-center justify-center sm:justify-start gap-1.5">
                         Hộp Quà Bí Ẩn Hàng Ngày <span className="text-[10px] bg-amber-400/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-400/20 font-black uppercase">Free</span>
                       </h4>
-                      <p className="text-xs text-slate-400 mt-1">Mỗi ngày mở 1 lần để có cơ hội nhận Xu, Khiên hoặc Khung avatar hiếm!</p>
+                      <p className="text-xs text-slate-500 mt-1">Mỗi ngày mở 1 lần để có cơ hội nhận Xu, Khiên hoặc Khung avatar hiếm!</p>
                       
                       {/* Tỉ lệ mở hộp quà */}
                       <div className="flex gap-4 mt-2 text-[10px] text-slate-500 font-bold justify-center sm:justify-start">
@@ -1418,7 +1412,7 @@ export default function ProfilePage() {
                       const timeStr = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
                       return (
                         <div className="flex flex-col items-center gap-1">
-                          <span className="text-xs font-bold text-slate-500 bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl">
+                          <span className="text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl">
                             Chờ: {timeStr}
                           </span>
                         </div>
@@ -1427,7 +1421,7 @@ export default function ProfilePage() {
                       <button
                         onClick={handleOpenMysteryBox}
                         disabled={isOpeningBox}
-                        className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-purple-600 to-amber-500 hover:from-purple-500 hover:to-amber-400 text-white font-black text-xs rounded-xl shadow-lg active:scale-95 transition-transform cursor-pointer"
+                        className="w-full sm:w-auto px-6 py-2.5 bg-black hover:bg-black/85 text-white font-black text-xs rounded-full shadow-lg active:scale-95 transition-transform cursor-pointer"
                       >
                         {isOpeningBox ? "Đang mở..." : "Mở ngay hộp quà"}
                       </button>
@@ -1437,20 +1431,20 @@ export default function ProfilePage() {
 
                 {/* Modal thông báo nhận quà Mystery Box */}
                 {mysteryBoxReward && (
-                  <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="p-6 rounded-2xl bg-slate-950 border border-purple-500/40 max-w-sm w-full text-center relative overflow-hidden shadow-2xl">
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-amber-400 to-purple-500 animate-pulse"></div>
+                  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="p-6 rounded-2xl bg-white border border-slate-200 max-w-sm w-full text-center relative overflow-hidden shadow-2xl">
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-black animate-pulse"></div>
                       <div className="text-5xl my-4">🎉</div>
-                      <h4 className="text-lg font-black text-white">Bạn Đã Nhận Được Quà!</h4>
+                      <h4 className="text-lg font-black text-slate-900">Bạn Đã Nhận Được Quà!</h4>
                       <p className="text-base font-black text-amber-400 mt-2">{mysteryBoxReward.name}</p>
-                      <p className="text-xs text-slate-400 mt-2">
+                      <p className="text-xs text-slate-500 mt-2">
                         {mysteryBoxReward.type === 'avatar_frame' 
                           ? 'Vật phẩm đã được thêm vào Kho đồ của bạn với thời hạn sử dụng 7 ngày.' 
                           : 'Phần thưởng đã được cộng trực tiếp vào tài khoản.'}
                       </p>
                       <button
                         onClick={() => setMysteryBoxReward(null)}
-                        className="mt-6 w-full py-2 bg-smash-purple hover:bg-smash-violet text-white text-xs font-black rounded-lg cursor-pointer transition-colors"
+                        className="mt-6 w-full py-2 bg-black hover:bg-black/85 text-white text-xs font-black rounded-full cursor-pointer transition-colors"
                       >
                         Đồng ý
                       </button>
@@ -1460,18 +1454,18 @@ export default function ProfilePage() {
 
                 {/* 2. Cửa hàng chính */}
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs uppercase font-black tracking-widest text-slate-400 flex items-center gap-1.5">
-                    <ShoppingBag className="w-3.5 h-3.5 text-smash-violet" /> Cửa hàng đổi quà
+                  <h4 className="text-xs uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5">
+                    <ShoppingBag className="w-3.5 h-3.5 text-black" /> Cửa hàng đổi quà
                   </h4>
-                  <div className="flex items-center gap-1 bg-slate-900/60 px-3 py-1 rounded-full border border-purple-950/40">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase">Số dư:</span>
+                  <div className="flex items-center gap-1 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase">Số dư:</span>
                     <span className="text-xs font-black text-amber-400">{gamProfile?.smash_coins || 0}🪙</span>
                   </div>
                 </div>
 
                 {shopItems.length === 0 ? (
-                  <div className="text-center py-10 rounded-2xl bg-slate-900/20 border border-dashed border-purple-950/20">
-                    <span className="text-sm font-bold text-slate-400">Cửa hàng trống</span>
+                  <div className="text-center py-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+                    <span className="text-sm font-bold text-slate-500">Cửa hàng trống</span>
                     <p className="text-xs text-slate-500 mt-1">Cửa hàng đang được nhập thêm quà mới, vui lòng quay lại sau.</p>
                   </div>
                 ) : (
@@ -1486,16 +1480,16 @@ export default function ProfilePage() {
                       const isLevelLocked = (gamProfile?.level || 1) < item.level_required;
 
                       // Rarity styling
-                      let rarityBorder = "border-purple-950/20";
-                      let rarityBadge = "bg-slate-800 text-slate-400";
+                      let rarityBorder = "border-slate-200";
+                      let rarityBadge = "bg-slate-100 text-slate-500";
                       if (item.rarity === 'rare') {
-                        rarityBorder = "border-blue-500/40 hover:border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.15)]";
+                        rarityBorder = "border-blue-500/40 hover:border-blue-500";
                         rarityBadge = "bg-blue-500/10 text-blue-400 border border-blue-500/20";
                       } else if (item.rarity === 'epic') {
-                        rarityBorder = "border-purple-500/50 hover:border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.35)]";
-                        rarityBadge = "bg-purple-500/10 text-smash-violet border border-smash-purple/20";
+                        rarityBorder = "border-slate-900 hover:border-black";
+                        rarityBadge = "bg-black/5 text-black border border-slate-200";
                       } else if (item.rarity === 'legendary') {
-                        rarityBorder = "border-amber-400 hover:border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.45)]";
+                        rarityBorder = "border-amber-400 hover:border-amber-400";
                         rarityBadge = "bg-amber-400/10 text-amber-400 border border-amber-400/20";
                       }
 
@@ -1504,8 +1498,8 @@ export default function ProfilePage() {
                       const isHotItem = item.is_hot;
 
                       return (
-                        <div key={item.id} className={`p-4 rounded-2xl bg-slate-900/40 border transition-all flex flex-col justify-between gap-4 relative overflow-hidden ${
-                          isOutOfStock ? "opacity-60 grayscale border-slate-900" : rarityBorder
+                        <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-4 relative overflow-hidden ${
+                          isOutOfStock ? "opacity-60 grayscale border-slate-200" : rarityBorder
                         }`}>
                           
                           {/* Alert Badges */}
@@ -1520,15 +1514,19 @@ export default function ProfilePage() {
 
                           <div className="flex gap-3">
                             {isPhysical && item.image_url ? (
-                              <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-purple-950/20 bg-slate-950 relative">
-                                <img
+                              <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-50 relative">
+                                <Image
                                   src={item.image_url}
                                   alt={item.name}
-                                  className="object-cover w-full h-full"
+                                  fill
+                                  sizes="80px"
+                                  loading="lazy"
+                                  unoptimized
+                                  className="object-cover"
                                 />
                               </div>
                             ) : (
-                              <div className="w-20 h-20 rounded-xl bg-purple-950/10 border border-purple-950/20 flex items-center justify-center shrink-0 text-smash-violet">
+                              <div className="w-20 h-20 rounded-xl bg-black/5 border border-slate-200 flex items-center justify-center shrink-0 text-black">
                                 <Trophy className="w-8 h-8" />
                               </div>
                             )}
@@ -1541,15 +1539,15 @@ export default function ProfilePage() {
                                   </span>
                                   <span className="text-[8px] text-slate-500 font-bold">{item.category || 'Đồ dùng'}</span>
                                 </div>
-                                <h4 className="text-sm font-bold text-white tracking-wide mt-1.5 line-clamp-1">{item.name}</h4>
-                                <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{item.description}</p>
+                                <h4 className="text-sm font-bold text-slate-900 tracking-wide mt-1.5 line-clamp-1">{item.name}</h4>
+                                <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">{item.description}</p>
                               </div>
-                              <div className="text-[10px] text-slate-400 mt-1">
+                              <div className="text-[10px] text-slate-500 mt-1">
                                 {isPhysical ? (
                                   isOutOfStock ? (
                                     <span className="text-red-400 font-bold">Hết hàng</span>
                                   ) : (
-                                    <span>Còn lại: <strong className="text-white">{item.stock} cái</strong></span>
+                                    <span>Còn lại: <strong className="text-slate-900">{item.stock} cái</strong></span>
                                   )
                                 ) : (
                                   <span className="text-slate-500">Kích hoạt trực tuyến</span>
@@ -1558,7 +1556,7 @@ export default function ProfilePage() {
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between gap-3 pt-1.5 border-t border-purple-950/10">
+                          <div className="flex items-center justify-between gap-3 pt-1.5 border-t border-slate-200">
                             <div className="flex items-center gap-1 font-bold text-amber-400 text-sm">
                               {item.coin_price} <span className="text-xs text-amber-500/80">Xu</span>
                             </div>
@@ -1573,10 +1571,10 @@ export default function ProfilePage() {
                                 disabled={isOutOfStock || !isAffordable || buyingItemId === item.id}
                                 className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
                                   isOutOfStock
-                                    ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                                    ? "bg-slate-100 text-slate-500 cursor-not-allowed"
                                     : !isAffordable
-                                    ? "bg-slate-800 hover:bg-slate-850 text-slate-500 border border-slate-700/20"
-                                    : "bg-smash-purple hover:bg-smash-violet text-white shadow-md shadow-smash-purple/25 active:scale-95"
+                                    ? "bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-200"
+                                    : "bg-black hover:bg-black/85 text-white shadow-md active:scale-95"
                                 }`}
                               >
                                 {buyingItemId === item.id
@@ -1598,39 +1596,18 @@ export default function ProfilePage() {
             )}
 
             {/* TAB CONTENT: MATCHES */}
-            {activeGamTab === "matches" && (() => {
-              const filteredMatches = matches.filter((m: any) => {
-                if (matchFilter === "all") return true;
-                const matchDate = new Date(m.created_at);
-                const now = new Date();
-                if (matchFilter === "month") {
-                  return matchDate.getMonth() === now.getMonth() && matchDate.getFullYear() === now.getFullYear();
-                }
-                if (matchFilter === "week") {
-                  // Check if within the last 7 days
-                  const diffTime = Math.abs(now.getTime() - matchDate.getTime());
-                  const diffDays = diffTime / (1000 * 60 * 60 * 24);
-                  return diffDays <= 7;
-                }
-                return true;
-              });
-
-              const totalMatchesCount = filteredMatches.length;
-              const wonMatchesCount = filteredMatches.filter((m: any) => m.won).length;
-              const winRate = totalMatchesCount > 0 ? Math.round((wonMatchesCount / totalMatchesCount) * 100) : 0;
-
-              return (
-                <div className="space-y-6">
+            {activeGamTab === "matches" && (
+              <div className="space-y-6">
                   {/* Title & Dropdown Filter Row */}
                   <div className="flex items-center justify-between gap-4">
-                    <h4 className="text-xs uppercase font-black tracking-widest text-slate-400 flex items-center gap-1.5">
-                      <Trophy className="w-3.5 h-3.5 text-smash-violet" /> Hiệu số thi đấu
+                    <h4 className="text-xs uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5">
+                      <Trophy className="w-3.5 h-3.5 text-black" /> Hiệu số thi đấu
                     </h4>
                     
                     <select
                       value={matchFilter}
                       onChange={(e) => setMatchFilter(e.target.value as any)}
-                      className="text-xs font-bold bg-slate-900 border border-purple-950/40 text-slate-300 rounded-xl px-3 py-1.5 focus:ring-1 focus:ring-primary outline-none cursor-pointer"
+                      className="text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl px-3 py-1.5 focus:ring-1 focus:ring-black/10 focus:border-black outline-none cursor-pointer"
                     >
                       <option value="all">Tất cả thời gian</option>
                       <option value="month">Trong tháng này</option>
@@ -1641,26 +1618,26 @@ export default function ProfilePage() {
                   {/* 3 Prominent Stats Cards */}
                   <div className="grid grid-cols-3 gap-3">
                     {/* Card 1: Total matches */}
-                    <div className="bg-slate-900/40 border border-purple-950/20 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
                       <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Tổng Trận</span>
-                      <span className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight">{totalMatchesCount}</span>
+                      <span className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums tracking-tight">{matchStats.total}</span>
                     </div>
 
                     {/* Card 2: Winrate */}
-                    <div className="bg-slate-900/40 border border-purple-950/20 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
                       <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Tỷ Lệ Thắng</span>
-                      <span className={`text-xl sm:text-2xl font-black font-mono tracking-tight ${winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {winRate}%
+                      <span className={`text-xl sm:text-2xl font-black tabular-nums tracking-tight ${matchStats.winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {matchStats.winRate}%
                       </span>
                     </div>
 
                     {/* Card 3: Wins / Losses */}
-                    <div className="bg-slate-900/40 border border-purple-950/20 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
                       <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Thắng / Bại</span>
-                      <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-slate-300">
-                        <span className="text-emerald-400">{wonMatchesCount}</span>
-                        <span className="text-slate-600 px-0.5">/</span>
-                        <span className="text-rose-400">{totalMatchesCount - wonMatchesCount}</span>
+                      <span className="text-xl sm:text-2xl font-black tabular-nums tracking-tight text-slate-600">
+                        <span className="text-emerald-400">{matchStats.won}</span>
+                        <span className="text-slate-400 px-0.5">/</span>
+                        <span className="text-rose-400">{matchStats.total - matchStats.won}</span>
                       </span>
                     </div>
                   </div>
@@ -1668,13 +1645,13 @@ export default function ProfilePage() {
                   {filteredMatches.length > 0 ? (
                     <div className="space-y-4">
                       {filteredMatches.map((m: any) => (
-                        <div key={m.id} className="p-4 rounded-2xl bg-slate-900/40 border border-purple-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-smash-purple/20 transition-all">
+                        <div key={m.id} className="p-4 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-black/20 transition-all">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
                               <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
                                 m.isDoubles 
                                   ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" 
-                                  : "bg-purple-500/10 text-smash-violet border border-smash-purple/20"
+                                  : "bg-black/5 text-black border border-slate-200"
                               }`}>
                                 {m.isDoubles ? "Đôi" : "Đơn"}
                               </span>
@@ -1682,20 +1659,20 @@ export default function ProfilePage() {
                                 {new Date(m.created_at).toLocaleDateString("vi-VN")}
                               </span>
                             </div>
-                            <p className="text-sm font-bold text-white">
-                              đối thủ: <span className="text-slate-300">{m.opponent}</span>
+                            <p className="text-sm font-bold text-slate-900">
+                              đối thủ: <span className="text-slate-600">{m.opponent}</span>
                             </p>
                           </div>
 
                           <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-10">
-                            <span className="font-extrabold text-base text-slate-300 tracking-wider font-mono">
+                            <span className="font-extrabold text-base text-slate-600 tracking-wider tabular-nums">
                               {m.score}
                             </span>
                             
                             <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full text-center min-w-[70px] ${
                               m.won
-                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                                : "bg-rose-500/10 text-rose-400 border border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.1)]"
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                                : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
                             }`}>
                               {m.won ? "Thắng" : "Thua"}
                             </span>
@@ -1710,49 +1687,48 @@ export default function ProfilePage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center p-10 rounded-2xl bg-slate-900/30 border border-dashed border-purple-950/20 text-center">
-                      <div className="w-12 h-12 rounded-full bg-purple-950/50 text-smash-violet flex items-center justify-center mb-4 border border-purple-950/50 shadow-inner animate-pulse">
+                    <div className="flex flex-col items-center justify-center p-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                      <div className="w-12 h-12 rounded-full bg-black/5 text-black flex items-center justify-center mb-4 border border-slate-200 shadow-inner animate-pulse">
                         <Trophy className="w-6 h-6" />
                       </div>
-                      <h4 className="text-white font-bold text-base mb-1.5">Không tìm thấy trận đấu nào</h4>
-                      <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
+                      <h4 className="text-slate-900 font-bold text-base mb-1.5">Không tìm thấy trận đấu nào</h4>
+                      <p className="text-xs text-slate-500 max-w-sm mb-6 leading-relaxed">
                         Không có trận đấu nào được ghi nhận trong khoảng thời gian đã chọn.
                       </p>
                     </div>
                   )}
                 </div>
-              );
-            })()}
+            )}
           </div>
         </div>
       </div>
 
-      {/* SETTINGS / CONFIGURATION MODAL (Glassmorphism & Dark Theme) */}
+      {/* SETTINGS / CONFIGURATION MODAL (Light Theme) */}
       {isSettingsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-          <div className="w-full max-w-lg bg-slate-950/95 border border-purple-900/50 rounded-3xl p-6 shadow-[0_0_40px_rgba(122,34,224,0.4)] relative flex flex-col max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-up">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl relative flex flex-col max-h-[90vh] overflow-y-auto">
             
             {/* Close button */}
             <button
               onClick={() => setIsSettingsModalOpen(false)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
             {/* Modal Title */}
-            <h3 className="text-xl font-black text-white mb-6 tracking-wide flex items-center gap-2">
-              <Settings className="w-5 h-5 text-smash-violet animate-spin-hover" /> Thiết lập Tài khoản
+            <h3 className="text-xl font-black text-slate-900 mb-6 tracking-wide flex items-center gap-2">
+              <Settings className="w-5 h-5 text-black animate-spin-hover" /> Thiết lập Tài khoản
             </h3>
 
             {/* Tabs Selector */}
-            <div className="flex border-b border-purple-950/60 mb-6 bg-slate-900/40 p-1 rounded-xl">
+            <div className="flex border-b border-slate-200 mb-6 bg-slate-100 p-1 rounded-xl">
               <button
                 onClick={() => setActiveTab("avatar")}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                   activeTab === "avatar"
-                    ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-black text-white shadow-md"
+                    : "text-slate-500 hover:text-slate-900"
                 }`}
               >
                 Đổi Avatar
@@ -1761,8 +1737,8 @@ export default function ProfilePage() {
                 onClick={() => setActiveTab("profile")}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                   activeTab === "profile"
-                    ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-black text-white shadow-md"
+                    : "text-slate-500 hover:text-slate-900"
                 }`}
               >
                 Hồ sơ cá nhân
@@ -1771,8 +1747,8 @@ export default function ProfilePage() {
                 onClick={() => setActiveTab("password")}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                   activeTab === "password"
-                    ? "bg-smash-purple text-white shadow-md shadow-smash-purple/20"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-black text-white shadow-md"
+                    : "text-slate-500 hover:text-slate-900"
                 }`}
               >
                 Đổi mật khẩu
@@ -1784,7 +1760,7 @@ export default function ProfilePage() {
             {activeTab === "avatar" && (
               <div className="space-y-6 flex flex-col items-center py-4">
                 {/* Preview Circle */}
-                <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-smash-violet shadow-[0_0_20px_rgba(157,78,221,0.4)] relative bg-slate-900 flex items-center justify-center">
+                <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-black relative bg-slate-100 flex items-center justify-center">
                   {avatarPreview ? (
                     <Image src={avatarPreview} alt="Avatar Preview" fill className="object-cover" />
                   ) : player.avatar_url ? (
@@ -1804,7 +1780,7 @@ export default function ProfilePage() {
                   />
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-purple-950/50 rounded-xl font-bold text-xs transition-all cursor-pointer active:scale-95"
+                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 rounded-xl font-bold text-xs transition-all cursor-pointer active:scale-95"
                   >
                     Chọn file ảnh đại diện
                   </button>
@@ -1815,7 +1791,7 @@ export default function ProfilePage() {
                   <button
                     onClick={handleUploadAvatar}
                     disabled={isUploadingAvatar}
-                    className="w-full py-3 bg-smash-purple text-white rounded-xl font-bold text-xs hover:bg-smash-violet transition-all shadow-md shadow-smash-purple/35 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                    className="w-full py-3 bg-black text-white rounded-full font-bold text-xs hover:bg-black/85 transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
                   >
                     {isUploadingAvatar ? (
                       <>
@@ -1835,41 +1811,41 @@ export default function ProfilePage() {
             {activeTab === "profile" && (
               <form onSubmit={handleUpdateProfile} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Họ và tên</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Họ và tên</label>
                   <input
                     type="text"
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-900 border border-purple-950/60 rounded-xl text-white outline-none focus:border-smash-violet focus:ring-1 focus:ring-smash-violet transition-all text-xs"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-black focus:ring-1 focus:ring-black/10 transition-all text-xs"
                     placeholder="Nguyễn Văn A"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Biệt danh (Nickname)</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Biệt danh (Nickname)</label>
                   <input
                     type="text"
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-900 border border-purple-950/60 rounded-xl text-white outline-none focus:border-smash-violet focus:ring-1 focus:ring-smash-violet transition-all text-xs"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-black focus:ring-1 focus:ring-black/10 transition-all text-xs"
                     placeholder="Sấm sét, Vua cọ..."
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Trường học / Học vấn</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Trường học / Học vấn</label>
                   <input
                     type="text"
                     value={academicInfo}
                     onChange={(e) => setAcademicInfo(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-900 border border-purple-950/60 rounded-xl text-white outline-none focus:border-smash-violet focus:ring-1 focus:ring-smash-violet transition-all text-xs"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-black focus:ring-1 focus:ring-black/10 transition-all text-xs"
                     placeholder="ĐH Bách Khoa, THPT A..."
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Kỹ năng đóng góp cho CLB</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Kỹ năng đóng góp cho CLB</label>
                   <div className="grid grid-cols-2 gap-3 mt-2">
                     {[
                       { key: "Chụp ảnh/Media", label: "Media/Chụp ảnh" },
@@ -1881,8 +1857,8 @@ export default function ProfilePage() {
                         key={item.key} 
                         className={`flex items-center gap-2 p-3 rounded-xl border transition-all cursor-pointer text-xs ${
                           selectedSkills.includes(item.key)
-                            ? "bg-smash-purple/20 border-smash-violet text-white"
-                            : "bg-slate-900/60 border-purple-950/30 text-slate-400 hover:border-purple-950/60"
+                            ? "bg-black/5 border-black text-slate-900"
+                            : "bg-slate-50 border-slate-200 text-slate-500 hover:border-black/20"
                         }`}
                       >
                         <input
@@ -1900,7 +1876,7 @@ export default function ProfilePage() {
                 <button
                   type="submit"
                   disabled={isSavingProfile}
-                  className="w-full py-3 bg-smash-purple text-white rounded-xl font-bold text-xs hover:bg-smash-violet transition-all shadow-md shadow-smash-purple/35 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 mt-6"
+                  className="w-full py-3 bg-black text-white rounded-full font-bold text-xs hover:bg-black/85 transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 mt-6"
                 >
                   {isSavingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                   Lưu thay đổi hồ sơ
@@ -1912,26 +1888,26 @@ export default function ProfilePage() {
             {activeTab === "password" && (
               <form onSubmit={handleChangePassword} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu cũ</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mật khẩu cũ</label>
                   <input
                     type="password"
                     required
                     value={oldPassword}
                     onChange={(e) => setOldPassword(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-900 border border-purple-950/60 rounded-xl text-white outline-none focus:border-smash-violet focus:ring-1 focus:ring-smash-violet transition-all text-xs animate-none"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 outline-none focus:border-black focus:ring-1 focus:ring-black/10 transition-all text-xs animate-none"
                     placeholder="••••••••"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Mật khẩu mới</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mật khẩu mới</label>
                   <input
                     type="password"
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className={`w-full px-4 py-3 bg-slate-900 border rounded-xl text-white outline-none focus:ring-1 focus:ring-smash-violet transition-all text-xs ${
-                      newPassword ? (isPasswordLengthValid ? "border-emerald-500/50" : "border-rose-500/50") : "border-purple-950/60"
+                    className={`w-full px-4 py-3 bg-white border rounded-xl text-slate-900 outline-none focus:ring-1 focus:ring-black/10 transition-all text-xs ${
+                      newPassword ? (isPasswordLengthValid ? "border-emerald-500/50" : "border-rose-500/50") : "border-slate-200"
                     }`}
                     placeholder="••••••••"
                   />
@@ -1947,14 +1923,14 @@ export default function ProfilePage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Xác nhận mật khẩu mới</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Xác nhận mật khẩu mới</label>
                   <input
                     type="password"
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full px-4 py-3 bg-slate-900 border rounded-xl text-white outline-none focus:ring-1 focus:ring-smash-violet transition-all text-xs ${
-                      confirmPassword ? (isPasswordMatchValid ? "border-emerald-500/50" : "border-rose-500/50") : "border-purple-950/60"
+                    className={`w-full px-4 py-3 bg-white border rounded-xl text-slate-900 outline-none focus:ring-1 focus:ring-black/10 transition-all text-xs ${
+                      confirmPassword ? (isPasswordMatchValid ? "border-emerald-500/50" : "border-rose-500/50") : "border-slate-200"
                     }`}
                     placeholder="••••••••"
                   />
@@ -1972,7 +1948,7 @@ export default function ProfilePage() {
                 <button
                   type="submit"
                   disabled={isChangingPassword || !oldPassword || !isPasswordLengthValid || !isPasswordMatchValid}
-                  className="w-full py-3 bg-smash-purple text-white rounded-xl font-bold text-xs hover:bg-smash-violet transition-all shadow-md shadow-smash-purple/35 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+                  className="w-full py-3 bg-black text-white rounded-full font-bold text-xs hover:bg-black/85 transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mt-6"
                 >
                   {isChangingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                   Đổi mật khẩu tài khoản
@@ -1984,7 +1960,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <footer className="bg-slate-950/60 border-t border-purple-950/20 py-8 text-center text-slate-500 text-xs">
+      <footer className="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-xs">
         <p>© 2026 SmashTeam Badminton Club. All rights reserved.</p>
       </footer>
     </main>

@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  Calendar, MapPin, Clock, Plus, Loader2, X, Download, Users, 
+import Image from "next/image";
+import {
+  MapPin, Clock, Plus, Loader2, Download, Users,
   CheckCircle, ChevronRight, UserCheck
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { QRCodeCanvas } from "qrcode.react";
+import { PageHeader, Modal, PillButton, FormField, CardSkeleton } from "@/app/components/ui";
 
 export default function AdminSessionsPage() {
   const router = useRouter();
@@ -129,22 +131,21 @@ export default function AdminSessionsPage() {
     : "";
 
   return (
-    <div className="space-y-6 text-slate-800">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-black text-secondary tracking-tight">Quản lý Buổi tập CLB</h1>
-          <p className="text-slate-500 text-sm mt-1">Tạo buổi sinh hoạt tập luyện mới và quản lý danh sách thành viên check-in quét mã QR Code.</p>
-        </div>
-        <button
-          onClick={() => {
-            setIsModalOpen(true);
-            setTemplate("khac");
-          }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-secondary hover:bg-primary-hover font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
-        >
-          <Plus className="w-4 h-4" /> Tạo Buổi Tập
-        </button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Buổi tập CLB"
+        desc="Tạo buổi sinh hoạt tập luyện mới và quản lý danh sách thành viên check-in quét mã QR Code."
+        actions={
+          <PillButton
+            onClick={() => {
+              setIsModalOpen(true);
+              setTemplate("khac");
+            }}
+          >
+            <Plus className="w-4 h-4" /> Tạo Buổi Tập
+          </PillButton>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* SESSIONS LIST */}
@@ -154,7 +155,7 @@ export default function AdminSessionsPage() {
               onClick={() => setViewMode("upcoming")}
               className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all text-center ${
                 viewMode === "upcoming"
-                  ? "bg-primary text-secondary shadow-sm font-extrabold"
+                  ? "bg-black text-white shadow-sm font-extrabold"
                   : "text-slate-600 hover:text-slate-800"
               }`}
             >
@@ -164,7 +165,7 @@ export default function AdminSessionsPage() {
               onClick={() => setViewMode("history")}
               className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all text-center ${
                 viewMode === "history"
-                  ? "bg-primary text-secondary shadow-sm font-extrabold"
+                  ? "bg-black text-white shadow-sm font-extrabold"
                   : "text-slate-600 hover:text-slate-800"
               }`}
             >
@@ -173,9 +174,7 @@ export default function AdminSessionsPage() {
           </div>
 
           {isLoading ? (
-            <div className="flex justify-center p-8">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
+            <CardSkeleton rows={4} />
           ) : sessions.length === 0 ? (
             <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center text-slate-400 text-xs">
               {viewMode === "history" ? "Chưa có lịch sử buổi tập nào." : "Chưa có buổi tập nào được xếp lịch."}
@@ -207,7 +206,7 @@ export default function AdminSessionsPage() {
                         })}
                       </p>
                     </div>
-                    <ChevronRight className={`w-4 h-4 shrink-0 ${isSelected ? "text-primary" : "text-slate-400"}`} />
+                    <ChevronRight className={`w-4 h-4 shrink-0 ${isSelected ? "text-black" : "text-slate-400"}`} />
                   </div>
                 );
               })}
@@ -220,7 +219,7 @@ export default function AdminSessionsPage() {
           {selectedSession ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
               <div className="border-b border-slate-100 pb-4">
-                <span className="text-[10px] bg-primary/20 text-secondary font-black px-2 py-0.5 rounded uppercase">Chi tiết buổi tập</span>
+                <span className="text-[10px] bg-black/10 text-secondary font-black px-2 py-0.5 rounded uppercase">Chi tiết buổi tập</span>
                 <h2 className="text-xl font-bold text-secondary mt-1">{selectedSession.title}</h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 mt-2">
                   <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {new Date(selectedSession.date_time).toLocaleString("vi-VN")}</span>
@@ -255,12 +254,12 @@ export default function AdminSessionsPage() {
                 {/* ATTENDEES TABLE */}
                 <div className="md:col-span-3 space-y-3">
                   <h4 className="font-extrabold text-secondary text-sm flex items-center gap-1.5">
-                    <UserCheck className="w-4 h-4 text-primary" /> Thành viên đã quét mã ({attendees.length})
+                    <UserCheck className="w-4 h-4 text-black" /> Thành viên đã quét mã ({attendees.length})
                   </h4>
 
                   {isLoadingAttendees ? (
                     <div className="flex justify-center py-12">
-                      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      <Loader2 className="w-8 h-8 animate-spin text-black" />
                     </div>
                   ) : attendees.length === 0 ? (
                     <div className="py-12 border border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs">
@@ -273,7 +272,7 @@ export default function AdminSessionsPage() {
                           <div className="flex items-center gap-2.5">
                             <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-100 shrink-0 border border-slate-200 relative">
                               {a.avatar_url ? (
-                                <img src={a.avatar_url} alt={a.full_name} className="w-full h-full object-cover" />
+                                <Image src={a.avatar_url} alt={a.full_name} fill sizes="32px" loading="lazy" unoptimized className="object-cover" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center font-bold bg-purple-900 text-white uppercase text-[10px]">
                                   {a.full_name.charAt(0)}
@@ -307,21 +306,12 @@ export default function AdminSessionsPage() {
       </div>
 
       {/* CREATE SESSION MODAL */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl relative">
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h3 className="text-lg font-black text-secondary mb-5 tracking-tight flex items-center gap-1.5">
-              <Calendar className="w-5 h-5 text-primary" /> Thiết lập buổi sinh hoạt mới
-            </h3>
-
-            <form onSubmit={handleCreateSession} className="space-y-4">
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Thiết lập buổi sinh hoạt mới"
+      >
+        <form onSubmit={handleCreateSession} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Chọn loại buổi tập nhanh</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -337,7 +327,7 @@ export default function AdminSessionsPage() {
                     }}
                     className={`p-2 rounded-xl border text-[10px] font-black text-center transition-all cursor-pointer ${
                       template === "dinh_ky"
-                        ? "border-primary bg-primary/10 text-secondary"
+                        ? "border-black bg-black/5 text-black"
                         : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                   >
@@ -355,7 +345,7 @@ export default function AdminSessionsPage() {
                     }}
                     className={`p-2 rounded-xl border text-[10px] font-black text-center transition-all cursor-pointer ${
                       template === "offline"
-                        ? "border-primary bg-primary/10 text-secondary"
+                        ? "border-black bg-black/5 text-black"
                         : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                   >
@@ -371,7 +361,7 @@ export default function AdminSessionsPage() {
                     }}
                     className={`p-2 rounded-xl border text-[10px] font-black text-center transition-all cursor-pointer ${
                       template === "khac"
-                        ? "border-primary bg-primary/10 text-secondary"
+                        ? "border-black bg-black/5 text-black"
                         : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                   >
@@ -380,8 +370,7 @@ export default function AdminSessionsPage() {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Tên buổi sinh hoạt</label>
+              <FormField label="Tên buổi sinh hoạt">
                 <input
                   type="text"
                   required
@@ -391,12 +380,11 @@ export default function AdminSessionsPage() {
                     setTitle(e.target.value);
                     setTemplate("khac");
                   }}
-                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50 font-bold"
+                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-black text-sm bg-slate-50 font-bold"
                 />
-              </div>
+              </FormField>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Thời gian bắt đầu</label>
+              <FormField label="Thời gian bắt đầu">
                 <input
                   type="datetime-local"
                   required
@@ -405,12 +393,11 @@ export default function AdminSessionsPage() {
                     setDateTime(e.target.value);
                     setTemplate("khac");
                   }}
-                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50 font-bold"
+                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-black text-sm bg-slate-50 font-bold"
                 />
-              </div>
+              </FormField>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Địa điểm sân đấu</label>
+              <FormField label="Địa điểm sân đấu">
                 <input
                   type="text"
                   required
@@ -420,9 +407,9 @@ export default function AdminSessionsPage() {
                     setLocation(e.target.value);
                     setTemplate("khac");
                   }}
-                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50 font-bold"
+                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-black text-sm bg-slate-50 font-bold"
                 />
-              </div>
+              </FormField>
 
               {error && (
                 <div className="p-3 text-xs bg-rose-50 text-rose-500 rounded-xl border border-rose-100 font-medium">
@@ -430,24 +417,11 @@ export default function AdminSessionsPage() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-3 bg-primary hover:bg-primary-hover disabled:opacity-50 text-secondary font-bold text-sm rounded-xl shadow-md cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Đang lưu...
-                  </>
-                ) : (
-                  "Tạo Buổi Tập"
-                )}
-              </button>
+              <PillButton type="submit" loading={isSubmitting} className="w-full">
+                Tạo Buổi Tập
+              </PillButton>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

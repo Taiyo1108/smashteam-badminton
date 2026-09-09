@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, Lock, Phone, ShieldCheck, ArrowRight, UserCheck, AlertCircle, ArrowLeft } from "lucide-react";
+import { CheckCircle2, Lock, Phone, ArrowRight, AlertCircle, ArrowLeft } from "lucide-react";
 import { API_URL } from "@/app/config";
+import BrandLogo from "@/app/components/BrandLogo";
 
 export default function ClaimAccount() {
   const [step, setStep] = useState(1);
@@ -105,20 +106,17 @@ export default function ClaimAccount() {
   }, [step, countdown, router]);
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background decoration */}
-      <div className="absolute top-0 w-full h-1/2 bg-slate-900 skew-y-[-5deg] origin-top-left -z-10 shadow-xl" />
-      
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 relative z-10">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8 relative z-10">
         
         {/* Step 1: Verify */}
         {step === 1 && (
           <div>
             <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-primary rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg transform rotate-3 text-white">
-                <ShieldCheck className="w-8 h-8" />
+              <div className="flex justify-center mb-4">
+                <BrandLogo size={64} />
               </div>
-              <h1 className="text-2xl font-bold text-secondary">Kích hoạt tài khoản</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Kích hoạt tài khoản</h1>
               <p className="text-slate-500 text-sm mt-2">Xác thực thông tin thành viên của câu lạc bộ</p>
             </div>
 
@@ -140,7 +138,7 @@ export default function ClaimAccount() {
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none"
+                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-black/10 focus:border-black transition-colors outline-none"
                     placeholder="Số điện thoại đăng ký thành viên"
                     required
                   />
@@ -157,7 +155,7 @@ export default function ClaimAccount() {
                     type="password"
                     value={pin}
                     onChange={(e) => setPin(e.target.value)}
-                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none"
+                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-black/10 focus:border-black transition-colors outline-none"
                     placeholder="Mã PIN chung của CLB"
                     required
                   />
@@ -167,7 +165,7 @@ export default function ClaimAccount() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 py-4 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-secondary hover:bg-slate-800 focus:outline-none transition-all mt-8 disabled:opacity-70 group"
+                className="w-full flex items-center justify-center gap-2 h-12 px-4 border border-transparent rounded-full shadow-sm text-sm font-bold text-white bg-black hover:bg-black/85 focus:outline-none transition-all mt-8 disabled:opacity-70 group"
               >
                 {isLoading ? "Đang xác thực..." : "Xác nhận tài khoản"}
                 {!isLoading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
@@ -189,10 +187,10 @@ export default function ClaimAccount() {
         {step === 2 && (
           <div>
             <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-green-500 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg transform -rotate-3 text-white">
-                <UserCheck className="w-8 h-8" />
+              <div className="flex justify-center mb-4">
+                <BrandLogo size={64} />
               </div>
-              <h1 className="text-2xl font-bold text-secondary">Chào {fullName},</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Chào {fullName},</h1>
               <p className="text-slate-500 text-sm mt-2">Vui lòng thiết lập mật khẩu mới cho tài khoản của bạn</p>
             </div>
 
@@ -214,7 +212,7 @@ export default function ClaimAccount() {
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none"
+                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-black/10 focus:border-black transition-colors outline-none"
                     placeholder="Mật khẩu của bạn"
                     minLength={6}
                     required
@@ -232,7 +230,7 @@ export default function ClaimAccount() {
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none"
+                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-black/10 focus:border-black transition-colors outline-none"
                     placeholder="Nhập lại mật khẩu mới"
                     minLength={6}
                     required
@@ -243,7 +241,7 @@ export default function ClaimAccount() {
               <button
                 type="submit"
                 disabled={isLoading || newPassword.length < 6 || newPassword !== confirmPassword}
-                className="w-full flex items-center justify-center gap-2 py-4 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-green-600 hover:bg-green-700 focus:outline-none transition-all mt-8 disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 h-12 px-4 border border-transparent rounded-full shadow-sm text-sm font-bold text-white bg-black hover:bg-black/85 focus:outline-none transition-all mt-8 disabled:opacity-50"
               >
                 {isLoading ? "Đang kích hoạt..." : "Kích hoạt tài khoản"}
               </button>
@@ -257,7 +255,7 @@ export default function ClaimAccount() {
             <div className="w-20 h-20 bg-green-100 rounded-full mx-auto flex items-center justify-center mb-6 text-green-600 animate-bounce">
               <CheckCircle2 className="w-12 h-12" />
             </div>
-            <h1 className="text-2xl font-bold text-secondary mb-2">{success}</h1>
+            <h1 className="text-2xl font-bold tracking-tight mb-2">{success}</h1>
             <p className="text-slate-500 text-sm">
               Tài khoản của bạn đã kích hoạt thành công.
             </p>

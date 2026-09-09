@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Lock, Phone, ArrowRight, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { API_URL } from "@/app/config";
+import BrandLogo from "@/app/components/BrandLogo";
 
 export default function UnifiedLogin() {
   const [phone, setPhone] = useState("");
@@ -54,16 +55,13 @@ export default function UnifiedLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background decoration */}
-      <div className="absolute top-0 w-full h-1/2 bg-slate-900 skew-y-[-5deg] origin-top-left -z-10 shadow-xl" />
-      
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 relative z-10">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8 relative z-10">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg transform rotate-3">
-            <Lock className="w-8 h-8 text-white" />
+          <div className="flex justify-center mb-4">
+            <BrandLogo size={64} />
           </div>
-          <h1 className="text-2xl font-bold text-secondary">Đăng Nhập</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Đăng Nhập</h1>
           <p className="text-slate-500 text-sm mt-2">Dành cho Quản trị viên và Thành viên</p>
         </div>
 
@@ -84,7 +82,7 @@ export default function UnifiedLogin() {
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none"
+                className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-black/10 focus:border-black transition-colors outline-none"
                 placeholder="Nhập số điện thoại"
                 required
               />
@@ -101,7 +99,7 @@ export default function UnifiedLogin() {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors outline-none"
+                className="block w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-black/10 focus:border-black transition-colors outline-none"
                 placeholder="••••••••"
                 required
               />
@@ -118,7 +116,7 @@ export default function UnifiedLogin() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 py-4 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-secondary hover:bg-slate-800 focus:outline-none transition-all mt-8 disabled:opacity-70 group"
+            className="w-full flex items-center justify-center gap-2 h-12 px-4 border border-transparent rounded-full shadow-sm text-sm font-bold text-white bg-black hover:bg-black/85 focus:outline-none transition-all mt-8 disabled:opacity-70 group"
           >
             {isLoading ? "Đang đăng nhập..." : "Đăng nhập hệ thống"}
             {!isLoading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
@@ -144,7 +142,7 @@ export default function UnifiedLogin() {
       {/* Absolute top-left back link */}
       <Link 
         href="/" 
-        className="absolute top-6 left-6 flex items-center gap-2 text-white/80 hover:text-white font-semibold transition-colors z-20"
+        className="absolute top-6 left-6 flex items-center gap-2 text-slate-500 hover:text-black font-semibold transition-colors z-20"
       >
         <ArrowLeft className="w-4 h-4" /> Quay về Trang chủ
       </Link>

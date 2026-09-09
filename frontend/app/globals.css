@@ -187,7 +187,7 @@ body {
   display: inline-block;
   width: 3px;
   height: 15px;
-  background-color: var(--color-smash-violet);
+  background-color: currentColor;
   border-radius: 999px;
   animation: soundwave-bgm 1.2s ease-in-out infinite;
 }
@@ -199,5 +199,174 @@ body {
   50% {
     transform: scaleY(1);
   }
+}
+
+/* Homepage perf: CSS-only fade-up thay cho framer-motion (giảm ~100KB JS) */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility animate-fade-up {
+  animation: fade-up 0.6s ease-out both;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ===== Chế độ ban đêm (bật cho mọi loại tài khoản) ===== */
+.dark {
+  color-scheme: dark;
+}
+.dark body {
+  background-color: #0c0a1a;
+  color: #f1f5f9;
+}
+/* Mặt nền sáng -> tối */
+.dark .bg-white {
+  background-color: #17142e !important;
+}
+.dark .bg-slate-50 {
+  background-color: #12102a !important;
+}
+.dark .bg-slate-100 {
+  background-color: #1e1b3a !important;
+}
+.dark .bg-white\/80 {
+  background-color: rgba(12, 10, 26, 0.85) !important;
+}
+/* Biến thể trong suốt của mặt nền sáng -> tối đặc (tránh bạc màu) */
+.dark .bg-slate-50\/50 {
+  background-color: #17142e !important;
+}
+.dark .bg-white\/60,
+.dark .bg-white\/50 {
+  background-color: #17142e !important;
+}
+.dark .border-slate-200\/50,
+.dark .border-slate-200\/60,
+.dark .border-slate-100\/50 {
+  border-color: #2e2a55 !important;
+}
+.dark .bg-black\/5 {
+  background-color: rgba(148, 163, 184, 0.12) !important;
+}
+/* Chữ tối -> sáng (giữ text-white và màu trạng thái nguyên) */
+.dark .text-black {
+  color: #f8fafc !important;
+}
+.dark .text-slate-900 {
+  color: #f1f5f9 !important;
+}
+.dark .text-slate-800 {
+  color: #e2e8f0 !important;
+}
+.dark .text-slate-700,
+.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+/* Chữ màu đậm (đọc tốt trên nền sáng) -> tông sáng tương ứng trên nền tối */
+.dark .text-secondary {
+  color: #f1f5f9 !important;
+}
+.dark .text-amber-900 {
+  color: #fcd34d !important;
+}
+.dark .text-amber-800,
+.dark .text-amber-700,
+.dark .text-amber-600 {
+  color: #fbbf24 !important;
+}
+.dark .text-yellow-700,
+.dark .text-yellow-600 {
+  color: #facc15 !important;
+}
+.dark .text-emerald-700,
+.dark .text-emerald-600 {
+  color: #34d399 !important;
+}
+.dark .text-green-700,
+.dark .text-green-600 {
+  color: #4ade80 !important;
+}
+.dark .text-teal-700,
+.dark .text-teal-600 {
+  color: #2dd4bf !important;
+}
+.dark .text-cyan-700,
+.dark .text-cyan-600 {
+  color: #22d3ee !important;
+}
+.dark .text-blue-700,
+.dark .text-blue-600 {
+  color: #60a5fa !important;
+}
+.dark .text-indigo-700,
+.dark .text-indigo-600 {
+  color: #818cf8 !important;
+}
+.dark .text-purple-700,
+.dark .text-purple-600 {
+  color: #c084fc !important;
+}
+.dark .text-rose-700,
+.dark .text-rose-600 {
+  color: #fb7185 !important;
+}
+.dark .text-red-700,
+.dark .text-red-600 {
+  color: #f87171 !important;
+}
+.dark .text-orange-700,
+.dark .text-orange-600 {
+  color: #fb923c !important;
+}
+/* Viền sáng -> tối */
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300 {
+  border-color: #2e2a55 !important;
+}
+/* Nút đen -> trắng (đảo cả chữ/icon bên trong) */
+.dark .bg-black {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+.dark .bg-black *,
+.dark .bg-black\/85 {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+.dark .bg-white\/15 {
+  background-color: rgba(15, 23, 42, 0.12) !important;
+}
+.dark .hover\:bg-black\/85:hover {
+  background-color: #e2e8f0 !important;
+}
+.dark .hover\:bg-black:hover {
+  background-color: #e2e8f0 !important;
+}
+/* Chip xám nhạt -> xám đậm để đọc được chữ sáng */
+.dark .bg-slate-300 {
+  background-color: #334155 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+/* Chữ xám mờ -> sáng hơn để đọc được trên nền tối */
+.dark .text-slate-400 {
+  color: #a8b8d0 !important;
 }
 
