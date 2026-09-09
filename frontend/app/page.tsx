@@ -31,7 +31,7 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: "SmashTeam | Câu lạc bộ cầu lông",
   description:
-    "SmashTeam — CLB cầu lông năng động: xếp hạng Elo minh bạch, lịch tập đều đặn, cộng đồng 150+ tay vợt cùng tiến bộ.",
+    "SmashTeam — CLB cầu lông năng động: xếp hạng Elo minh bạch, lịch tập đều đặn, cộng đồng tay vợt cùng tiến bộ.",
   openGraph: {
     title: "SmashTeam | Đam mê hội tụ",
     description: "Xếp hạng Elo minh bạch, cộng đồng cầu lông năng động tại TP.HCM.",
@@ -45,12 +45,28 @@ const FALLBACK_COVER =
 const FALLBACK_TRAINING =
   "https://images.unsplash.com/photo-1611224923853-80b023f02d71?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=70";
 
-const CLUB_STATS = [
-  { label: "Hội viên đang hoạt động", value: "150+", icon: Users },
-  { label: "Trận đấu đã ghi nhận", value: "1.200+", icon: Zap },
-  { label: "Buổi tập mỗi tuần", value: "6", icon: CalendarDays },
-  { label: "Bậc xếp hạng Elo", value: "6", icon: TrendingUp },
+// Định nghĩa 4 chỉ số trang chủ: key map với GET /api/stats,
+// fallback hiển thị khi API lỗi để trang không vỡ layout.
+const CLUB_STAT_DEFS = [
+  { key: "activeMembers", label: "Hội viên đang hoạt động", fallback: "150+", icon: Users },
+  { key: "recordedMatches", label: "Trận đấu đã ghi nhận", fallback: "1.200+", icon: Zap },
+  { key: "weeklySessions", label: "Buổi tập mỗi tuần", fallback: "6", icon: CalendarDays },
+  { key: "eloTiers", label: "Bậc xếp hạng Elo", fallback: "6", icon: TrendingUp },
 ] as const;
+
+type ClubStats = {
+  activeMembers?: number;
+  recordedMatches?: number;
+  weeklySessions?: number;
+  eloTiers?: number;
+};
+
+// Số liệu thật định dạng theo locale vi-VN (1200 -> "1.200").
+function formatStat(value: unknown, fallback: string): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toLocaleString("vi-VN")
+    : fallback;
+}
 
 const RANK_TIERS = [
   { name: "Bronze", range: "< 1100", desc: "Mới gia nhập, làm quen với hệ thống thi đấu." },
@@ -135,12 +151,21 @@ function normalizeBoard(data: any[]): LeaderboardPlayer[] {
 }
 
 export default async function Home() {
-  const [settings, mediaRaw, singlesRaw, doublesRaw] = await Promise.all([
+  const [settings, mediaRaw, singlesRaw, doublesRaw, statsRaw] = await Promise.all([
     fetchJson<any>(`${API_URL}/api/settings`, {}),
     fetchJson<any[]>(`${API_URL}/api/media`, []),
     fetchJson<any[]>(`${API_URL}/api/users/leaderboard?type=singles`, []),
     fetchJson<any[]>(`${API_URL}/api/users/leaderboard?type=doubles`, []),
+    fetchJson<ClubStats | null>(`${API_URL}/api/stats`, null),
   ]);
+
+  // Số liệu thật từ API, rớt về fallback cứng khi API lỗi.
+  const stats: ClubStats = statsRaw ?? {};
+  const clubStats = CLUB_STAT_DEFS.map((s) => ({
+    ...s,
+    value: formatStat(stats[s.key], s.fallback),
+  }));
+  const memberLabel = formatStat(stats.activeMembers, "150+");
 
   const heroBg =
     typeof settings?.homepage_cover_url === "string" && settings.homepage_cover_url
@@ -234,7 +259,7 @@ export default async function Home() {
                   <Star key={i} className="w-4 h-4 fill-white" aria-hidden />
                 ))}
               </div>
-              <p className="text-sm text-white/70">150+ Hội viên đang hoạt động</p>
+              <p className="text-sm text-white/70">{memberLabel} Hội viên đang hoạt động</p>
             </div>
           </div>
         </div>
@@ -264,7 +289,7 @@ export default async function Home() {
             </div>
           </div>
           <dl className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {CLUB_STATS.map((s) => (
+            {clubStats.map((s) => (
               <div key={s.label} className="pt-8 border-t-2 border-[#e1e1e1]">
                 <dd className="text-[40px] md:text-[52px] leading-none font-medium tracking-tight tabular-nums">
                   {s.value}
@@ -343,7 +368,7 @@ export default async function Home() {
             <p className="text-[28px] md:text-[32px] leading-[1.35] tracking-[-0.02em] font-medium">
               SmashTeam khởi nguồn từ đam mê cầu lông.{" "}
               <span className="text-[#999]">
-                Từ những buổi tập phong trào, nay là cộng đồng 150+ tay vợt cùng tiến bộ.
+                Từ những buổi tập phong trào, nay là cộng đồng {memberLabel} tay vợt cùng tiến bộ.
               </span>
             </p>
             <p className="text-[28px] md:text-[32px] leading-[1.35] tracking-[-0.02em] font-medium text-[#999]">
