@@ -226,58 +226,58 @@ html {
   color-scheme: dark;
 }
 .dark body {
-  background-color: #0c0a1a;
-  color: #f1f5f9;
+  background-color: #140f35;
+  color: #ffffff;
 }
-/* Mặt nền sáng -> tối */
+/* Mặt nền sáng -> tối tím */
 .dark .bg-white {
-  background-color: #17142e !important;
+  background-color: #071019 !important;
 }
 .dark .bg-slate-50 {
-  background-color: #12102a !important;
+  background-color: #140f35 !important;
 }
 .dark .bg-slate-100 {
-  background-color: #1e1b3a !important;
+  background-color: #493679 !important;
 }
 .dark .bg-white\/80 {
-  background-color: rgba(12, 10, 26, 0.85) !important;
+  background-color: rgba(20, 15, 53, 0.9) !important;
 }
-/* Biến thể trong suốt của mặt nền sáng -> tối đặc (tránh bạc màu) */
+/* Biến thể trong suốt của mặt nền sáng -> tím đen đặc (tránh bạc màu) */
 .dark .bg-slate-50\/50 {
-  background-color: #17142e !important;
+  background-color: #071019 !important;
 }
 .dark .bg-white\/60,
 .dark .bg-white\/50 {
-  background-color: #17142e !important;
+  background-color: #071019 !important;
 }
 .dark .border-slate-200\/50,
 .dark .border-slate-200\/60,
 .dark .border-slate-100\/50 {
-  border-color: #2e2a55 !important;
+  border-color: #493679 !important;
 }
 .dark .bg-black\/5 {
-  background-color: rgba(148, 163, 184, 0.12) !important;
+  background-color: rgba(242, 236, 255, 0.1) !important;
 }
-/* Chữ tối -> sáng (giữ text-white và màu trạng thái nguyên) */
+/* Thang chữ trắng -> tím theo mức quan trọng nội dung */
 .dark .text-black {
-  color: #f8fafc !important;
+  color: #ffffff !important;
 }
 .dark .text-slate-900 {
-  color: #f1f5f9 !important;
+  color: #ffffff !important;
 }
 .dark .text-slate-800 {
-  color: #e2e8f0 !important;
+  color: #eae3fb !important;
 }
 .dark .text-slate-700,
 .dark .text-slate-600 {
-  color: #cbd5e1 !important;
+  color: #cdbdec !important;
 }
 .dark .text-slate-500 {
-  color: #94a3b8 !important;
+  color: #a78fda !important;
 }
 /* Chữ màu đậm (đọc tốt trên nền sáng) -> tông sáng tương ứng trên nền tối */
 .dark .text-secondary {
-  color: #f1f5f9 !important;
+  color: #eae3fb !important;
 }
 .dark .text-amber-900 {
   color: #fcd34d !important;
@@ -335,38 +335,38 @@ html {
 .dark .border-slate-100,
 .dark .border-slate-200,
 .dark .border-slate-300 {
-  border-color: #2e2a55 !important;
+  border-color: #493679 !important;
 }
-/* Nút đen -> trắng (đảo cả chữ/icon bên trong) */
+/* Nút đen -> trắng lavender chữ tím đen */
 .dark .bg-black {
-  background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  background-color: #ffffff !important;
+  color: #140f35 !important;
 }
 .dark .bg-black *,
 .dark .bg-black\/85 {
-  background-color: #f1f5f9 !important;
-  color: #0f172a !important;
+  background-color: #ffffff !important;
+  color: #140f35 !important;
 }
 .dark .bg-white\/15 {
-  background-color: rgba(15, 23, 42, 0.12) !important;
+  background-color: rgba(242, 236, 255, 0.14) !important;
 }
 .dark .hover\:bg-black\/85:hover {
-  background-color: #e2e8f0 !important;
+  background-color: #8357cf !important;
 }
 .dark .hover\:bg-black:hover {
-  background-color: #e2e8f0 !important;
+  background-color: #8357cf !important;
 }
-/* Chip xám nhạt -> xám đậm để đọc được chữ sáng */
+/* Chip xám nhạt -> tím vừa để đọc được chữ sáng */
 .dark .bg-slate-300 {
-  background-color: #334155 !important;
+  background-color: #623ea7 !important;
 }
 .dark input::placeholder,
 .dark textarea::placeholder {
-  color: #94a3b8;
+  color: #7e68b0;
   opacity: 1;
 }
-/* Chữ xám mờ -> sáng hơn để đọc được trên nền tối */
+/* Chữ mờ nhất -> tím đậm */
 .dark .text-slate-400 {
-  color: #a8b8d0 !important;
+  color: #7e68b0 !important;
 }
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, Users, Swords, LogOut, Loader2, Menu, X, Image as ImageIcon, Calendar, Sparkles, ShoppingBag } from "lucide-react";
+import { LayoutDashboard, Users, Swords, LogOut, Loader2, Menu, X, Image as ImageIcon, Calendar, Sparkles, ShoppingBag, Home } from "lucide-react";
 import BrandLogo from "@/app/components/BrandLogo";
 import ThemeToggle from "@/app/components/ThemeToggle";
 
@@ -101,6 +101,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="px-4 py-2">
             <ThemeToggle />
           </div>
+          <Link href="/" className="flex items-center gap-3 w-full px-4 py-3 rounded-full text-slate-600 hover:bg-slate-100 hover:text-black transition-colors">
+            <Home className="w-5 h-5" />
+            <span className="font-medium">Trang chủ</span>
+          </Link>
           <Link href="/profile" className="flex items-center gap-3 w-full px-4 py-3 rounded-full text-slate-600 hover:bg-slate-100 hover:text-black transition-colors">
             <Users className="w-5 h-5" />
             <span className="font-medium">Trang cá nhân</span>
