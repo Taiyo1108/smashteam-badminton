@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import confetti from "canvas-confetti";
+import { format } from "date-fns";
 
 export default function AdminShopPage() {
   const router = useRouter();
@@ -672,13 +673,7 @@ export default function AdminShopPage() {
                         <td className="p-4">
                           <div className="text-xs text-slate-500 flex items-center gap-1">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            {new Date(row.acquired_at).toLocaleDateString("vi-VN", {
-                              day: "numeric",
-                              month: "numeric",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit"
-                            })}
+                            {format(new Date(row.acquired_at), "dd/MM/yyyy HH:mm")}
                           </div>
                         </td>
                         <td className="p-4 pr-6 text-right">
@@ -761,13 +756,7 @@ export default function AdminShopPage() {
                           {/* Ngày đổi */}
                           <td className="p-4">
                             <div className="text-xs text-slate-500">
-                              {new Date(row.purchased_at || row.acquired_at).toLocaleDateString("vi-VN", {
-                                day: "numeric",
-                                month: "numeric",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit"
-                              })}
+                              {format(new Date(row.purchased_at || row.acquired_at), "dd/MM/yyyy HH:mm")}
                             </div>
                           </td>
 
@@ -775,13 +764,7 @@ export default function AdminShopPage() {
                           <td className="p-4">
                             {row.redeemed_at ? (
                               <div className="text-xs text-emerald-600 font-medium">
-                                {new Date(row.redeemed_at).toLocaleDateString("vi-VN", {
-                                  day: "numeric",
-                                  month: "numeric",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit"
-                                })}
+                                {format(new Date(row.redeemed_at), "dd/MM/yyyy HH:mm")}
                               </div>
                             ) : (
                               <span className="text-slate-400">—</span>

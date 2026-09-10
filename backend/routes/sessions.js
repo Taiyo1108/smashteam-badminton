@@ -34,7 +34,7 @@ router.post('/:id/qr-check-in', authenticateToken, async (req, res) => {
   try {
     // 1. Lấy thông tin buổi tập (ép kiểu TEXT để lấy chuỗi ngày giờ thô không múi giờ)
     const sessionRes = await db.query(
-      `SELECT id, title, date_time::text AS date_time_str, location FROM sessions WHERE id = $1`,
+      `SELECT id, title, date_time::text AS date_time_str, location, qr_code FROM sessions WHERE id = $1`,
       [sessionId]
     );
     if (sessionRes.rows.length === 0) {
@@ -42,6 +42,13 @@ router.post('/:id/qr-check-in', authenticateToken, async (req, res) => {
     }
 
     const session = sessionRes.rows[0];
+
+    // Xác thực mã QR nếu buổi tập đã được cấp mã riêng
+    const clientCode = req.body.code || req.query.code;
+    if (session.qr_code && clientCode && clientCode !== session.qr_code) {
+      return res.status(400).json({ error: 'Mã QR điểm danh không hợp lệ hoặc đã được làm mới.' });
+    }
+
     // Khởi tạo tStart bắt buộc theo giờ Việt Nam (+07:00) tránh lệch múi giờ trên Render (UTC)
     const tStart = new Date(session.date_time_str + ' +07:00');
     const tCurrent = new Date();
@@ -50,16 +57,10 @@ router.post('/:id/qr-check-in', authenticateToken, async (req, res) => {
     const diffMinutesStart = (tCurrent - tStart) / (1000 * 60);
 
     if (diffMinutesStart < -30 || diffMinutesStart > 120) {
-      const formattedTime = tStart.toLocaleString("vi-VN", {
-        timeZone: "Asia/Ho_Chi_Minh",
-        weekday: "long",
-        day: "numeric",
-        month: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      const pad = (n) => String(n).padStart(2, '0');
+      const formattedTime = `${pad(tStart.getDate())}/${pad(tStart.getMonth() + 1)}/${tStart.getFullYear()} ${pad(tStart.getHours())}:${pad(tStart.getMinutes())}`;
       return res.status(400).json({ 
-        error: `Cổng điểm danh đã đóng hoặc chưa mở. Buổi sinh hoạt diễn ra từ ${formattedTime}.` 
+        error: `Cổng điểm danh đã đóng hoặc chưa mở. Buổi sinh hoạt diễn ra lúc ${formattedTime}.` 
       });
     }
 

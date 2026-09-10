@@ -10,6 +10,7 @@ function CheckInContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get("session_id");
+  const checkinCode = searchParams.get("code");
 
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("Đang tiến hành xác thực điểm danh...");
@@ -36,7 +37,8 @@ function CheckInContent() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`
-          }
+          },
+          body: JSON.stringify({ code: checkinCode })
         });
 
         const data = await res.json();
@@ -62,7 +64,7 @@ function CheckInContent() {
     };
 
     performCheckIn();
-  }, [sessionId, router]);
+  }, [sessionId, checkinCode, router]);
 
   return (
     <div className="min-h-screen bg-secondary flex flex-col items-center justify-center p-6 text-white relative overflow-hidden">

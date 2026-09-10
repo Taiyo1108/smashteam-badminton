@@ -24,6 +24,10 @@ async function setupLocalDb(existingDb) {
       await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)");
       await db.query("ALTER TABLE user_quests ADD COLUMN IF NOT EXISTS is_claimed BOOLEAN DEFAULT false");
 
+      // Đảm bảo có cột qr_code trong sessions để admin tạo mã QR điểm danh từng buổi
+      await db.query("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS qr_code VARCHAR(255)");
+      await db.query("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS qr_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+
       // Đảm bảo có cấu hình sự kiện đếm ngược nổi bật
       await db.query(`
         INSERT INTO site_settings (key, value)

@@ -13,6 +13,7 @@ import {
 import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
+import { format } from "date-fns";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -925,13 +926,7 @@ export default function ProfilePage() {
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5 text-smash-violet" /> 
-                      {new Date(upcomingSession.date_time).toLocaleDateString("vi-VN", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit"
-                      })}
+                      {format(new Date(upcomingSession.date_time), "dd/MM/yyyy HH:mm")}
                     </span>
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-smash-violet" /> 
@@ -1270,7 +1265,7 @@ export default function ProfilePage() {
                                   </span>
                                 </div>
                                 <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                                <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {format(new Date(item.acquired_at), "dd/MM/yyyy HH:mm")}</p>
                               </div>
 
                               <div className="bg-slate-950/60 p-2 rounded-xl border border-purple-950/30 flex items-center justify-between gap-2">
@@ -1312,10 +1307,10 @@ export default function ProfilePage() {
                                 )}
                               </div>
                               <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                              <p className="text-[10px] text-slate-400 mt-1">Sở hữu lúc: {new Date(item.acquired_at).toLocaleDateString("vi-VN")}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Sở hữu lúc: {format(new Date(item.acquired_at), "dd/MM/yyyy HH:mm")}</p>
                               {item.expires_at && (
                                 <p className="text-[9px] text-red-400 font-medium mt-1">
-                                  Hết hạn: {new Date(item.expires_at).toLocaleString("vi-VN")}
+                                  Hết hạn: {format(new Date(item.expires_at), "dd/MM/yyyy HH:mm")}
                                 </p>
                               )}
                             </div>
@@ -1679,7 +1674,7 @@ export default function ProfilePage() {
                                 {m.isDoubles ? "Đôi" : "Đơn"}
                               </span>
                               <span className="text-[10px] text-slate-500">
-                                {new Date(m.created_at).toLocaleDateString("vi-VN")}
+                                {format(new Date(m.created_at), "dd/MM/yyyy HH:mm")}
                               </span>
                             </div>
                             <p className="text-sm font-bold text-white">

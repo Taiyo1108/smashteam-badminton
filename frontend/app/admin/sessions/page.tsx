@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Calendar, MapPin, Clock, Plus, Loader2, X, Download, Users, 
-  CheckCircle, ChevronRight, UserCheck
+  CheckCircle, ChevronRight, UserCheck, RefreshCw, QrCode, Check
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { QRCodeCanvas } from "qrcode.react";
+import { format } from "date-fns";
 import { getShortName } from "@/app/utils/rank";
 
 export default function AdminSessionsPage() {
@@ -19,6 +20,8 @@ export default function AdminSessionsPage() {
   const [attendees, setAttendees] = useState<any[]>([]);
   const [isLoadingAttendees, setIsLoadingAttendees] = useState(false);
   const [viewMode, setViewMode] = useState<"upcoming" | "history">("upcoming");
+  const [isGeneratingQr, setIsGeneratingQr] = useState(false);
+  const [qrMessage, setQrMessage] = useState<string | null>(null);
 
   // Form states
   const [title, setTitle] = useState("");
@@ -56,11 +59,48 @@ export default function AdminSessionsPage() {
       if (res.ok) {
         const data = await res.json();
         setAttendees(data.attendees || []);
+        if (data.session) {
+          setSelectedSession((prev: any) => ({ ...prev, ...data.session }));
+        }
       }
     } catch (e) {
       console.error("Error fetching attendees:", e);
     } finally {
       setIsLoadingAttendees(false);
+    }
+  };
+
+  const handleGenerateQr = async (sessionId: string, forceRefresh = false) => {
+    setIsGeneratingQr(true);
+    setQrMessage(null);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const url = `${API_URL}/api/admin/sessions/${sessionId}/qr${forceRefresh ? '?refresh=true' : ''}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.qr_code) {
+        setSelectedSession((prev: any) => prev ? { 
+          ...prev, 
+          qr_code: data.qr_code, 
+          qr_created_at: data.qr_created_at || new Date().toISOString() 
+        } : prev);
+        setSessions((prev: any[]) => prev.map(s => s.id === sessionId ? { 
+          ...s, 
+          qr_code: data.qr_code, 
+          qr_created_at: data.qr_created_at || new Date().toISOString() 
+        } : s));
+        setQrMessage(forceRefresh ? "Đã làm mới mã QR và cập nhật DB!" : "Đã tạo mã QR điểm danh và lưu vào DB!");
+        setTimeout(() => setQrMessage(null), 4000);
+      } else {
+        alert(data.error || "Không thể tạo mã QR điểm danh.");
+      }
+    } catch (err) {
+      console.error("Error generating QR code:", err);
+      alert("Lỗi kết nối khi gọi API tạo mã QR.");
+    } finally {
+      setIsGeneratingQr(false);
     }
   };
 
@@ -126,7 +166,8 @@ export default function AdminSessionsPage() {
   };
 
   const qrCodeUrl = selectedSession 
-    ? `${window.location.origin}/check-in?session_id=${selectedSession.id}`
+    ? (typeof window !== "undefined" ? window.location.origin : "") + 
+      `/check-in?session_id=${selectedSession.id}${selectedSession.qr_code ? `&code=${selectedSession.qr_code}` : ""}`
     : "";
 
   return (
@@ -199,13 +240,7 @@ export default function AdminSessionsPage() {
                       <h4 className="font-bold text-sm line-clamp-1">{s.title}</h4>
                       <p className={`text-xs flex items-center gap-1 ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
                         <Clock className="w-3.5 h-3.5" />
-                        {new Date(s.date_time).toLocaleDateString("vi-VN", {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit"
-                        })}
+                        {format(new Date(s.date_time), "dd/MM/yyyy HH:mm")}
                       </p>
                     </div>
                     <ChevronRight className={`w-4 h-4 shrink-0 ${isSelected ? "text-primary" : "text-slate-400"}`} />
@@ -224,33 +259,110 @@ export default function AdminSessionsPage() {
                 <span className="text-[10px] bg-primary/20 text-secondary font-black px-2 py-0.5 rounded uppercase">Chi tiết buổi tập</span>
                 <h2 className="text-xl font-bold text-secondary mt-1">{selectedSession.title}</h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 mt-2">
-                  <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {new Date(selectedSession.date_time).toLocaleString("vi-VN")}</span>
-                  <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {selectedSession.location}</span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" /> 
+                    {format(new Date(selectedSession.date_time), "dd/MM/yyyy HH:mm")}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5" /> 
+                    {selectedSession.location}
+                  </span>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                 {/* QR CODE DISPLAY */}
-                <div className="md:col-span-2 flex flex-col items-center justify-center p-4 border border-slate-100 rounded-2xl bg-slate-50 text-center">
-                  <span className="text-xs font-bold text-secondary mb-3">MÃ QR CHECK-IN SÂN</span>
-                  
-                  <div className="bg-white p-4 rounded-xl shadow-inner border border-slate-200/50">
-                    <QRCodeCanvas
-                      id="session-qr-canvas"
-                      value={qrCodeUrl}
-                      size={180}
-                      level={"H"}
-                      includeMargin={true}
-                    />
+                <div className="md:col-span-2 flex flex-col items-center justify-center p-5 border border-slate-100 rounded-2xl bg-slate-50/80 text-center relative">
+                  <div className="flex items-center justify-between w-full mb-3 px-1">
+                    <span className="text-xs font-black text-secondary uppercase tracking-wider flex items-center gap-1">
+                      <QrCode className="w-3.5 h-3.5 text-primary" /> QR Điểm Danh Sân
+                    </span>
+                    {selectedSession.qr_code && (
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Đã lưu DB
+                      </span>
+                    )}
                   </div>
 
-                  <button
-                    onClick={downloadQRCode}
-                    className="mt-4 flex items-center gap-1.5 px-4 py-2 bg-secondary text-white hover:bg-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Tải mã QR
-                  </button>
-                  <p className="text-[9px] text-slate-400 mt-2 leading-relaxed">Admin in hoặc hiển thị mã QR này lên máy tính bảng tại sân để thành viên check-in.</p>
+                  {qrMessage && (
+                    <div className="w-full mb-3 p-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold animate-fade-in flex items-center justify-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5" /> {qrMessage}
+                    </div>
+                  )}
+
+                  {selectedSession.qr_code ? (
+                    <>
+                      <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200/70">
+                        <QRCodeCanvas
+                          id="session-qr-canvas"
+                          value={qrCodeUrl}
+                          size={170}
+                          level={"H"}
+                          includeMargin={true}
+                        />
+                      </div>
+
+                      {/* Code and metadata */}
+                      <div className="mt-3 space-y-1 w-full text-center">
+                        <p className="text-[11px] font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 inline-block max-w-full truncate">
+                          {selectedSession.qr_code}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          Tạo lúc: {selectedSession.qr_created_at ? format(new Date(selectedSession.qr_created_at), "dd/MM/yyyy HH:mm") : format(new Date(), "dd/MM/yyyy HH:mm")}
+                        </p>
+                      </div>
+
+                      <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2 w-full">
+                        <button
+                          onClick={downloadQRCode}
+                          className="flex-1 min-w-[100px] flex items-center justify-center gap-1.5 px-3 py-2 bg-secondary text-white hover:bg-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Tải mã QR
+                        </button>
+                        <button
+                          onClick={() => handleGenerateQr(selectedSession.id, true)}
+                          disabled={isGeneratingQr}
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
+                          title="Làm mới mã QR và cập nhật vào Database"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingQr ? "animate-spin text-primary" : ""}`} /> 
+                          {isGeneratingQr ? "Đang tạo..." : "Làm mới QR"}
+                        </button>
+                      </div>
+                      <p className="text-[9px] text-slate-400 mt-2 leading-relaxed">
+                        Admin in hoặc chiếu QR lên máy tính bảng tại sân. Thành viên quét bằng Camera/Zalo để check-in.
+                      </p>
+                    </>
+                  ) : (
+                    <div className="py-6 px-4 flex flex-col items-center justify-center space-y-3 text-center">
+                      <div className="w-14 h-14 rounded-2xl bg-purple-100/70 border border-purple-200 flex items-center justify-center text-primary shadow-inner">
+                        <QrCode className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-xs text-secondary">Buổi tập chưa có mã QR riêng</p>
+                        <p className="text-[10px] text-slate-500 mt-1 max-w-[220px]">
+                          Gọi API tạo mã QR bảo mật cho buổi tập này và tự động lưu vào cơ sở dữ liệu.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleGenerateQr(selectedSession.id, false)}
+                        disabled={isGeneratingQr}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-primary text-secondary hover:bg-primary-hover font-black text-xs rounded-xl shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                      >
+                        {isGeneratingQr ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Đang gọi API & Lưu DB...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-4 h-4" />
+                            Tạo Mã QR Điểm Danh (Lưu DB)
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* ATTENDEES TABLE */}
@@ -288,7 +400,7 @@ export default function AdminSessionsPage() {
                           </div>
                           <span className="text-[10px] text-emerald-500 font-bold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                             <CheckCircle className="w-3 h-3" />
-                            {new Date(a.checked_in_at).toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit' })}
+                            {format(new Date(a.checked_in_at), "dd/MM/yyyy HH:mm")}
                           </span>
                         </div>
                       ))}

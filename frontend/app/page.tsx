@@ -8,19 +8,29 @@ import {
   ChevronRight, Trophy, Play, Image as ImageIcon, Calendar, 
   MapPin, Clock, Check, X, User, Sparkles, Shield, 
   QrCode, Search, History, Users, Activity, CheckCircle2, 
-  Info, Award, Flame, ArrowUpRight, Crown
+  Info, Award, Flame, ArrowUpRight, Crown, ArrowRight
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
 import FeaturedEventCountdown from "@/app/components/FeaturedEventCountdown";
 import { getRankName, getRankBadgeClass, getShortName } from "@/app/utils/rank";
+import ClubStats from "@/app/components/recruitment/ClubStats";
+import ClubBenefitsBento from "@/app/components/recruitment/ClubBenefitsBento";
+import ClubHighlightsMasonry from "@/app/components/recruitment/ClubHighlightsMasonry";
+import EventRecruitmentCard from "@/app/components/recruitment/EventRecruitmentCard";
+import RegistrationModal from "@/app/components/recruitment/RegistrationModal";
+import { format } from "date-fns";
 
 export default function Home() {
   const router = useRouter();
 
   // Active section tab: "intro" | "leaderboard" | "schedule"
   const [activeTab, setActiveTab] = useState<"intro" | "leaderboard" | "schedule">("intro");
+
+  // Recruitment modal & active campaign state
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [activeCampaign, setActiveCampaign] = useState<any>(null);
 
   // Site Settings (Featured event, cover, config)
   const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
@@ -124,6 +134,13 @@ export default function Home() {
       })
       .catch(e => console.error("Error loading media:", e));
 
+    fetch(`${API_URL}/api/campaigns/active?t=${Date.now()}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) setActiveCampaign(data);
+      })
+      .catch(e => console.error("Error loading active campaign:", e));
+
     fetchSessions();
   }, []);
 
@@ -212,14 +229,8 @@ export default function Home() {
   const formatDateTime = (dateStr: string) => {
     try {
       const d = new Date(dateStr);
-      return d.toLocaleDateString("vi-VN", {
-        weekday: "long",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      if (isNaN(d.getTime())) return dateStr;
+      return format(d, "dd/MM/yyyy HH:mm");
     } catch {
       return dateStr;
     }
@@ -409,14 +420,13 @@ export default function Home() {
                     Đăng nhập
                   </button>
                 </Link>
-                <Link href="/register">
-                  <button 
-                    id="nav-register-btn"
-                    className="min-h-[40px] px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform active:scale-95 shadow-md shadow-primary/30 text-xs cursor-pointer focus-ring"
-                  >
-                    Gia nhập ngay
-                  </button>
-                </Link>
+                <button 
+                  id="nav-register-btn"
+                  onClick={() => setIsRegisterModalOpen(true)}
+                  className="min-h-[40px] px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform active:scale-95 shadow-md shadow-primary/30 text-xs cursor-pointer focus-ring"
+                >
+                  Gia nhập ngay
+                </button>
               </div>
             )}
           </div>
@@ -461,7 +471,7 @@ export default function Home() {
       <div className="pt-28 md:pt-22 flex-1 flex flex-col">
 
         {/* ========================================================================= */}
-        {/* TAB 1: GIỚI THIỆU (INTRO HERO & CLUB VALUES)                             */}
+        {/* TAB 1: GIỚI THIỆU & TUYỂN QUÂN (REDESIGNED SPORTY LANDING)                */}
         {/* ========================================================================= */}
         {activeTab === "intro" && (
           <motion.div
@@ -472,15 +482,15 @@ export default function Home() {
             transition={{ duration: 0.3 }}
             className="flex-1 flex flex-col"
           >
-            {/* HERO SECTION: Athletic Purple-Black Theme */}
-            <section aria-labelledby="hero-title" className="relative min-h-[580px] md:min-h-[640px] flex items-center justify-center overflow-hidden bg-secondary">
+            {/* HERO SECTION: High-Energy Athletic Purple-Black Theme */}
+            <section aria-labelledby="hero-title" className="relative min-h-[620px] md:min-h-[700px] flex items-center justify-center overflow-hidden bg-secondary">
               {/* Background Cover + Radial Gradient Mesh */}
               <div className="absolute inset-0 z-0">
                 {coverUrl ? (
                   <motion.div
                     key={coverUrl}
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.4 }}
+                    animate={{ opacity: 0.35 }}
                     transition={{ duration: 0.8 }}
                     className="absolute inset-0"
                   >
@@ -497,21 +507,26 @@ export default function Home() {
                   <div className="absolute inset-0 bg-gradient-to-br from-secondary via-[#190d33] to-secondary" />
                 )}
                 
-                {/* Rich Purple Glow Spotlight */}
-                <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-primary/25 rounded-full blur-[120px] pointer-events-none" />
-                <div className="absolute inset-0 bg-gradient-to-t from-secondary via-secondary/60 to-transparent" />
+                {/* Athletic Court Lines & Rich Purple Glow Spotlight */}
+                <div className="absolute inset-0 bg-[radial-gradient(#7A22E0_1px,transparent_1px)] [background-size:32px_32px] opacity-15 pointer-events-none" />
+                <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-primary/30 rounded-full blur-[140px] pointer-events-none" />
+                <div className="absolute bottom-0 right-1/4 w-[400px] h-[300px] bg-fuchsia-600/20 rounded-full blur-[120px] pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-secondary via-secondary/70 to-transparent" />
               </div>
 
-              <div className="relative z-10 text-center px-4 sm:px-6 max-w-4xl mx-auto py-16 space-y-6">
-                {/* Brand Tag */}
+              <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto py-16 sm:py-20 space-y-7">
+                {/* Brand / Campaign Tag */}
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4 }}
-                  className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/20 border border-primary/50 text-smash-violet text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-[0_0_15px_rgba(157,78,221,0.3)]"
+                  className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-primary/25 border border-primary/50 text-purple-200 text-xs font-black uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(157,78,221,0.35)]"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-smash-violet" aria-hidden="true" />
-                  <span>Câu Lạc Bộ Cầu Lông SmashTeam</span>
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                  </span>
+                  <span>Chiến Dịch Tuyển Vợt Thủ Mùa Giải 2026</span>
                 </motion.div>
 
                 {/* Primary H1 Heading */}
@@ -520,9 +535,10 @@ export default function Home() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.1 }}
-                  className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight leading-[1.1]"
+                  className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight leading-[1.08]"
                 >
-                  ĐAM MÊ <span className="bg-gradient-to-r from-primary via-smash-violet to-purple-300 bg-clip-text text-transparent">HỘI TỤ</span>
+                  BỨT PHÁ <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent">GIỚI HẠN</span>
+                  <br className="hidden sm:inline" /> CHINH PHỤC ĐỈNH CAO
                 </motion.h1>
                 
                 {/* Value Proposition Subtitle */}
@@ -530,12 +546,12 @@ export default function Home() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.2 }}
-                  className="text-base sm:text-lg md:text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal"
+                  className="text-base sm:text-lg md:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-normal"
                 >
-                  Môi trường thể thao chuyên nghiệp và năng động dành cho mọi vợt thủ. Tỏa sáng trên sân đấu, nâng tầm thứ hạng ELO và kết nối đam mê bền chặt.
+                  Môi trường thể thao chuyên nghiệp và tràn đầy năng lượng dành cho mọi cấp độ vợt thủ. Tỏa sáng trên sân đấu, nâng tầm thứ hạng ELO và kết nối đam mê bền chặt cùng SmashTeam.
                 </motion.p>
 
-                {/* Action CTA Buttons */}
+                {/* 2 Prominent Action CTA Buttons */}
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -543,48 +559,49 @@ export default function Home() {
                   className="flex flex-wrap items-center justify-center gap-4 pt-2"
                 >
                   <button 
-                    id="hero-cta-schedule"
-                    onClick={() => setActiveTab("schedule")}
-                    className="min-h-[48px] px-8 py-3.5 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-bold rounded-full shadow-[0_0_25px_rgba(122,34,224,0.55)] hover:shadow-[0_0_35px_rgba(157,78,221,0.75)] transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                    id="hero-cta-apply-now"
+                    onClick={() => setIsRegisterModalOpen(true)}
+                    className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
                   >
-                    <Calendar className="w-4 h-4" aria-hidden="true" />
-                    <span>Xem lịch đánh tuần này</span>
+                    <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                    <span>Ứng tuyển thành viên ngay</span>
+                    <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
                   </button>
 
                   <button 
-                    id="hero-cta-leaderboard"
-                    onClick={() => setActiveTab("leaderboard")}
-                    className="min-h-[48px] px-8 py-3.5 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                    id="hero-cta-explore-activities"
+                    onClick={() => {
+                      const el = document.getElementById('recruitment-event-section');
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="min-h-[52px] px-8 sm:px-9 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
                   >
-                    <Trophy className="w-4 h-4 text-amber-400" aria-hidden="true" />
-                    <span>Bảng xếp hạng ELO</span>
+                    <Activity className="w-4 h-4 text-cyan-300" aria-hidden="true" />
+                    <span>Khám phá hoạt động CLB</span>
                   </button>
                 </motion.div>
 
-                {/* Social Proof / Club Quick Stats Bar */}
+                {/* DẢI STATS COUNTER UY TÍN (ClubStats) */}
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 25 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.4 }}
-                  className="pt-8 border-t border-white/10 grid grid-cols-3 gap-4 max-w-xl mx-auto"
+                  className="pt-6 w-full"
                 >
-                  <div className="text-center">
-                    <p className="text-2xl sm:text-3xl font-black text-white tabular-nums">150+</p>
-                    <p className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">Thành viên</p>
-                  </div>
-                  <div className="text-center border-x border-white/10">
-                    <p className="text-2xl sm:text-3xl font-black text-primary-hover tabular-nums">500+</p>
-                    <p className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">Trận đấu ELO</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl sm:text-3xl font-black text-amber-400 tabular-nums">1850+</p>
-                    <p className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">Top Elo Đỉnh</p>
-                  </div>
+                  <ClubStats />
                 </motion.div>
               </div>
             </section>
 
-            {/* FEATURED EVENT COUNTDOWN BOARD */}
+            {/* RECRUITMENT EVENT HIGHLIGHT CARD (MODULE 2A - User Flow) */}
+            <div id="recruitment-event-section" className="pt-8">
+              <EventRecruitmentCard
+                campaign={activeCampaign}
+                onOpenRegister={() => setIsRegisterModalOpen(true)}
+              />
+            </div>
+
+            {/* FEATURED EVENT COUNTDOWN BOARD (For Upcoming Sessions / Matches) */}
             <FeaturedEventCountdown
               settings={siteSettings}
               upcomingSession={upcomingSessionHighlight || upcomingSessions[0]}
@@ -595,110 +612,15 @@ export default function Home() {
               isLoggedIn={isLoggedIn}
             />
 
-            {/* BENTO GRID: CORE VALUES */}
-            <section aria-labelledby="about-section-title" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-20 w-full space-y-12">
-              <div className="text-center max-w-2xl mx-auto space-y-3">
-                <span className="text-xs font-black uppercase tracking-widest text-primary bg-purple-50 px-3.5 py-1.5 rounded-full border border-primary/20">
-                  Về Câu Lạc Bộ SmashTeam
-                </span>
-                <h2 id="about-section-title" className="text-3xl sm:text-4xl font-black text-secondary tracking-tight">
-                  Môi trường thể thao bài bản & gắn kết
-                </h2>
-                <p className="text-sm sm:text-base text-slate-500 leading-relaxed">
-                  SmashTeam hướng đến một sân chơi rèn luyện thể lực bền bỉ, thi đấu thăng hạng ELO minh bạch và tạo dựng cộng đồng kết nối văn minh.
-                </p>
-              </div>
+            {/* BENTO GRID: WHY JOIN US & CULTURE */}
+            <div id="club-benefits-section">
+              <ClubBenefitsBento />
+            </div>
 
-              {/* 3 Value Bento Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-                {/* Card 1: Regular Training */}
-                <div className="bg-white rounded-3xl p-7 border border-purple-100/80 shadow-sm hover:shadow-xl hover:border-primary/40 transition-all duration-300 relative overflow-hidden group">
-                  <div className="w-13 h-13 rounded-2xl bg-purple-50 text-primary flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                    <Activity className="w-7 h-7" aria-hidden="true" />
-                  </div>
-                  <h3 className="font-bold text-xl text-secondary mb-2.5">Luyện tập đều đặn</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">
-                    Tổ chức lịch sinh hoạt cố định hàng tuần với cụm sân thảm đạt chuẩn thi đấu, hỗ trợ các thành viên duy trì thể lực và cảm giác cầu thăng hoa.
-                  </p>
-                </div>
-
-                {/* Card 2: ELO Rating System */}
-                <div className="bg-white rounded-3xl p-7 border border-amber-100/80 shadow-sm hover:shadow-xl hover:border-amber-400/50 transition-all duration-300 relative overflow-hidden group">
-                  <div className="w-13 h-13 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                    <Trophy className="w-7 h-7" aria-hidden="true" />
-                  </div>
-                  <h3 className="font-bold text-xl text-secondary mb-2.5">Hệ thống ELO & Rank</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">
-                    Thuật toán tính điểm ELO minh bạch cho từng trận đấu Đơn và Đôi, vinh danh các tay vợt xuất sắc qua 6 cấp bậc danh giá từ Bronze đến Challenger.
-                  </p>
-                </div>
-
-                {/* Card 3: Open Community */}
-                <div className="bg-white rounded-3xl p-7 border border-emerald-100/80 shadow-sm hover:shadow-xl hover:border-emerald-400/50 transition-all duration-300 relative overflow-hidden group">
-                  <div className="w-13 h-13 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                    <Users className="w-7 h-7" aria-hidden="true" />
-                  </div>
-                  <h3 className="font-bold text-xl text-secondary mb-2.5">Cộng đồng cởi mở</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">
-                    Chào đón mọi cấp độ người chơi từ tân thủ đến bán chuyên. Chia sẻ kỹ chiến thuật bổ ích, rèn luyện tinh thần thượng võ và mở rộng bạn bè.
-                  </p>
-                </div>
-              </div>
-
-              {/* MEDIA FEED (HOẠT ĐỘNG NỔI BẬT) */}
-              <div className="space-y-6 pt-8">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2.5 h-8 bg-primary rounded-full" />
-                    <h2 className="text-2xl sm:text-3xl font-bold text-secondary">Hoạt động nổi bật</h2>
-                  </div>
-                  <span className="text-xs font-semibold text-slate-400">Hình ảnh & Video recap</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {mediaFeed.map((media, index) => (
-                    <motion.div 
-                      key={media.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: index * 0.1 }}
-                      className="group relative rounded-3xl overflow-hidden bg-slate-900 aspect-[4/3] md:aspect-square shadow-sm hover:shadow-2xl transition-all duration-300 border border-purple-100/50"
-                    >
-                      {media.type === 'image' ? (
-                        <Image 
-                          src={media.url} 
-                          alt={media.title} 
-                          fill 
-                          sizes="(max-width: 768px) 100vw, 33vw"
-                          className="object-cover group-hover:scale-105 transition-transform duration-500" 
-                        />
-                      ) : (
-                        <iframe
-                          src={media.url}
-                          title={media.title}
-                          className="w-full h-full border-0"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          allowFullScreen
-                        />
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-secondary via-secondary/30 to-transparent pointer-events-none" />
-                      <div className="absolute bottom-0 left-0 w-full p-5 pointer-events-none">
-                        <div className="flex items-center gap-1.5 text-smash-violet mb-1">
-                          {media.type === 'image' ? (
-                            <ImageIcon className="w-4 h-4 text-purple-300" aria-hidden="true" />
-                          ) : (
-                            <Play className="w-4 h-4 text-purple-300" aria-hidden="true" />
-                          )}
-                          <span className="text-[10px] font-black uppercase tracking-wider text-purple-300">{media.type}</span>
-                        </div>
-                        <h3 className="text-white font-bold text-base md:text-lg line-clamp-2">{media.title}</h3>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </section>
+            {/* CLUB HIGHLIGHTS MASONRY GALLERY */}
+            <div id="club-highlights-section">
+              <ClubHighlightsMasonry mediaFeed={mediaFeed} />
+            </div>
           </motion.div>
         )}
 
@@ -1169,6 +1091,12 @@ export default function Home() {
           <p className="text-xs text-slate-500">Nơi đam mê hội tụ • Tinh thần thể thao trung thực • Nâng tầm bản lĩnh</p>
         </div>
       </footer>
+
+      {/* Global Recruitment Registration Modal */}
+      <RegistrationModal 
+        isOpen={isRegisterModalOpen} 
+        onClose={() => setIsRegisterModalOpen(false)} 
+      />
     </main>
   );
 }

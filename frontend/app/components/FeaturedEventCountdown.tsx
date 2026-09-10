@@ -7,6 +7,7 @@ import {
   Calendar, MapPin, Clock, Trophy, Flame, 
   ArrowRight, Sparkles, CheckCircle2, AlertCircle, ChevronRight 
 } from "lucide-react";
+import { format } from "date-fns";
 
 interface FeaturedEventCountdownProps {
   settings?: Record<string, string>;
@@ -114,19 +115,12 @@ export default function FeaturedEventCountdown({
 
   if (!eventEnabled) return null;
 
-  // Format date display in Vietnamese
+  // Format date display in Vietnamese (dd/MM/yyyy HH:mm)
   const formattedEventDate = (() => {
     try {
       const d = new Date(targetDateStr);
       if (isNaN(d.getTime())) return targetDateStr;
-      return d.toLocaleDateString("vi-VN", {
-        weekday: "long",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+      return format(d, "dd/MM/yyyy HH:mm");
     } catch {
       return targetDateStr;
     }

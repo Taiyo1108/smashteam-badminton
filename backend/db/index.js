@@ -30,22 +30,50 @@ if (hasValidRemoteDb) {
   
   const dataDir = path.join(__dirname, '..', 'local_pgdata');
   console.log(`[Database] Sử dụng Embedded PostgreSQL (PGlite) tại: ${dataDir}`);
+
+  // Tự động dọn dẹp file lock postmaster.pid cũ nếu có trước khi khởi tạo PGlite
+  const pidPath = path.join(dataDir, 'postmaster.pid');
+  if (fs.existsSync(pidPath)) {
+    try {
+      fs.unlinkSync(pidPath);
+      console.log('[Database] Đã dọn dẹp file lock cũ postmaster.pid thành công.');
+    } catch (e) {
+      console.warn('[Database] Cảnh báo khi dọn postmaster.pid:', e.message);
+    }
+  }
+
   const pglite = new PGlite(dataDir);
 
-  // Auto-init schema if not yet setup
-  setupLocalDb(pglite).catch(err => console.error('[Database Setup Error]:', err));
+  let isReady = false;
+  const readyPromise = (async () => {
+    try {
+      await pglite.waitReady;
+      await setupLocalDb(pglite);
+      isReady = true;
+      console.log('✅ [Database] PGlite & Schema đã sẵn sàng phục vụ!');
+    } catch (err) {
+      console.error('❌ [Database Setup Error]:', err);
+    }
+  })();
+
+  const executeQuery = async (text, params) => {
+    if (!isReady) {
+      await readyPromise;
+    }
+    return pglite.query(text, params);
+  };
 
   const client = {
-    query: (text, params) => pglite.query(text, params),
+    query: executeQuery,
     release: () => {},
   };
 
   pool = {
-    query: (text, params) => pglite.query(text, params),
+    query: executeQuery,
     connect: async () => client,
   };
 
-  query = (text, params) => pglite.query(text, params);
+  query = executeQuery;
   connect = async () => client;
 }
 

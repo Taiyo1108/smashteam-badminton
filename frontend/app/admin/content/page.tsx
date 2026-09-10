@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle, Clock, Flame, Calendar, MapPin, Save } from "lucide-react";
 import { API_URL } from "@/app/config";
+import { format } from "date-fns";
 
 export default function ContentManagementPage() {
   // States for Site settings (Cover Image)
@@ -680,13 +681,7 @@ export default function ContentManagementPage() {
                             {post.title}
                           </h3>
                           <p className="text-[10px] text-slate-400 mt-1">
-                            Đăng ngày: {new Date(post.created_at).toLocaleDateString("vi-VN", {
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit"
-                            })}
+                            Đăng ngày: {format(new Date(post.created_at), "dd/MM/yyyy HH:mm")}
                           </p>
                         </div>
 
