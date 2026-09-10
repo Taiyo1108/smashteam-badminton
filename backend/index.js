@@ -52,7 +52,8 @@ app.use(cors({
         hostname.startsWith('26.') ||
         hostname.startsWith('192.168.') ||
         hostname.startsWith('10.') ||
-        hostname.endsWith('.id.vn')
+        hostname.endsWith('.id.vn') ||
+        hostname.endsWith('.vercel.app')
       ) {
         return callback(null, true);
       }
