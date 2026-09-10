@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
+import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
 
 const softSkillsList = [
   "Chụp ảnh",
@@ -32,6 +33,7 @@ export default function PersonnelPage() {
   const [isLoadingM, setIsLoadingM] = useState(false);
   const [mSearch, setMSearch] = useState("");
   const [mLevel, setMLevel] = useState("all");
+  const [mRank, setMRank] = useState("all");
   const [mStatus, setMStatus] = useState("all");
   const [mSkill, setMSkill] = useState("all");
 
@@ -486,6 +488,11 @@ export default function PersonnelPage() {
     if (mLevel !== "all") {
       if (m.badminton_level !== mLevel) return false;
     }
+    if (mRank !== "all") {
+      const highestElo = Math.max(m.elo_singles ?? 1000, m.elo_doubles ?? 1000);
+      const userRank = getRankName(highestElo);
+      if (userRank !== mRank) return false;
+    }
     if (mStatus !== "all") {
       const currentStatus = m.status || "active";
       if (currentStatus !== mStatus) return false;
@@ -634,6 +641,15 @@ export default function PersonnelPage() {
               <option value="Trung bình">Trung bình</option>
               <option value="Khá/Giỏi">Khá/Giỏi</option>
             </select>
+            <select value={mRank} onChange={e => setMRank(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[150px]">
+              <option value="all">Mọi phân cấp Rank</option>
+              <option value="Challenger">Challenger (1800+)</option>
+              <option value="Diamond">Diamond (1600+)</option>
+              <option value="Platinum">Platinum (1400+)</option>
+              <option value="Gold">Gold (1200+)</option>
+              <option value="Silver">Silver (1100+)</option>
+              <option value="Bronze">Bronze (&lt; 1100)</option>
+            </select>
             <select value={mStatus} onChange={e => setMStatus(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[140px]">
               <option value="all">Mọi trạng thái</option>
               <option value="active">Hoạt động (Active)</option>
@@ -660,7 +676,7 @@ export default function PersonnelPage() {
                   <tr>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Thành viên</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trình độ & Lối chơi</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Elo Score</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Phân cấp & Elo</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trạng thái</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase text-center">Thống kê</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Hành động</th>
@@ -671,6 +687,8 @@ export default function PersonnelPage() {
                     const isBlocked = m.is_blocked;
                     const status = m.status || "active";
                     const isCurrentAdmin = m.role === "admin";
+                    const rankSingles = getRankName(m.elo_singles ?? 1000);
+                    const rankDoubles = getRankName(m.elo_doubles ?? 1000);
                     
                     return (
                       <tr key={m.id} className="hover:bg-slate-50">
@@ -691,13 +709,23 @@ export default function PersonnelPage() {
                           <p className="text-sm font-semibold text-slate-700">{m.badminton_level}</p>
                         </td>
                         <td className="p-4">
-                          <div className="flex gap-2">
-                            <span className="text-xs font-bold px-2 py-1 bg-purple-50 text-purple-700 border border-purple-100 rounded">
-                              Đơn: {m.elo_singles ?? 1000}
-                            </span>
-                            <span className="text-xs font-bold px-2 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded">
-                              Đôi: {m.elo_doubles ?? 1000}
-                            </span>
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankSingles)}`}>
+                                {rankSingles}
+                              </span>
+                              <span className="text-xs font-bold text-slate-700 font-mono">
+                                Đơn: {m.elo_singles ?? 1000}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankDoubles)}`}>
+                                {rankDoubles}
+                              </span>
+                              <span className="text-xs font-bold text-slate-700 font-mono">
+                                Đôi: {m.elo_doubles ?? 1000}
+                              </span>
+                            </div>
                           </div>
                         </td>
                         <td className="p-4">

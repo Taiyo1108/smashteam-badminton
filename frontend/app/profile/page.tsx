@@ -618,7 +618,7 @@ export default function ProfilePage() {
       glowClass: "rank-glow-bronze",
       badgeClass: "bg-amber-800/30 text-amber-600 border border-amber-800/50",
       nextElo: 1100,
-      prevElo: 1000
+      prevElo: 800
     };
   };
 

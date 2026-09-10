@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Swords, Trophy, Save, ArrowDownUp, AlertCircle, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { API_URL } from "@/app/config";
+import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
 
 interface SearchablePlayerSelectProps {
   label: string;
@@ -109,6 +110,8 @@ function SearchablePlayerSelect({
             filtered.map(m => {
               const disabled = isSelected(m.id, currentDropdown);
               const shortId = m.id ? m.id.split('-')[0].toUpperCase() : "";
+              const currentElo = isDoubles ? (m.elo_doubles ?? 1000) : (m.elo_singles ?? 1000);
+              const rankName = getRankName(currentElo);
               return (
                 <button
                   key={m.id}
@@ -129,9 +132,14 @@ function SearchablePlayerSelect({
                     <div>{m.full_name} <span className="text-[10px] text-slate-400 font-mono">({shortId})</span></div>
                     <div className="text-[9px] text-slate-400 font-medium">SĐT: {m.phone_zalo || "N/A"}</div>
                   </div>
-                  <span className="text-[10px] font-black text-amber-500 font-mono shrink-0">
-                    Elo {isDoubles ? `Đôi: ${m.elo_doubles}` : `Đơn: ${m.elo_singles}`}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankName)}`}>
+                      {rankName}
+                    </span>
+                    <span className="text-[10px] font-black text-amber-500 font-mono">
+                      Elo {currentElo}
+                    </span>
+                  </div>
                 </button>
               );
             })
@@ -471,12 +479,22 @@ export default function MatchesPage() {
                 {p1Details && (
                   <div className="p-3 bg-white/60 border border-slate-100 rounded-xl space-y-1.5 text-xs text-slate-500">
                     <p className="font-bold text-slate-600 text-[10px] uppercase tracking-wider mb-1">Thông số hiện tại ({isDoubles ? "Đánh đôi" : "Đánh đơn"})</p>
-                    <p>Player 1: <span className="font-bold text-slate-700">{p1Details.full_name}</span> (Elo: {isDoubles ? p1Details.elo_doubles : p1Details.elo_singles})</p>
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <span>Player 1: <strong className="text-slate-700">{p1Details.full_name}</strong> (Elo: {isDoubles ? p1Details.elo_doubles : p1Details.elo_singles})</span>
+                      <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(getRankName(isDoubles ? p1Details.elo_doubles : p1Details.elo_singles))}`}>
+                        {getRankName(isDoubles ? p1Details.elo_doubles : p1Details.elo_singles)}
+                      </span>
+                    </div>
                     <p>Trận đấu: <span className="font-bold text-slate-700">{isDoubles ? p1Details.matches_doubles : p1Details.matches_singles}</span></p>
                     
                     {isDoubles && p1pDetails && (
                       <>
-                        <p>Partner: <span className="font-bold text-slate-700">{p1pDetails.full_name}</span> (Elo: {p1pDetails.elo_doubles})</p>
+                        <div className="flex items-center justify-between gap-1 flex-wrap pt-1 border-t border-slate-200/40">
+                          <span>Partner: <strong className="text-slate-700">{p1pDetails.full_name}</strong> (Elo: {p1pDetails.elo_doubles})</span>
+                          <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(getRankName(p1pDetails.elo_doubles))}`}>
+                            {getRankName(p1pDetails.elo_doubles)}
+                          </span>
+                        </div>
                         <p>Trận đấu: <span className="font-bold text-slate-700">{p1pDetails.matches_doubles}</span></p>
                         <p className="border-t border-slate-200/50 pt-1 mt-1">Elo trung bình Đội A: <span className="font-black text-secondary">{((p1Details.elo_doubles + p1pDetails.elo_doubles) / 2).toFixed(0)}</span></p>
                       </>
@@ -518,6 +536,11 @@ export default function MatchesPage() {
                         <span className={`font-black ${simulated.p1.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                           ({simulated.p1.diff >= 0 ? `+${simulated.p1.diff}` : simulated.p1.diff})
                         </span>
+                        {getRankName(simulated.p1.before) !== getRankName(simulated.p1.after) && (
+                          <span className={`text-[7px] uppercase tracking-wider font-extrabold px-1 py-0.5 rounded ${getRankBadgeClass(getRankName(simulated.p1.after))}`}>
+                            {getRankName(simulated.p1.after)}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -530,6 +553,11 @@ export default function MatchesPage() {
                           <span className={`font-black ${simulated.p1_p.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                             ({simulated.p1_p.diff >= 0 ? `+${simulated.p1_p.diff}` : simulated.p1_p.diff})
                           </span>
+                          {getRankName(simulated.p1_p.before) !== getRankName(simulated.p1_p.after) && (
+                            <span className={`text-[7px] uppercase tracking-wider font-extrabold px-1 py-0.5 rounded ${getRankBadgeClass(getRankName(simulated.p1_p.after))}`}>
+                              {getRankName(simulated.p1_p.after)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
@@ -547,6 +575,11 @@ export default function MatchesPage() {
                         <span className={`font-black ${simulated.p2.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                           ({simulated.p2.diff >= 0 ? `+${simulated.p2.diff}` : simulated.p2.diff})
                         </span>
+                        {getRankName(simulated.p2.before) !== getRankName(simulated.p2.after) && (
+                          <span className={`text-[7px] uppercase tracking-wider font-extrabold px-1 py-0.5 rounded ${getRankBadgeClass(getRankName(simulated.p2.after))}`}>
+                            {getRankName(simulated.p2.after)}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -559,12 +592,18 @@ export default function MatchesPage() {
                           <span className={`font-black ${simulated.p2_p.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                             ({simulated.p2_p.diff >= 0 ? `+${simulated.p2_p.diff}` : simulated.p2_p.diff})
                           </span>
+                          {getRankName(simulated.p2_p.before) !== getRankName(simulated.p2_p.after) && (
+                            <span className={`text-[7px] uppercase tracking-wider font-extrabold px-1 py-0.5 rounded ${getRankBadgeClass(getRankName(simulated.p2_p.after))}`}>
+                              {getRankName(simulated.p2_p.after)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
               )}
+
             </div>
 
             {/* ĐỘI B (ĐỘI 2) */}
@@ -638,12 +677,22 @@ export default function MatchesPage() {
                 {p2Details && (
                   <div className="p-3 bg-white/60 border border-slate-100 rounded-xl space-y-1.5 text-xs text-slate-500">
                     <p className="font-bold text-slate-600 text-[10px] uppercase tracking-wider mb-1">Thông số hiện tại ({isDoubles ? "Đánh đôi" : "Đánh đơn"})</p>
-                    <p>Player 2: <span className="font-bold text-slate-700">{p2Details.full_name}</span> (Elo: {isDoubles ? p2Details.elo_doubles : p2Details.elo_singles})</p>
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <span>Player 2: <strong className="text-slate-700">{p2Details.full_name}</strong> (Elo: {isDoubles ? p2Details.elo_doubles : p2Details.elo_singles})</span>
+                      <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(getRankName(isDoubles ? p2Details.elo_doubles : p2Details.elo_singles))}`}>
+                        {getRankName(isDoubles ? p2Details.elo_doubles : p2Details.elo_singles)}
+                      </span>
+                    </div>
                     <p>Trận đấu: <span className="font-bold text-slate-700">{isDoubles ? p2Details.matches_doubles : p2Details.matches_singles}</span></p>
                     
                     {isDoubles && p2pDetails && (
                       <>
-                        <p>Partner: <span className="font-bold text-slate-700">{p2pDetails.full_name}</span> (Elo: {p2pDetails.elo_doubles})</p>
+                        <div className="flex items-center justify-between gap-1 flex-wrap pt-1 border-t border-slate-200/40">
+                          <span>Partner: <strong className="text-slate-700">{p2pDetails.full_name}</strong> (Elo: {p2pDetails.elo_doubles})</span>
+                          <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(getRankName(p2pDetails.elo_doubles))}`}>
+                            {getRankName(p2pDetails.elo_doubles)}
+                          </span>
+                        </div>
                         <p>Trận đấu: <span className="font-bold text-slate-700">{p2pDetails.matches_doubles}</span></p>
                         <p className="border-t border-slate-200/50 pt-1 mt-1">Elo trung bình Đội B: <span className="font-black text-secondary">{((p2Details.elo_doubles + p2pDetails.elo_doubles) / 2).toFixed(0)}</span></p>
                       </>

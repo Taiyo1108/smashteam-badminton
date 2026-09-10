@@ -7,17 +7,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   ChevronRight, Trophy, Play, Image as ImageIcon, Calendar, 
   MapPin, Clock, Check, X, User, Sparkles, Shield, 
-  QrCode, Search, History, Users, Activity, CheckCircle2, Info
+  QrCode, Search, History, Users, Activity, CheckCircle2, 
+  Info, Award, Flame, ArrowUpRight, Crown
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
+import FeaturedEventCountdown from "@/app/components/FeaturedEventCountdown";
+import { getRankName, getRankBadgeClass, getShortName } from "@/app/utils/rank";
 
 export default function Home() {
   const router = useRouter();
 
   // Active section tab: "intro" | "leaderboard" | "schedule"
   const [activeTab, setActiveTab] = useState<"intro" | "leaderboard" | "schedule">("intro");
+
+  // Site Settings (Featured event, cover, config)
+  const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
 
   // User auth and profile state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -29,18 +35,19 @@ export default function Home() {
 
   // Media Feed
   const [mediaFeed, setMediaFeed] = useState<any[]>([
-    { id: 1, title: "Giải đấu Mùa Xuân 2026", type: "image", url: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" },
-    { id: 2, title: "Tập luyện hằng ngày", type: "image", url: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" },
-    { id: 3, title: "Highlight Smash", type: "video", url: "https://www.youtube.com/embed/dQw4w9WgXcQ" }
+    { id: 1, title: "Giải đấu SmashTeam Mùa Xuân", type: "image", url: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" },
+    { id: 2, title: "Buổi tập luyện chiến thuật nâng cao", type: "image", url: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" },
+    { id: 3, title: "Highlight Pha Cầu Smash Kịch Tính", type: "video", url: "https://www.youtube.com/embed/dQw4w9WgXcQ" }
   ]);
 
   // Leaderboard data
   const [leaderboard, setLeaderboard] = useState<any[]>([
-    { id: 1, full_name: "Nguyễn Văn A", elo_score: 1540, win_rate: 68.5, rank_name: "Gold", total_matches: 12 },
-    { id: 2, full_name: "Trần Thị B", elo_score: 1480, win_rate: 62.0, rank_name: "Gold", total_matches: 10 },
-    { id: 3, full_name: "Lê Hoàng C", elo_score: 1420, win_rate: 55.5, rank_name: "Gold", total_matches: 8 },
-    { id: 4, full_name: "Phạm D", elo_score: 1350, win_rate: 51.0, rank_name: "Gold", total_matches: 6 },
-    { id: 5, full_name: "Đặng E", elo_score: 1290, win_rate: 49.2, rank_name: "Gold", total_matches: 4 },
+    { id: "1", full_name: "Nguyễn Văn A", elo_score: 1850, win_rate: 78.5, rank_name: getRankName(1850), total_matches: 24 },
+    { id: "2", full_name: "Trần Thị B", elo_score: 1680, win_rate: 71.0, rank_name: getRankName(1680), total_matches: 18 },
+    { id: "3", full_name: "Lê Hoàng C", elo_score: 1480, win_rate: 62.5, rank_name: getRankName(1480), total_matches: 14 },
+    { id: "4", full_name: "Phạm D", elo_score: 1320, win_rate: 54.0, rank_name: getRankName(1320), total_matches: 10 },
+    { id: "5", full_name: "Đặng E", elo_score: 1150, win_rate: 48.0, rank_name: getRankName(1150), total_matches: 6 },
+    { id: "6", full_name: "Hoàng Văn F", elo_score: 1050, win_rate: 40.0, rank_name: getRankName(1050), total_matches: 4 },
   ]);
   const [searchQuery, setSearchQuery] = useState("");
   const [leaderboardType, setLeaderboardType] = useState<"singles" | "doubles">("singles");
@@ -52,32 +59,6 @@ export default function Home() {
   const [upcomingSessionHighlight, setUpcomingSessionHighlight] = useState<any>(null);
   const [updatingRsvp, setUpdatingRsvp] = useState(false);
   const [rsvpToast, setRsvpToast] = useState<string | null>(null);
-
-  const getRankName = (elo: number) => {
-    if (elo >= 1800) return 'Challenger';
-    if (elo >= 1600) return 'Diamond';
-    if (elo >= 1400) return 'Platinum';
-    if (elo >= 1200) return 'Gold';
-    if (elo >= 1100) return 'Silver';
-    return 'Bronze';
-  };
-
-  const getRankBadgeClass = (rank: string) => {
-    switch (rank) {
-      case 'Challenger':
-        return 'bg-gradient-to-r from-red-500 to-purple-600 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)] border border-red-400';
-      case 'Diamond':
-        return 'bg-blue-500 text-white shadow-[0_0_8px_rgba(59,130,246,0.3)]';
-      case 'Platinum':
-        return 'bg-teal-500 text-white';
-      case 'Gold':
-        return 'bg-amber-500 text-white font-bold';
-      case 'Silver':
-        return 'bg-slate-300 text-slate-800';
-      default:
-        return 'bg-amber-800/20 text-amber-900'; // Bronze
-    }
-  };
 
   const showToast = (msg: string) => {
     setRsvpToast(msg);
@@ -92,7 +73,6 @@ export default function Home() {
       setIsLoggedIn(true);
       if (role) setUserRole(role);
 
-      // Fetch user profile info for avatar on left corner
       fetch(`${API_URL}/api/profile/me?t=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -108,22 +88,22 @@ export default function Home() {
         .catch(e => console.error("Error loading user profile:", e));
     }
 
-    // Check cached cover
     const cachedCover = localStorage.getItem("homepage_cover_url");
     if (cachedCover) setCoverUrl(cachedCover);
 
-    // Fetch Cover URL
     fetch(`${API_URL}/api/settings?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
-        if (data && data.homepage_cover_url) {
-          setCoverUrl(data.homepage_cover_url);
-          localStorage.setItem("homepage_cover_url", data.homepage_cover_url);
+        if (data) {
+          setSiteSettings(data);
+          if (data.homepage_cover_url) {
+            setCoverUrl(data.homepage_cover_url);
+            localStorage.setItem("homepage_cover_url", data.homepage_cover_url);
+          }
         }
       })
       .catch(e => console.error("Error loading settings:", e));
 
-    // Fetch Media Feed
     fetch(`${API_URL}/api/media?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
@@ -144,12 +124,10 @@ export default function Home() {
       })
       .catch(e => console.error("Error loading media:", e));
 
-    // Fetch Sessions (Schedule)
     fetchSessions();
   }, []);
 
   const fetchSessions = () => {
-    // Fetch upcoming sessions
     fetch(`${API_URL}/api/sessions?t=${Date.now()}`)
       .then(res => res.ok ? res.json() : [])
       .then(data => {
@@ -162,7 +140,6 @@ export default function Home() {
       })
       .catch(e => console.error("Error loading upcoming sessions:", e));
 
-    // Fetch past sessions
     fetch(`${API_URL}/api/sessions?history=true&t=${Date.now()}`)
       .then(res => res.ok ? res.json() : [])
       .then(data => {
@@ -173,27 +150,28 @@ export default function Home() {
       .catch(e => console.error("Error loading past sessions:", e));
   };
 
-  // Fetch Leaderboard
   useEffect(() => {
     fetch(`${API_URL}/api/users/leaderboard?type=${leaderboardType}&t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
-          const formatted = data.map((item: any) => ({
-            id: item.id,
-            full_name: item.full_name,
-            elo_score: item.elo_score,
-            win_rate: item.win_rate ? parseFloat(item.win_rate) : 0,
-            rank_name: item.rank_name || getRankName(item.elo_score),
-            total_matches: item.total_matches || 0
-          }));
+          const formatted = data.map((item: any) => {
+            const elo = Number(item.elo_score) || 1000;
+            return {
+              id: item.id,
+              full_name: item.full_name,
+              elo_score: elo,
+              win_rate: item.win_rate ? parseFloat(item.win_rate) : 0,
+              rank_name: getRankName(elo),
+              total_matches: item.total_matches || 0
+            };
+          });
           setLeaderboard(formatted);
         }
       })
       .catch(e => console.error("Error loading leaderboard:", e));
   }, [leaderboardType]);
 
-  // Handle RSVP
   const handleRsvp = async (sessionId: number, status: "going" | "absent") => {
     const token = localStorage.getItem("admin_token");
     if (!token) {
@@ -213,8 +191,7 @@ export default function Home() {
       });
 
       if (res.ok) {
-        showToast(status === "going" ? "Đã đăng ký tham gia buổi tập!" : "Đã cập nhật trạng thái bận.");
-        // Update highlight session status
+        showToast(status === "going" ? "Đã đăng ký tham gia buổi tập thành công!" : "Đã cập nhật trạng thái vắng mặt.");
         if (upcomingSessionHighlight && upcomingSessionHighlight.id === sessionId) {
           setUpcomingSessionHighlight({
             ...upcomingSessionHighlight,
@@ -232,7 +209,6 @@ export default function Home() {
     }
   };
 
-  // Format date helper
   const formatDateTime = (dateStr: string) => {
     try {
       const d = new Date(dateStr);
@@ -258,105 +234,125 @@ export default function Home() {
             initial={{ opacity: 0, y: -20, x: "-50%" }}
             animate={{ opacity: 1, y: 0, x: "-50%" }}
             exit={{ opacity: 0, y: -20, x: "-50%" }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-full bg-slate-900 text-white font-medium text-xs md:text-sm shadow-xl border border-purple-500/30 flex items-center gap-2"
+            role="status"
+            aria-live="polite"
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-6 py-3.5 rounded-full bg-secondary text-white font-medium text-xs md:text-sm shadow-2xl border border-primary/40 flex items-center gap-2.5 backdrop-blur-md"
           >
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" aria-hidden="true" />
             <span>{rsvpToast}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* TOP NAVBAR */}
-      <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md border-b border-slate-200/80 transition-all shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
+      {/* TOP NAVBAR (Glassmorphism + Purple Brand) */}
+      <header className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md border-b border-purple-100 shadow-sm transition-all">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-18 flex items-center justify-between gap-3">
           
-          {/* GÓC BÊN TRÁI: CHỈ ĐỂ IMG LOGO LINK VỚI HOME PAGE */}
+          {/* LOGO LINK */}
           <Link 
             href="/"
+            id="brand-logo-link"
             onClick={() => {
               setActiveTab("intro");
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            className="flex items-center gap-2.5 group cursor-pointer focus:outline-none"
-            title="SmashTeam - Trang chủ"
+            className="flex items-center gap-2.5 group cursor-pointer focus-ring rounded-xl p-1"
+            title="SmashTeam - Về trang chủ"
           >
-            <div className="relative w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_10px_rgba(122,34,224,0.3)] border border-primary/25 group-hover:border-primary/60 transition-all group-hover:scale-105">
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_15px_rgba(122,34,224,0.35)] border border-primary/30 group-hover:border-primary group-hover:scale-105 transition-all bg-secondary">
               <Image
                 src="/logo.png"
                 alt="SmashTeam Logo"
                 fill
+                sizes="40px"
                 className="object-cover"
                 priority
               />
             </div>
-            <span className="font-black text-xl tracking-tight text-secondary group-hover:text-primary transition-colors">
-              Smash<span className="text-primary">Team</span>
-            </span>
+            <div className="flex flex-col text-left">
+              <span className="font-black text-xl sm:text-2xl tracking-tight text-secondary leading-none group-hover:text-primary transition-colors">
+                Smash<span className="text-primary">Team</span>
+              </span>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Badminton Club</span>
+            </div>
           </Link>
 
-          {/* CÁC MỤC ĐIỀU HƯỚNG TRUNG TÂM (Desktop & Tablet) */}
-          <div className="hidden md:flex items-center bg-slate-100/90 p-1 rounded-full border border-slate-200/60 shadow-inner">
+          {/* SEGMENTED NAVIGATION TABS (Desktop & Tablet) */}
+          <nav aria-label="Điều hướng chính" className="hidden md:flex items-center bg-slate-100/90 p-1.5 rounded-full border border-slate-200/80 shadow-inner">
             <button
+              id="tab-btn-intro"
               onClick={() => setActiveTab("intro")}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer focus-ring ${
                 activeTab === "intro"
-                  ? "bg-primary text-white shadow-md shadow-primary/30 scale-[1.02]"
-                  : "text-slate-600 hover:text-secondary hover:bg-white/60"
+                  ? "bg-primary text-white shadow-md shadow-primary/35 scale-[1.02]"
+                  : "text-slate-600 hover:text-secondary hover:bg-white/70"
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              Giới thiệu
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Giới thiệu</span>
             </button>
-            <button
-              onClick={() => setActiveTab("leaderboard")}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                activeTab === "leaderboard"
-                  ? "bg-primary text-white shadow-md shadow-primary/30 scale-[1.02]"
-                  : "text-slate-600 hover:text-secondary hover:bg-white/60"
-              }`}
-            >
-              <Trophy className="w-3.5 h-3.5" />
-              Bảng xếp hạng
-            </button>
-            <button
-              onClick={() => setActiveTab("schedule")}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                activeTab === "schedule"
-                  ? "bg-primary text-white shadow-md shadow-primary/30 scale-[1.02]"
-                  : "text-slate-600 hover:text-secondary hover:bg-white/60"
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              Lịch đánh
-            </button>
-          </div>
 
-          {/* GÓC PHẢI: HIỂN THỊ PROFILE SAU KHI ĐÃ ĐĂNG NHẬP / AUTH BUTTONS KHI CHƯA ĐĂNG NHẬP */}
-          <div className="flex gap-2.5 sm:gap-3 items-center">
+            <button
+              id="tab-btn-leaderboard"
+              onClick={() => setActiveTab("leaderboard")}
+              className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer focus-ring ${
+                activeTab === "leaderboard"
+                  ? "bg-primary text-white shadow-md shadow-primary/35 scale-[1.02]"
+                  : "text-slate-600 hover:text-secondary hover:bg-white/70"
+              }`}
+            >
+              <Trophy className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Bảng xếp hạng</span>
+            </button>
+
+            <button
+              id="tab-btn-schedule"
+              onClick={() => setActiveTab("schedule")}
+              className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer focus-ring ${
+                activeTab === "schedule"
+                  ? "bg-primary text-white shadow-md shadow-primary/35 scale-[1.02]"
+                  : "text-slate-600 hover:text-secondary hover:bg-white/70"
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Lịch đánh</span>
+            </button>
+          </nav>
+
+          {/* RIGHT ACTIONS: AUTH BUTTONS / USER PROFILE */}
+          <div className="flex gap-2 sm:gap-3 items-center">
             {isLoggedIn ? (
               <div className="flex items-center gap-2 sm:gap-3">
                 {/* Lối tắt Điểm danh QR */}
                 <Link href="/check-in" className="hidden sm:inline-flex">
-                  <button className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-primary border border-primary/30 rounded-full font-bold text-xs flex items-center gap-1 transition-all cursor-pointer">
-                    <QrCode className="w-3.5 h-3.5" />
-                    <span>Điểm danh</span>
+                  <button 
+                    id="nav-quick-checkin"
+                    className="min-h-[40px] px-3.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-primary border border-primary/30 hover:border-primary rounded-full font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer focus-ring shadow-sm"
+                  >
+                    <QrCode className="w-4 h-4 text-primary" aria-hidden="true" />
+                    <span>Điểm danh QR</span>
                   </button>
                 </Link>
 
-                {/* Nút Quản trị nếu là admin */}
+                {/* Nút Quản trị cho Admin */}
                 {userRole === "admin" && (
                   <Link href="/admin">
-                    <button className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-full font-bold text-xs shadow-sm transition-all cursor-pointer">
+                    <button 
+                      id="nav-admin-link"
+                      className="min-h-[40px] px-4 py-1.5 bg-secondary hover:bg-slate-900 text-white rounded-full font-bold text-xs shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer focus-ring border border-slate-700"
+                    >
                       Quản trị
                     </button>
                   </Link>
                 )}
 
-                {/* PROFILE AVATAR GÓC PHẢI (OnClick chuyển hướng đến /profile) */}
+                {/* Profile Avatar Chip */}
                 <button
+                  id="nav-user-profile"
                   onClick={() => router.push("/profile")}
-                  className="group relative flex items-center gap-2 p-1 rounded-full hover:bg-purple-50 transition-all focus:outline-none cursor-pointer"
+                  className="group relative flex items-center gap-2.5 p-1 rounded-full hover:bg-purple-50 transition-all focus-ring cursor-pointer min-h-[44px]"
                   title={`Trang cá nhân: ${currentUser?.full_name || "Hội viên"}`}
+                  aria-label={`Trang cá nhân của ${currentUser?.full_name || "Hội viên"}`}
                 >
                   {currentUser?.selected_avatar_frame ? (
                     <div className="relative transition-transform group-hover:scale-105">
@@ -366,30 +362,35 @@ export default function Home() {
                         sizeClass="w-9 h-9 sm:w-10 sm:h-10"
                         alt={currentUser.full_name || "Profile"}
                       />
-                      <span className="absolute bottom-0 right-0 z-30 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-sm" />
+                      <span className="absolute bottom-0 right-0 z-30 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-sm" aria-hidden="true" />
                     </div>
                   ) : (
                     <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full p-0.5 bg-gradient-to-tr from-primary to-smash-violet shadow-sm transition-transform group-hover:scale-105 group-hover:shadow-[0_0_12px_rgba(122,34,224,0.4)]">
-                      <div className="w-full h-full rounded-full overflow-hidden bg-slate-900 flex items-center justify-center relative">
+                      <div className="w-full h-full rounded-full overflow-hidden bg-secondary flex items-center justify-center relative">
                         {currentUser?.avatar_url ? (
                           <Image
                             src={currentUser.avatar_url}
                             alt={currentUser.full_name || "Profile"}
                             fill
+                            sizes="40px"
                             className="object-cover"
                           />
                         ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-primary/80 to-purple-800 flex items-center justify-center text-white font-bold text-xs sm:text-sm">
-                            {currentUser?.full_name ? currentUser.full_name.charAt(0).toUpperCase() : <User className="w-4 h-4 text-white/90" />}
+                          <div className="w-full h-full bg-gradient-to-br from-primary to-purple-900 flex items-center justify-center text-white font-bold px-0.5 text-center overflow-hidden">
+                            {currentUser?.full_name ? (
+                              <span className={`truncate max-w-full uppercase ${getShortName(currentUser.full_name).length > 2 ? 'text-[9px]' : 'text-xs sm:text-sm'} font-black`}>
+                                {getShortName(currentUser.full_name)}
+                              </span>
+                            ) : (
+                              <User className="w-4 h-4 text-white" aria-hidden="true" />
+                            )}
                           </div>
                         )}
                       </div>
-                      {/* Online Indicator Badge */}
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-sm" />
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-sm" aria-hidden="true" />
                     </div>
                   )}
 
-                  {/* Tên thành viên rút gọn trên màn hình lớn */}
                   <div className="hidden sm:flex flex-col text-left">
                     <span className="text-xs font-bold text-secondary group-hover:text-primary transition-colors line-clamp-1 max-w-[120px]">
                       {currentUser?.nickname || currentUser?.full_name || "Hội viên"}
@@ -401,13 +402,19 @@ export default function Home() {
             ) : (
               <div className="flex items-center gap-2">
                 <Link href="/login">
-                  <button className="px-3.5 py-1.5 text-secondary hover:text-primary transition-all font-semibold text-xs cursor-pointer">
+                  <button 
+                    id="nav-login-btn"
+                    className="min-h-[40px] px-4 py-1.5 text-secondary hover:text-primary transition-all font-bold text-xs cursor-pointer focus-ring rounded-full hover:bg-slate-100"
+                  >
                     Đăng nhập
                   </button>
                 </Link>
                 <Link href="/register">
-                  <button className="px-4 py-1.5 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform hover:scale-105 shadow-md shadow-primary/25 text-xs cursor-pointer">
-                    Gia nhập
+                  <button 
+                    id="nav-register-btn"
+                    className="min-h-[40px] px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform active:scale-95 shadow-md shadow-primary/30 text-xs cursor-pointer focus-ring"
+                  >
+                    Gia nhập ngay
                   </button>
                 </Link>
               </div>
@@ -415,43 +422,46 @@ export default function Home() {
           </div>
         </div>
 
-        {/* SUB-NAVBAR TABS CHO MOBILE */}
-        <div className="md:hidden flex items-center justify-around border-t border-slate-100 bg-white/95 px-2 py-1.5">
+        {/* MOBILE SUB-NAVBAR TABS (Touch Target >= 44px) */}
+        <nav aria-label="Điều hướng di động" className="md:hidden flex items-center justify-around border-t border-purple-100 bg-white/95 px-2 py-1">
           <button
+            id="mobile-tab-intro"
             onClick={() => setActiveTab("intro")}
-            className={`flex flex-col items-center py-1 px-3 rounded-lg text-[11px] font-bold transition-all ${
-              activeTab === "intro" ? "text-primary" : "text-slate-500"
+            className={`min-h-[44px] flex flex-col items-center justify-center py-1 px-4 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              activeTab === "intro" ? "text-primary font-black bg-purple-50" : "text-slate-500 hover:text-secondary"
             }`}
           >
-            <Sparkles className="w-4 h-4 mb-0.5" />
-            Giới thiệu
+            <Sparkles className="w-4 h-4 mb-0.5" aria-hidden="true" />
+            <span>Giới thiệu</span>
           </button>
           <button
+            id="mobile-tab-leaderboard"
             onClick={() => setActiveTab("leaderboard")}
-            className={`flex flex-col items-center py-1 px-3 rounded-lg text-[11px] font-bold transition-all ${
-              activeTab === "leaderboard" ? "text-primary" : "text-slate-500"
+            className={`min-h-[44px] flex flex-col items-center justify-center py-1 px-4 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              activeTab === "leaderboard" ? "text-primary font-black bg-purple-50" : "text-slate-500 hover:text-secondary"
             }`}
           >
-            <Trophy className="w-4 h-4 mb-0.5" />
-            BXH
+            <Trophy className="w-4 h-4 mb-0.5" aria-hidden="true" />
+            <span>Xếp hạng</span>
           </button>
           <button
+            id="mobile-tab-schedule"
             onClick={() => setActiveTab("schedule")}
-            className={`flex flex-col items-center py-1 px-3 rounded-lg text-[11px] font-bold transition-all ${
-              activeTab === "schedule" ? "text-primary" : "text-slate-500"
+            className={`min-h-[44px] flex flex-col items-center justify-center py-1 px-4 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              activeTab === "schedule" ? "text-primary font-black bg-purple-50" : "text-slate-500 hover:text-secondary"
             }`}
           >
-            <Calendar className="w-4 h-4 mb-0.5" />
-            Lịch đánh
+            <Calendar className="w-4 h-4 mb-0.5" aria-hidden="true" />
+            <span>Lịch đánh</span>
           </button>
-        </div>
-      </nav>
+        </nav>
+      </header>
 
       {/* BODY CONTENT AREA */}
-      <div className="pt-24 md:pt-20 flex-1 flex flex-col">
+      <div className="pt-28 md:pt-22 flex-1 flex flex-col">
 
         {/* ========================================================================= */}
-        {/* MỤC 1: GIỚI THIỆU (INTRO)                                                */}
+        {/* TAB 1: GIỚI THIỆU (INTRO HERO & CLUB VALUES)                             */}
         {/* ========================================================================= */}
         {activeTab === "intro" && (
           <motion.div
@@ -462,131 +472,187 @@ export default function Home() {
             transition={{ duration: 0.3 }}
             className="flex-1 flex flex-col"
           >
-            {/* Hero Section */}
-            <section className="relative min-h-[560px] md:h-[620px] flex items-center justify-center overflow-hidden bg-slate-950">
+            {/* HERO SECTION: Athletic Purple-Black Theme */}
+            <section aria-labelledby="hero-title" className="relative min-h-[580px] md:min-h-[640px] flex items-center justify-center overflow-hidden bg-secondary">
+              {/* Background Cover + Radial Gradient Mesh */}
               <div className="absolute inset-0 z-0">
                 {coverUrl ? (
                   <motion.div
                     key={coverUrl}
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.45 }}
+                    animate={{ opacity: 0.4 }}
                     transition={{ duration: 0.8 }}
                     className="absolute inset-0"
                   >
                     <Image
                       src={coverUrl}
-                      alt="SmashTeam Hero"
+                      alt="SmashTeam Hero Badminton"
                       fill
+                      sizes="100vw"
                       className="object-cover"
                       priority
                     />
                   </motion.div>
                 ) : (
-                  <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-purple-950/40 to-slate-900" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-secondary via-[#190d33] to-secondary" />
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/50 to-transparent" />
+                
+                {/* Rich Purple Glow Spotlight */}
+                <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-primary/25 rounded-full blur-[120px] pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-secondary via-secondary/60 to-transparent" />
               </div>
 
-              <div className="relative z-10 text-center px-4 max-w-4xl mx-auto py-12">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 border border-primary/40 text-smash-violet text-xs font-bold uppercase tracking-wider mb-6">
-                  <Sparkles className="w-3.5 h-3.5" /> Câu lạc bộ Cầu lông SmashTeam
-                </div>
-
-                <motion.h1 
-                  initial={{ opacity: 0, y: 25 }}
+              <div className="relative z-10 text-center px-4 sm:px-6 max-w-4xl mx-auto py-16 space-y-6">
+                {/* Brand Tag */}
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                  className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight mb-6"
+                  transition={{ duration: 0.4 }}
+                  className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/20 border border-primary/50 text-smash-violet text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-[0_0_15px_rgba(157,78,221,0.3)]"
                 >
-                  ĐAM MÊ <span className="text-primary bg-gradient-to-r from-primary to-smash-violet bg-clip-text text-transparent">HỘI TỤ</span>
+                  <Sparkles className="w-3.5 h-3.5 text-smash-violet" aria-hidden="true" />
+                  <span>Câu Lạc Bộ Cầu Lông SmashTeam</span>
+                </motion.div>
+
+                {/* Primary H1 Heading */}
+                <motion.h1 
+                  id="hero-title"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.1 }}
+                  className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight leading-[1.1]"
+                >
+                  ĐAM MÊ <span className="bg-gradient-to-r from-primary via-smash-violet to-purple-300 bg-clip-text text-transparent">HỘI TỤ</span>
                 </motion.h1>
                 
+                {/* Value Proposition Subtitle */}
                 <motion.p 
-                  initial={{ opacity: 0, y: 25 }}
+                  initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.15 }}
-                  className="text-base md:text-xl text-slate-300 mb-8 max-w-2xl mx-auto leading-relaxed"
+                  transition={{ duration: 0.5, delay: 0.2 }}
+                  className="text-base sm:text-lg md:text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal"
                 >
-                  Nơi tập hợp những tay vợt tài năng, một môi trường năng động để bạn tỏa sáng, nâng hạng ELO và giao lưu kết nối đồng đội.
+                  Môi trường thể thao chuyên nghiệp và năng động dành cho mọi vợt thủ. Tỏa sáng trên sân đấu, nâng tầm thứ hạng ELO và kết nối đam mê bền chặt.
                 </motion.p>
 
+                {/* Action CTA Buttons */}
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.4, delay: 0.3 }}
-                  className="flex flex-wrap items-center justify-center gap-4"
+                  className="flex flex-wrap items-center justify-center gap-4 pt-2"
                 >
                   <button 
+                    id="hero-cta-schedule"
                     onClick={() => setActiveTab("schedule")}
-                    className="px-7 py-3.5 bg-primary hover:bg-primary-hover text-white text-sm md:text-base font-bold rounded-full shadow-[0_0_30px_rgba(122,34,224,0.5)] hover:shadow-[0_0_45px_rgba(157,78,221,0.7)] transition-all transform hover:scale-105 flex items-center gap-2 cursor-pointer"
+                    className="min-h-[48px] px-8 py-3.5 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-bold rounded-full shadow-[0_0_25px_rgba(122,34,224,0.55)] hover:shadow-[0_0_35px_rgba(157,78,221,0.75)] transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
                   >
-                    <Calendar className="w-4 h-4" /> Xem lịch đánh sắp tới
+                    <Calendar className="w-4 h-4" aria-hidden="true" />
+                    <span>Xem lịch đánh tuần này</span>
                   </button>
+
                   <button 
+                    id="hero-cta-leaderboard"
                     onClick={() => setActiveTab("leaderboard")}
-                    className="px-7 py-3.5 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm md:text-base font-bold rounded-full border border-white/20 hover:border-white/40 transition-all transform hover:scale-105 flex items-center gap-2 cursor-pointer"
+                    className="min-h-[48px] px-8 py-3.5 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
                   >
-                    <Trophy className="w-4 h-4 text-amber-400" /> Bảng xếp hạng ELO
+                    <Trophy className="w-4 h-4 text-amber-400" aria-hidden="true" />
+                    <span>Bảng xếp hạng ELO</span>
                   </button>
+                </motion.div>
+
+                {/* Social Proof / Club Quick Stats Bar */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.4 }}
+                  className="pt-8 border-t border-white/10 grid grid-cols-3 gap-4 max-w-xl mx-auto"
+                >
+                  <div className="text-center">
+                    <p className="text-2xl sm:text-3xl font-black text-white tabular-nums">150+</p>
+                    <p className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">Thành viên</p>
+                  </div>
+                  <div className="text-center border-x border-white/10">
+                    <p className="text-2xl sm:text-3xl font-black text-primary-hover tabular-nums">500+</p>
+                    <p className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">Trận đấu ELO</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl sm:text-3xl font-black text-amber-400 tabular-nums">1850+</p>
+                    <p className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">Top Elo Đỉnh</p>
+                  </div>
                 </motion.div>
               </div>
             </section>
 
-            {/* Về SmashTeam (Core Values & Highlights) */}
-            <section className="max-w-7xl mx-auto px-4 py-16 w-full space-y-12">
+            {/* FEATURED EVENT COUNTDOWN BOARD */}
+            <FeaturedEventCountdown
+              settings={siteSettings}
+              upcomingSession={upcomingSessionHighlight || upcomingSessions[0]}
+              onViewSchedule={() => {
+                setActiveTab("schedule");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              isLoggedIn={isLoggedIn}
+            />
+
+            {/* BENTO GRID: CORE VALUES */}
+            <section aria-labelledby="about-section-title" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-20 w-full space-y-12">
               <div className="text-center max-w-2xl mx-auto space-y-3">
-                <span className="text-xs font-black uppercase tracking-wider text-primary bg-purple-50 px-3 py-1 rounded-full border border-primary/20">
-                  Về Câu Lạc Bộ
+                <span className="text-xs font-black uppercase tracking-widest text-primary bg-purple-50 px-3.5 py-1.5 rounded-full border border-primary/20">
+                  Về Câu Lạc Bộ SmashTeam
                 </span>
-                <h2 className="text-3xl font-black text-secondary">
-                  Môi trường thể thao chuyên nghiệp & gắn kết
+                <h2 id="about-section-title" className="text-3xl sm:text-4xl font-black text-secondary tracking-tight">
+                  Môi trường thể thao bài bản & gắn kết
                 </h2>
-                <p className="text-sm text-slate-500">
-                  SmashTeam hướng đến một sân chơi rèn luyện sức khỏe, thi đấu thăng hạng văn minh và tạo nên những kỷ niệm đáng nhớ.
+                <p className="text-sm sm:text-base text-slate-500 leading-relaxed">
+                  SmashTeam hướng đến một sân chơi rèn luyện thể lực bền bỉ, thi đấu thăng hạng ELO minh bạch và tạo dựng cộng đồng kết nối văn minh.
                 </p>
               </div>
 
-              {/* 3 Value Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
-                  <div className="w-12 h-12 rounded-2xl bg-purple-100 text-primary flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                    <Activity className="w-6 h-6" />
+              {/* 3 Value Bento Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+                {/* Card 1: Regular Training */}
+                <div className="bg-white rounded-3xl p-7 border border-purple-100/80 shadow-sm hover:shadow-xl hover:border-primary/40 transition-all duration-300 relative overflow-hidden group">
+                  <div className="w-13 h-13 rounded-2xl bg-purple-50 text-primary flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+                    <Activity className="w-7 h-7" aria-hidden="true" />
                   </div>
-                  <h3 className="font-bold text-lg text-secondary mb-2">Luyện tập đều đặn</h3>
+                  <h3 className="font-bold text-xl text-secondary mb-2.5">Luyện tập đều đặn</h3>
                   <p className="text-slate-500 text-sm leading-relaxed">
-                    Tổ chức lịch sinh hoạt cố định hàng tuần với sân đấu chất lượng cao, giúp các thành viên duy trì thể lực và cảm giác cầu.
+                    Tổ chức lịch sinh hoạt cố định hàng tuần với cụm sân thảm đạt chuẩn thi đấu, hỗ trợ các thành viên duy trì thể lực và cảm giác cầu thăng hoa.
                   </p>
                 </div>
 
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                    <Trophy className="w-6 h-6" />
+                {/* Card 2: ELO Rating System */}
+                <div className="bg-white rounded-3xl p-7 border border-amber-100/80 shadow-sm hover:shadow-xl hover:border-amber-400/50 transition-all duration-300 relative overflow-hidden group">
+                  <div className="w-13 h-13 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+                    <Trophy className="w-7 h-7" aria-hidden="true" />
                   </div>
-                  <h3 className="font-bold text-lg text-secondary mb-2">Hệ thống ELO & Rank</h3>
+                  <h3 className="font-bold text-xl text-secondary mb-2.5">Hệ thống ELO & Rank</h3>
                   <p className="text-slate-500 text-sm leading-relaxed">
-                    Tính điểm xếp hạng minh bạch cho từng trận đấu đơn và đôi, vinh danh tay vợt xuất sắc với các cấp bậc từ Bronze tới Challenger.
+                    Thuật toán tính điểm ELO minh bạch cho từng trận đấu Đơn và Đôi, vinh danh các tay vợt xuất sắc qua 6 cấp bậc danh giá từ Bronze đến Challenger.
                   </p>
                 </div>
 
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden group">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                    <Users className="w-6 h-6" />
+                {/* Card 3: Open Community */}
+                <div className="bg-white rounded-3xl p-7 border border-emerald-100/80 shadow-sm hover:shadow-xl hover:border-emerald-400/50 transition-all duration-300 relative overflow-hidden group">
+                  <div className="w-13 h-13 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
+                    <Users className="w-7 h-7" aria-hidden="true" />
                   </div>
-                  <h3 className="font-bold text-lg text-secondary mb-2">Cộng đồng cởi mở</h3>
+                  <h3 className="font-bold text-xl text-secondary mb-2.5">Cộng đồng cởi mở</h3>
                   <p className="text-slate-500 text-sm leading-relaxed">
-                    Chào đón các thành viên ở mọi cấp độ kỹ năng. Giao lưu, chia sẻ kinh nghiệm chiến thuật và mở rộng mạng lưới quan hệ bạn bè.
+                    Chào đón mọi cấp độ người chơi từ tân thủ đến bán chuyên. Chia sẻ kỹ chiến thuật bổ ích, rèn luyện tinh thần thượng võ và mở rộng bạn bè.
                   </p>
                 </div>
               </div>
 
-              {/* Media Feed (Hoạt động nổi bật) */}
-              <div className="space-y-6 pt-6">
+              {/* MEDIA FEED (HOẠT ĐỘNG NỔI BẬT) */}
+              <div className="space-y-6 pt-8">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-2 h-7 bg-primary rounded-full"></div>
-                    <h2 className="text-2xl md:text-3xl font-bold text-secondary">Hoạt động nổi bật</h2>
+                    <div className="w-2.5 h-8 bg-primary rounded-full" />
+                    <h2 className="text-2xl sm:text-3xl font-bold text-secondary">Hoạt động nổi bật</h2>
                   </div>
-                  <span className="text-xs font-semibold text-slate-400">Hình ảnh & Video highlight</span>
+                  <span className="text-xs font-semibold text-slate-400">Hình ảnh & Video recap</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -597,13 +663,14 @@ export default function Home() {
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.1 }}
-                      className="group relative rounded-3xl overflow-hidden bg-slate-100 aspect-[4/3] md:aspect-square shadow-sm hover:shadow-xl transition-all duration-300"
+                      className="group relative rounded-3xl overflow-hidden bg-slate-900 aspect-[4/3] md:aspect-square shadow-sm hover:shadow-2xl transition-all duration-300 border border-purple-100/50"
                     >
                       {media.type === 'image' ? (
                         <Image 
                           src={media.url} 
                           alt={media.title} 
                           fill 
+                          sizes="(max-width: 768px) 100vw, 33vw"
                           className="object-cover group-hover:scale-105 transition-transform duration-500" 
                         />
                       ) : (
@@ -615,11 +682,15 @@ export default function Home() {
                           allowFullScreen
                         />
                       )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent pointer-events-none" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-secondary via-secondary/30 to-transparent pointer-events-none" />
                       <div className="absolute bottom-0 left-0 w-full p-5 pointer-events-none">
-                        <div className="flex items-center gap-2 text-smash-violet mb-1.5">
-                          {media.type === 'image' ? <ImageIcon className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                          <span className="text-[10px] font-bold uppercase tracking-wider">{media.type}</span>
+                        <div className="flex items-center gap-1.5 text-smash-violet mb-1">
+                          {media.type === 'image' ? (
+                            <ImageIcon className="w-4 h-4 text-purple-300" aria-hidden="true" />
+                          ) : (
+                            <Play className="w-4 h-4 text-purple-300" aria-hidden="true" />
+                          )}
+                          <span className="text-[10px] font-black uppercase tracking-wider text-purple-300">{media.type}</span>
                         </div>
                         <h3 className="text-white font-bold text-base md:text-lg line-clamp-2">{media.title}</h3>
                       </div>
@@ -632,7 +703,7 @@ export default function Home() {
         )}
 
         {/* ========================================================================= */}
-        {/* MỤC 2: BẢNG XẾP HẠNG (LEADERBOARD)                                       */}
+        {/* TAB 2: BẢNG XẾP HẠNG (LEADERBOARD PODIUM & FULL LIST)                     */}
         {/* ========================================================================= */}
         {activeTab === "leaderboard" && (
           <motion.div
@@ -641,35 +712,38 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
-            className="max-w-5xl mx-auto px-4 py-8 w-full space-y-8"
+            className="max-w-5xl mx-auto px-4 sm:px-6 py-8 w-full space-y-8"
           >
             {/* Header Mục BXH */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-purple-100 pb-6">
               <div>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200/60 text-amber-700 text-xs font-bold uppercase tracking-wider mb-2">
-                  <Trophy className="w-3.5 h-3.5 text-amber-500" /> Hệ thống ELO SmashTeam
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold uppercase tracking-wider mb-2">
+                  <Trophy className="w-3.5 h-3.5 text-amber-600" aria-hidden="true" />
+                  <span>Hệ thống ELO SmashTeam</span>
                 </div>
-                <h1 className="text-3xl font-black text-secondary">Bảng Xếp Hạng Câu Lạc Bộ</h1>
-                <p className="text-sm text-slate-500 mt-1">Cập nhật theo kết quả các trận đấu chính thức</p>
+                <h2 className="text-3xl font-black text-secondary tracking-tight">Bảng Xếp Hạng Câu Lạc Bộ</h2>
+                <p className="text-sm text-slate-500 mt-1">Cập nhật tự động dựa trên kết quả thi đấu thực tế</p>
               </div>
 
-              {/* Segmented Control / Tab Switcher: Đơn & Đôi */}
-              <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200/60 self-start sm:self-auto">
+              {/* Segmented Control Switcher: Đơn vs Đôi */}
+              <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200/80 self-start sm:self-auto">
                 <button
+                  id="btn-rank-singles"
                   onClick={() => setLeaderboardType("singles")}
-                  className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  className={`min-h-[40px] px-5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer focus-ring ${
                     leaderboardType === "singles"
-                      ? "bg-white text-primary shadow-sm border border-slate-200/30 scale-[1.02]"
+                      ? "bg-white text-primary shadow-sm border border-slate-200/40 scale-[1.02]"
                       : "text-slate-500 hover:text-secondary"
                   }`}
                 >
                   Xếp Hạng Đơn
                 </button>
                 <button
+                  id="btn-rank-doubles"
                   onClick={() => setLeaderboardType("doubles")}
-                  className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  className={`min-h-[40px] px-5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer focus-ring ${
                     leaderboardType === "doubles"
-                      ? "bg-white text-primary shadow-sm border border-slate-200/30 scale-[1.02]"
+                      ? "bg-white text-primary shadow-sm border border-slate-200/40 scale-[1.02]"
                       : "text-slate-500 hover:text-secondary"
                   }`}
                 >
@@ -678,62 +752,68 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Podium Top 3 */}
+            {/* PODIUM TOP 3 CHAMPIONS */}
             {leaderboard.length >= 3 && (
-              <div className="bg-gradient-to-b from-purple-50/80 via-white to-white rounded-3xl p-6 sm:p-8 border border-purple-100 shadow-sm relative overflow-hidden">
-                <div className="text-center mb-6">
-                  <span className="text-xs font-black text-primary uppercase tracking-widest">
+              <div className="bg-gradient-to-b from-purple-50/70 via-white to-white rounded-3xl p-6 sm:p-8 border border-purple-100 shadow-sm relative overflow-hidden">
+                <div className="text-center mb-8">
+                  <span className="text-xs font-black text-primary uppercase tracking-widest bg-purple-100/70 px-4 py-1.5 rounded-full border border-primary/20">
                     Vinh danh Top 3 Tay Vợt Dẫn Đầu
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 sm:gap-6 items-end max-w-2xl mx-auto pt-4 pb-2">
-                  {/* 2nd Place */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-6 items-end max-w-2xl mx-auto pt-6 pb-2">
+                  {/* 2ND PLACE (Silver) */}
                   <div className="flex flex-col items-center">
-                    <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-slate-300 shadow-[0_0_15px_rgba(203,213,225,0.7)] flex items-center justify-center bg-slate-100 text-slate-700 font-bold text-sm sm:text-base">
-                      {leaderboard[1].full_name.substring(0, 2).toUpperCase()}
+                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-3 border-slate-300 shadow-[0_0_18px_rgba(203,213,225,0.85)] flex items-center justify-center bg-slate-100 text-slate-700 font-bold px-1 text-center">
+                      <span className={`truncate max-w-full uppercase ${getShortName(leaderboard[1].full_name).length > 2 ? 'text-xs sm:text-sm font-black' : 'text-base sm:text-lg font-black'}`}>
+                        {getShortName(leaderboard[1].full_name)}
+                      </span>
                     </div>
-                    <span className="text-xs font-black text-slate-500 uppercase mt-2">2nd Place</span>
-                    <p className="text-xs sm:text-sm font-bold text-secondary truncate max-w-[90px] sm:max-w-[130px] text-center mt-0.5">
+                    <span className="text-xs font-black text-slate-500 uppercase mt-2.5">Hạng 2</span>
+                    <p className="text-xs sm:text-sm font-bold text-secondary truncate max-w-[95px] sm:max-w-[140px] text-center mt-0.5">
                       {leaderboard[1].full_name}
                     </p>
-                    <p className="text-xs sm:text-sm font-black text-primary mt-0.5">{leaderboard[1].elo_score} ELO</p>
+                    <p className="text-xs sm:text-sm font-black text-primary mt-0.5 tabular-nums">{leaderboard[1].elo_score} ELO</p>
                     <span className={`text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded mt-1.5 ${getRankBadgeClass(leaderboard[1].rank_name)}`}>
                       {leaderboard[1].rank_name}
                     </span>
                   </div>
 
-                  {/* 1st Place */}
-                  <div className="flex flex-col items-center transform -translate-y-3 sm:-translate-y-4">
+                  {/* 1ST PLACE (Gold Champion) */}
+                  <div className="flex flex-col items-center transform -translate-y-4 sm:-translate-y-6">
                     <div className="relative">
                       {/* Bouncing Crown */}
-                      <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-amber-500 fill-amber-500 animate-bounce">
-                        <Trophy className="w-6 h-6 fill-amber-500 drop-shadow-md" />
+                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-amber-500 fill-amber-500 animate-bounce">
+                        <Crown className="w-7 h-7 text-amber-500 fill-amber-400 drop-shadow-md" aria-hidden="true" />
                       </div>
-                      <div className="w-18 h-18 sm:w-22 sm:h-22 rounded-full overflow-hidden border-4 border-amber-400 shadow-[0_0_25px_rgba(251,191,36,0.6)] flex items-center justify-center bg-amber-50 text-amber-700 font-black text-lg sm:text-xl">
-                        {leaderboard[0].full_name.substring(0, 2).toUpperCase()}
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-amber-400 shadow-[0_0_28px_rgba(251,191,36,0.7)] flex items-center justify-center bg-amber-50 text-amber-800 font-black px-1 text-center">
+                        <span className={`truncate max-w-full uppercase ${getShortName(leaderboard[0].full_name).length > 2 ? 'text-sm sm:text-base font-black' : 'text-xl sm:text-2xl font-black'}`}>
+                          {getShortName(leaderboard[0].full_name)}
+                        </span>
                       </div>
                     </div>
-                    <span className="text-xs sm:text-sm font-black text-amber-600 uppercase mt-2">1st Champion</span>
-                    <p className="text-sm sm:text-base font-black text-secondary truncate max-w-[100px] sm:max-w-[150px] text-center mt-0.5">
+                    <span className="text-xs sm:text-sm font-black text-amber-600 uppercase mt-2.5">Quán Quân</span>
+                    <p className="text-sm sm:text-base font-black text-secondary truncate max-w-[110px] sm:max-w-[160px] text-center mt-0.5">
                       {leaderboard[0].full_name}
                     </p>
-                    <p className="text-sm sm:text-base font-black text-primary mt-0.5">{leaderboard[0].elo_score} ELO</p>
+                    <p className="text-sm sm:text-base font-black text-primary mt-0.5 tabular-nums">{leaderboard[0].elo_score} ELO</p>
                     <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded mt-1.5 ${getRankBadgeClass(leaderboard[0].rank_name)}`}>
                       {leaderboard[0].rank_name}
                     </span>
                   </div>
 
-                  {/* 3rd Place */}
+                  {/* 3RD PLACE (Bronze) */}
                   <div className="flex flex-col items-center">
-                    <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-amber-700/40 shadow-[0_0_12px_rgba(180,83,9,0.3)] flex items-center justify-center bg-amber-900/10 text-amber-900 font-bold text-sm sm:text-base">
-                      {leaderboard[2].full_name.substring(0, 2).toUpperCase()}
+                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-3 border-amber-800/40 shadow-[0_0_15px_rgba(180,83,9,0.35)] flex items-center justify-center bg-amber-900/10 text-amber-900 font-bold px-1 text-center">
+                      <span className={`truncate max-w-full uppercase ${getShortName(leaderboard[2].full_name).length > 2 ? 'text-xs sm:text-sm font-black' : 'text-base sm:text-lg font-black'}`}>
+                        {getShortName(leaderboard[2].full_name)}
+                      </span>
                     </div>
-                    <span className="text-xs font-black text-amber-800/80 uppercase mt-2">3rd Place</span>
-                    <p className="text-xs sm:text-sm font-bold text-secondary truncate max-w-[90px] sm:max-w-[130px] text-center mt-0.5">
+                    <span className="text-xs font-black text-amber-800/80 uppercase mt-2.5">Hạng 3</span>
+                    <p className="text-xs sm:text-sm font-bold text-secondary truncate max-w-[95px] sm:max-w-[140px] text-center mt-0.5">
                       {leaderboard[2].full_name}
                     </p>
-                    <p className="text-xs sm:text-sm font-black text-primary mt-0.5">{leaderboard[2].elo_score} ELO</p>
+                    <p className="text-xs sm:text-sm font-black text-primary mt-0.5 tabular-nums">{leaderboard[2].elo_score} ELO</p>
                     <span className={`text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded mt-1.5 ${getRankBadgeClass(leaderboard[2].rank_name)}`}>
                       {leaderboard[2].rank_name}
                     </span>
@@ -742,27 +822,28 @@ export default function Home() {
               </div>
             )}
 
-            {/* Search Box & Full Table */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                <h3 className="font-bold text-base text-secondary self-start">
-                  Danh sách thứ hạng đầy đủ
+            {/* SEARCH BOX & FULL TABLE */}
+            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-purple-100 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <h3 className="font-bold text-lg text-secondary">
+                  Danh sách xếp hạng đầy đủ
                 </h3>
                 
                 <div className="relative w-full sm:w-72">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
                   <input
+                    id="search-player-input"
                     type="text"
                     placeholder="Tìm tên tay vợt..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 text-xs md:text-sm border border-slate-200 rounded-xl outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-slate-800"
+                    className="w-full min-h-[44px] pl-10 pr-4 py-2 text-xs md:text-sm border border-slate-200 rounded-xl outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-slate-800"
                   />
                 </div>
               </div>
 
-              {/* Leaderboard Table / Cards */}
-              <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
+              {/* Table Rows */}
+              <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
                 {leaderboard
                   .filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase()))
                   .map((user, index) => {
@@ -770,13 +851,13 @@ export default function Home() {
                     return (
                       <div 
                         key={user.id} 
-                        className="flex items-center justify-between p-3.5 sm:p-4 rounded-2xl hover:bg-slate-50 border border-slate-100 transition-colors group"
+                        className="flex items-center justify-between p-3.5 sm:p-4 rounded-2xl hover:bg-purple-50/40 border border-slate-100 hover:border-primary/20 transition-all group"
                       >
                         <div className="flex items-center gap-3 sm:gap-4">
-                          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
-                            overallIndex === 0 ? 'bg-amber-100 text-amber-800 border border-amber-300' :
-                            overallIndex === 1 ? 'bg-slate-200 text-slate-700' :
-                            overallIndex === 2 ? 'bg-amber-900/15 text-amber-900' :
+                          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-black text-xs shrink-0 tabular-nums ${
+                            overallIndex === 0 ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm' :
+                            overallIndex === 1 ? 'bg-slate-200 text-slate-700 border border-slate-300' :
+                            overallIndex === 2 ? 'bg-amber-900/15 text-amber-900 border border-amber-800/30' :
                             'bg-slate-100 text-slate-500'
                           }`}>
                             {overallIndex + 1}
@@ -786,18 +867,20 @@ export default function Home() {
                               <p className="font-bold text-secondary group-hover:text-primary transition-colors text-sm sm:text-base">
                                 {user.full_name}
                               </p>
-                              <span className={`text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(user.rank_name)}`}>
+                              <span className={`text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded ${getRankBadgeClass(user.rank_name)}`}>
                                 {user.rank_name}
                               </span>
                             </div>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
-                              Tỉ lệ thắng: <span className="font-semibold text-slate-600">{user.win_rate.toFixed(1)}%</span> • {user.total_matches} trận đã đấu
-                            </p>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
+                              <span>Tỉ lệ thắng: <strong className="text-slate-600 tabular-nums">{user.win_rate.toFixed(1)}%</strong></span>
+                              <span>•</span>
+                              <span className="tabular-nums">{user.total_matches} trận</span>
+                            </div>
                           </div>
                         </div>
 
                         <div className="text-right shrink-0">
-                          <p className="font-black text-base sm:text-lg text-secondary group-hover:text-primary transition-colors">{user.elo_score}</p>
+                          <p className="font-black text-base sm:text-lg text-secondary group-hover:text-primary transition-colors tabular-nums">{user.elo_score}</p>
                           <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Điểm ELO</p>
                         </div>
                       </div>
@@ -805,32 +888,36 @@ export default function Home() {
                   })}
 
                 {leaderboard.filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
-                  <p className="text-xs text-slate-400 italic text-center py-8">
-                    Không tìm thấy tay vợt nào phù hợp với từ khóa &ldquo;{searchQuery}&rdquo;.
-                  </p>
+                  <div className="text-center py-10 space-y-2">
+                    <Search className="w-8 h-8 text-slate-300 mx-auto" aria-hidden="true" />
+                    <p className="text-xs text-slate-500 font-medium">
+                      Không tìm thấy tay vợt nào phù hợp với từ khóa &ldquo;{searchQuery}&rdquo;.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Rank Tiers Legend */}
-            <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200/60 text-xs text-slate-500 space-y-2">
+            {/* RANK TIERS LEGEND */}
+            <div className="bg-slate-50 rounded-2xl p-5 border border-purple-100 text-xs text-slate-600 space-y-3">
               <div className="flex items-center gap-1.5 font-bold text-secondary">
-                <Info className="w-4 h-4 text-primary" /> Quy chuẩn phân cấp ELO:
+                <Info className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+                <span>Quy chuẩn phân cấp điểm ELO tại SmashTeam:</span>
               </div>
-              <div className="flex flex-wrap gap-2 pt-1">
-                <span className="px-2 py-0.5 rounded bg-gradient-to-r from-red-500 to-purple-600 text-white font-bold">Challenger: 1800+</span>
-                <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-bold">Diamond: 1600+</span>
-                <span className="px-2 py-0.5 rounded bg-teal-500 text-white font-bold">Platinum: 1400+</span>
-                <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-bold">Gold: 1200+</span>
-                <span className="px-2 py-0.5 rounded bg-slate-300 text-slate-800 font-bold">Silver: 1100+</span>
-                <span className="px-2 py-0.5 rounded bg-amber-800/20 text-amber-900 font-bold">Bronze: &lt; 1100</span>
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                <span className="px-2.5 py-1 rounded-md bg-gradient-to-r from-red-500 to-purple-600 text-white font-extrabold shadow-xs">Challenger: 1800+</span>
+                <span className="px-2.5 py-1 rounded-md bg-blue-500 text-white font-bold shadow-xs">Diamond: 1600+</span>
+                <span className="px-2.5 py-1 rounded-md bg-teal-500 text-white font-bold shadow-xs">Platinum: 1400+</span>
+                <span className="px-2.5 py-1 rounded-md bg-amber-500 text-white font-bold shadow-xs">Gold: 1200+</span>
+                <span className="px-2.5 py-1 rounded-md bg-slate-300 text-slate-800 font-bold shadow-xs">Silver: 1100+</span>
+                <span className="px-2.5 py-1 rounded-md bg-amber-800/20 text-amber-900 font-bold shadow-xs">Bronze: &lt; 1100</span>
               </div>
             </div>
           </motion.div>
         )}
 
         {/* ========================================================================= */}
-        {/* MỤC 3: LỊCH ĐÁNH (SCHEDULE)                                              */}
+        {/* TAB 3: LỊCH ĐÁNH (SCHEDULE & RSVP)                                        */}
         {/* ========================================================================= */}
         {activeTab === "schedule" && (
           <motion.div
@@ -839,35 +926,38 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
-            className="max-w-5xl mx-auto px-4 py-8 w-full space-y-8"
+            className="max-w-5xl mx-auto px-4 sm:px-6 py-8 w-full space-y-8"
           >
             {/* Header Mục Lịch Đánh */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-purple-100 pb-6">
               <div>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200/60 text-primary text-xs font-bold uppercase tracking-wider mb-2">
-                  <Calendar className="w-3.5 h-3.5" /> Lịch Sinh Hoạt SmashTeam
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-primary text-xs font-bold uppercase tracking-wider mb-2">
+                  <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Lịch Sinh Hoạt SmashTeam</span>
                 </div>
-                <h1 className="text-3xl font-black text-secondary">Lịch Đánh & Buổi Tập</h1>
+                <h2 className="text-3xl font-black text-secondary tracking-tight">Lịch Đánh & Buổi Tập</h2>
                 <p className="text-sm text-slate-500 mt-1">Đăng ký tham gia sinh hoạt định kỳ và giao lưu nội bộ</p>
               </div>
 
               {/* Mode Switcher: Sắp tới vs Lịch sử */}
-              <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200/60 self-start sm:self-auto">
+              <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200/80 self-start sm:self-auto">
                 <button
+                  id="btn-schedule-upcoming"
                   onClick={() => setScheduleViewMode("upcoming")}
-                  className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  className={`min-h-[40px] px-5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer focus-ring ${
                     scheduleViewMode === "upcoming"
-                      ? "bg-white text-primary shadow-sm border border-slate-200/30 scale-[1.02]"
+                      ? "bg-white text-primary shadow-sm border border-slate-200/40 scale-[1.02]"
                       : "text-slate-500 hover:text-secondary"
                   }`}
                 >
                   Sắp Diễn Ra
                 </button>
                 <button
+                  id="btn-schedule-history"
                   onClick={() => setScheduleViewMode("history")}
-                  className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  className={`min-h-[40px] px-5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer focus-ring ${
                     scheduleViewMode === "history"
-                      ? "bg-white text-primary shadow-sm border border-slate-200/30 scale-[1.02]"
+                      ? "bg-white text-primary shadow-sm border border-slate-200/40 scale-[1.02]"
                       : "text-slate-500 hover:text-secondary"
                   }`}
                 >
@@ -876,26 +966,28 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Buổi tập sắp tới gần nhất (Featured Card) */}
+            {/* FEATURED NEXT MATCH CARD */}
             {scheduleViewMode === "upcoming" && upcomingSessionHighlight && (
-              <div className="bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-xl border border-purple-900/50">
-                <div className="absolute top-0 right-0 w-48 h-48 bg-primary/15 rounded-bl-full pointer-events-none"></div>
+              <div className="bg-gradient-to-br from-secondary via-[#190e38] to-secondary rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl border border-primary/30">
+                {/* Purple decorative spotlight */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
                 
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
                   <div className="space-y-3">
-                    <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-primary/30 text-smash-violet border border-purple-400/30">
-                      <Sparkles className="w-3 h-3" /> Buổi tập gần nhất
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase px-3 py-1 rounded-full bg-primary/30 text-purple-200 border border-primary/40">
+                      <Sparkles className="w-3 h-3 text-purple-300" aria-hidden="true" />
+                      <span>Buổi tập gần nhất</span>
                     </span>
-                    <h2 className="text-2xl sm:text-3xl font-black tracking-tight">{upcomingSessionHighlight.title}</h2>
+                    <h3 className="text-2xl sm:text-3xl font-black tracking-tight">{upcomingSessionHighlight.title}</h3>
                     
-                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs sm:text-sm text-slate-300">
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs sm:text-sm text-slate-300">
                       <span className="flex items-center gap-1.5">
-                        <Clock className="w-4 h-4 text-smash-violet" /> 
-                        {formatDateTime(upcomingSessionHighlight.date_time)}
+                        <Clock className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
+                        <span className="tabular-nums">{formatDateTime(upcomingSessionHighlight.date_time)}</span>
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <MapPin className="w-4 h-4 text-smash-violet" /> 
-                        {upcomingSessionHighlight.location}
+                        <MapPin className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
+                        <span>{upcomingSessionHighlight.location}</span>
                       </span>
                     </div>
                   </div>
@@ -905,37 +997,49 @@ export default function Home() {
                     {isLoggedIn ? (
                       <>
                         <button
+                          id="btn-rsvp-join"
                           onClick={() => handleRsvp(upcomingSessionHighlight.id, "going")}
                           disabled={updatingRsvp}
-                          className={`px-5 py-3 rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${
+                          className={`min-h-[44px] px-6 py-2.5 rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer focus-ring ${
                             upcomingSessionHighlight.rsvp_status === "going"
                               ? "bg-primary text-white shadow-[0_0_20px_rgba(122,34,224,0.7)] border border-purple-400/60"
                               : "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
                           }`}
                         >
-                          <Check className="w-4 h-4" /> 
-                          {upcomingSessionHighlight.rsvp_status === "going" ? "Đã xác nhận Tham gia" : "Tham gia"}
+                          <Check className="w-4 h-4" aria-hidden="true" /> 
+                          <span>{upcomingSessionHighlight.rsvp_status === "going" ? "Đã xác nhận Tham gia" : "Tham gia"}</span>
                         </button>
+
                         <button
+                          id="btn-rsvp-busy"
                           onClick={() => handleRsvp(upcomingSessionHighlight.id, "absent")}
                           disabled={updatingRsvp}
-                          className={`px-5 py-3 rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer ${
+                          className={`min-h-[44px] px-5 py-2.5 rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer focus-ring ${
                             upcomingSessionHighlight.rsvp_status === "absent"
-                              ? "bg-slate-700 text-white"
-                              : "bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700"
+                              ? "bg-slate-700 text-white border border-slate-600"
+                              : "bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700"
                           }`}
                         >
-                          <X className="w-4 h-4" /> Bận
+                          <X className="w-4 h-4" aria-hidden="true" />
+                          <span>Bận</span>
                         </button>
+
                         <Link href="/check-in">
-                          <button className="px-5 py-3 rounded-full font-bold text-xs bg-white text-slate-900 hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer">
-                            <QrCode className="w-4 h-4" /> Quét QR sân
+                          <button 
+                            id="btn-rsvp-qr"
+                            className="min-h-[44px] px-5 py-2.5 rounded-full font-bold text-xs bg-white text-slate-900 hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer focus-ring"
+                          >
+                            <QrCode className="w-4 h-4 text-primary" aria-hidden="true" />
+                            <span>Quét QR sân</span>
                           </button>
                         </Link>
                       </>
                     ) : (
                       <Link href="/login?redirect=/">
-                        <button className="px-6 py-3 rounded-full font-bold text-xs bg-primary hover:bg-primary-hover text-white flex items-center justify-center gap-2 shadow-lg shadow-primary/30 transition-all cursor-pointer">
+                        <button 
+                          id="btn-rsvp-login"
+                          className="min-h-[44px] px-7 py-3 rounded-full font-bold text-xs bg-primary hover:bg-primary-hover text-white flex items-center justify-center gap-2 shadow-lg shadow-primary/30 transition-all cursor-pointer focus-ring"
+                        >
                           Đăng nhập để RSVP
                         </button>
                       </Link>
@@ -945,10 +1049,10 @@ export default function Home() {
               </div>
             )}
 
-            {/* Danh sách các buổi tập dạng Grid */}
+            {/* GRID DANH SÁCH BUỔI TẬP */}
             <div className="space-y-4">
               <h3 className="font-bold text-lg text-secondary">
-                {scheduleViewMode === "upcoming" ? "Tất cả buổi tập sắp tới" : "Lịch sử các buổi tập đã hoàn thành"}
+                {scheduleViewMode === "upcoming" ? "Tất cả buổi tập sắp tới" : "Lịch sử các buổi tập đã diễn ra"}
               </h3>
 
               {scheduleViewMode === "upcoming" ? (
@@ -957,34 +1061,35 @@ export default function Home() {
                     {upcomingSessions.map((session) => (
                       <div 
                         key={session.id}
-                        className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all space-y-4 flex flex-col justify-between"
+                        className="bg-white rounded-3xl p-6 border border-purple-100 shadow-sm hover:shadow-md hover:border-primary/30 transition-all space-y-4 flex flex-col justify-between"
                       >
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-purple-50 text-primary border border-primary/20">
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded bg-purple-50 text-primary border border-primary/20">
                               Lịch sắp tới
                             </span>
-                            <span className="text-xs font-semibold text-slate-400">#BUOITAP-{session.id}</span>
+                            <span className="text-xs font-semibold text-slate-400 tabular-nums">#BUOITAP-{session.id}</span>
                           </div>
                           <h4 className="font-bold text-base text-secondary">{session.title}</h4>
                           
                           <div className="space-y-1.5 text-xs text-slate-500 pt-1">
                             <div className="flex items-center gap-2">
-                              <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-                              <span>{formatDateTime(session.date_time)}</span>
+                              <Clock className="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true" />
+                              <span className="tabular-nums">{formatDateTime(session.date_time)}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true" />
                               <span>{session.location}</span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                          <span className="text-xs text-slate-400">Điểm danh tại sân</span>
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                          <span className="text-xs text-slate-400">Điểm danh trực tiếp</span>
                           <Link href="/check-in">
-                            <button className="text-xs font-bold text-primary hover:text-primary-hover flex items-center gap-1">
-                              Mở QR Check-in <ChevronRight className="w-3.5 h-3.5" />
+                            <button className="min-h-[36px] text-xs font-bold text-primary hover:text-primary-hover flex items-center gap-1 cursor-pointer focus-ring p-1">
+                              <span>Mở QR Check-in</span>
+                              <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
                             </button>
                           </Link>
                         </div>
@@ -992,9 +1097,9 @@ export default function Home() {
                     ))}
                   </div>
                 ) : (
-                  <div className="bg-white rounded-3xl p-10 border border-dashed border-slate-200 text-center space-y-2">
-                    <Calendar className="w-8 h-8 text-slate-300 mx-auto" />
-                    <p className="font-bold text-slate-600 text-sm">Chưa có buổi tập mới nào được xếp lịch</p>
+                  <div className="bg-white rounded-3xl p-10 border border-dashed border-purple-200 text-center space-y-2">
+                    <Calendar className="w-8 h-8 text-slate-300 mx-auto" aria-hidden="true" />
+                    <p className="font-bold text-slate-700 text-sm">Chưa có buổi tập mới nào được xếp lịch</p>
                     <p className="text-xs text-slate-400">Ban quản trị sẽ cập nhật lịch sinh hoạt tiếp theo sớm nhất.</p>
                   </div>
                 )
@@ -1007,19 +1112,19 @@ export default function Home() {
                         className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-3 opacity-80 hover:opacity-100 transition-opacity"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                            Đã diễn ra
+                          <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                            Đã hoàn thành
                           </span>
-                          <span className="text-xs text-slate-400">#BUOITAP-{session.id}</span>
+                          <span className="text-xs text-slate-400 tabular-nums">#BUOITAP-{session.id}</span>
                         </div>
                         <h4 className="font-bold text-base text-secondary">{session.title}</h4>
                         <div className="space-y-1.5 text-xs text-slate-500">
                           <div className="flex items-center gap-2">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{formatDateTime(session.date_time)}</span>
+                            <Clock className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+                            <span className="tabular-nums">{formatDateTime(session.date_time)}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                            <MapPin className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
                             <span>{session.location}</span>
                           </div>
                         </div>
@@ -1028,21 +1133,22 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="bg-white rounded-3xl p-10 border border-dashed border-slate-200 text-center space-y-2">
-                    <History className="w-8 h-8 text-slate-300 mx-auto" />
-                    <p className="font-bold text-slate-600 text-sm">Chưa có dữ liệu lịch sử buổi tập</p>
+                    <History className="w-8 h-8 text-slate-300 mx-auto" aria-hidden="true" />
+                    <p className="font-bold text-slate-700 text-sm">Chưa có dữ liệu lịch sử buổi tập</p>
                   </div>
                 )
               )}
             </div>
 
-            {/* Nội quy & Lưu ý sân cầu */}
-            <div className="bg-purple-50/60 rounded-3xl p-6 border border-purple-100 space-y-3">
+            {/* NỘI QUY SÂN CẦU */}
+            <div className="bg-purple-50/70 rounded-3xl p-6 sm:p-7 border border-purple-100 space-y-3">
               <h4 className="font-bold text-sm text-secondary flex items-center gap-2">
-                <Shield className="w-4 h-4 text-primary" /> Lưu ý khi tham gia sinh hoạt:
+                <Shield className="w-4 h-4 text-primary" aria-hidden="true" />
+                <span>Lưu ý khi tham gia sinh hoạt SmashTeam:</span>
               </h4>
-              <ul className="text-xs text-slate-600 space-y-2 pl-4 list-disc">
+              <ul className="text-xs text-slate-600 space-y-2 pl-4 list-disc leading-relaxed">
                 <li>Vui lòng mang theo <strong>giày cầu lông chuyên dụng</strong> (đế cao su gum) để bảo vệ mặt thảm sân và tránh chấn thương.</li>
-                <li>Có mặt trước giờ tập <strong>10 - 15 phút</strong> để khởi động kỹ các khớp và nhận sân.</li>
+                <li>Có mặt trước giờ tập <strong>10 - 15 phút</strong> để khởi động kỹ các khớp và nhận sân thi đấu.</li>
                 <li>Quét mã QR tại bàn tiếp tân sân hoặc bấm <strong>Điểm danh QR</strong> để nhận thưởng <strong>+25 XP</strong> và <strong>+10 Smash Coins</strong>.</li>
               </ul>
             </div>
@@ -1051,9 +1157,14 @@ export default function Home() {
 
       </div>
 
-      {/* FOOTER */}
-      <footer className="bg-slate-950 text-slate-400 py-10 text-center border-t border-slate-800/80 mt-16">
-        <div className="max-w-7xl mx-auto px-4 space-y-2">
+      {/* FOOTER (Deep Obsidian Black + Purple Glow Accent) */}
+      <footer className="bg-secondary text-slate-400 py-12 text-center border-t border-purple-950/60 mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-3">
+          <div className="flex items-center justify-center gap-2">
+            <span className="font-black text-xl text-white tracking-tight">
+              Smash<span className="text-primary">Team</span>
+            </span>
+          </div>
           <p className="text-sm font-semibold text-slate-300">© 2026 SmashTeam Badminton Club. All rights reserved.</p>
           <p className="text-xs text-slate-500">Nơi đam mê hội tụ • Tinh thần thể thao trung thực • Nâng tầm bản lĩnh</p>
         </div>

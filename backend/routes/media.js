@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { upload, cloudinary } = require('../utils/cloudinary');
+const fs = require('fs');
+const path = require('path');
+const { upload, cloudinary, uploadsDir } = require('../utils/cloudinary');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
 
 // GET /api/media - Lấy danh sách media posts
@@ -90,6 +92,17 @@ router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
       if (publicId) {
         console.log(`Deleting image from Cloudinary: ${publicId}`);
         await cloudinary.uploader.destroy(publicId);
+      }
+    } else if (contentUrl && contentUrl.includes('/uploads/')) {
+      // Local disk file deletion
+      const filename = contentUrl.split('/uploads/')[1];
+      if (filename) {
+        const localPath = path.join(uploadsDir, filename);
+        if (fs.existsSync(localPath)) {
+          fs.unlink(localPath, (err) => {
+            if (err) console.error('Error deleting local file:', err);
+          });
+        }
       }
     }
     

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { QRCodeCanvas } from "qrcode.react";
+import { getShortName } from "@/app/utils/rank";
 
 export default function AdminSessionsPage() {
   const router = useRouter();
@@ -275,8 +276,8 @@ export default function AdminSessionsPage() {
                               {a.avatar_url ? (
                                 <img src={a.avatar_url} alt={a.full_name} className="w-full h-full object-cover" />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center font-bold bg-purple-900 text-white uppercase text-[10px]">
-                                  {a.full_name.charAt(0)}
+                                <div className="w-full h-full flex items-center justify-center font-bold bg-purple-900 text-white uppercase text-[10px] px-0.5 truncate">
+                                  {getShortName(a.full_name)}
                                 </div>
                               )}
                             </div>

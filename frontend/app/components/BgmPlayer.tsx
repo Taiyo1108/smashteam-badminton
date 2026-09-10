@@ -127,27 +127,28 @@ export default function BgmPlayer() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50">
+    <aside aria-label="Bộ điều khiển âm nhạc nền" className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50">
       <button
+        id="btn-bgm-toggle"
         onClick={handleTogglePlay}
-        className="w-12 h-12 rounded-full flex items-center justify-center bg-smash-dark border-2 border-smash-violet text-smash-violet shadow-[0_0_15px_rgba(157,78,221,0.6)] hover:shadow-[0_0_25px_rgba(157,78,221,0.9)] hover:scale-110 active:scale-95 transition-all duration-300 cursor-pointer"
-        aria-label={isPlaying ? "Mute Background Music" : "Play Background Music"}
+        className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-secondary border-2 border-primary-hover text-smash-violet shadow-[0_0_18px_rgba(157,78,221,0.65)] hover:shadow-[0_0_28px_rgba(157,78,221,0.95)] hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer focus-ring"
+        aria-label={isPlaying ? "Tắt nhạc nền phòng chờ" : "Bật nhạc nền sôi động"}
         title={isPlaying ? "Tắt nhạc nền" : "Bật nhạc nền"}
       >
         {isPlaying ? (
           <div className="flex items-center justify-center gap-[3px]">
-            <Volume2 className="w-5 h-5 animate-pulse" />
+            <Volume2 className="w-5 h-5 animate-pulse text-white" aria-hidden="true" />
             {/* Visual audio soundwaves bar animation */}
-            <div className="flex items-end gap-[2px] h-4">
+            <div className="flex items-end gap-[2px] h-4" aria-hidden="true">
               <span className="sound-wave-bar" style={{ animationDelay: '0.1s' }} />
               <span className="sound-wave-bar" style={{ animationDelay: '0.4s' }} />
               <span className="sound-wave-bar" style={{ animationDelay: '0.7s' }} />
             </div>
           </div>
         ) : (
-          <VolumeX className="w-5 h-5 text-slate-400" />
+          <VolumeX className="w-5 h-5 text-slate-400" aria-hidden="true" />
         )}
       </button>
-    </div>
+    </aside>
   );
 }

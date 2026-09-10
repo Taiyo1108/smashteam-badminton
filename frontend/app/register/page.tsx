@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft, CheckCircle2, QrCode, Loader2, MapPin, Calendar, AlertCircle } from "lucide-react";
+import { ArrowRight, ArrowLeft, CheckCircle2, Loader2, MapPin, AlertCircle, Sparkles } from "lucide-react";
 import confetti from "canvas-confetti";
 import Link from "next/link";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
 
 const levels = [
-  { id: "Mới chơi", label: "Mới chơi", desc: "Chưa biết nhiều về kỹ thuật, muốn học hỏi thêm" },
-  { id: "Trung bình", label: "Trung bình", desc: "Đã biết luật cơ bản, đánh phong trào" },
-  { id: "Khá/Giỏi", label: "Khá/Giỏi", desc: "Kỹ thuật tốt, sẵn sàng thi đấu giải" }
+  { id: "Mới chơi", label: "Mới chơi", desc: "Chưa biết nhiều về kỹ thuật, muốn học hỏi và giao lưu" },
+  { id: "Trung bình", label: "Trung bình", desc: "Đã nắm vững luật cơ bản, đánh phong trào thường xuyên" },
+  { id: "Khá/Giỏi", label: "Khá/Giỏi", desc: "Kỹ chiến thuật tốt, sẵn sàng thi đấu giải thăng hạng" }
 ];
 
 const skills = [
@@ -104,11 +104,12 @@ export default function RegisterPage() {
     }
     setStep(prev => prev + 1);
   };
+
   const prevStep = () => setStep(prev => prev - 1);
 
   const handleSubmit = async () => {
     if (!formData.selectedSlot) {
-      alert("Vui lòng chọn 1 ca Casting.");
+      alert("Vui lòng chọn 1 ca Casting phù hợp.");
       return;
     }
 
@@ -137,7 +138,12 @@ export default function RegisterPage() {
 
       setIsSubmitting(false);
       setIsSuccess(true);
-      confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#eab308', '#ca8a04', '#1e293b', '#ffffff'] });
+      confetti({ 
+        particleCount: 160, 
+        spread: 85, 
+        origin: { y: 0.6 }, 
+        colors: ['#7A22E0', '#9D4EDD', '#0C0A1A', '#ffffff'] 
+      });
     } catch (error: any) {
       alert(error.message || 'Đã có lỗi xảy ra. Vui lòng thử lại sau.');
       setIsSubmitting(false);
@@ -145,38 +151,45 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-background flex flex-col relative overflow-hidden text-foreground">
       {/* Navbar Minimal */}
-      <nav className="absolute top-0 w-full z-50 p-6">
-        <Link href="/" className="flex items-center gap-2 font-bold text-xl text-secondary">
-          <ArrowLeft className="w-5 h-5" /> Trở về
+      <header className="absolute top-0 w-full z-50 p-4 sm:p-6 flex items-center justify-between">
+        <Link 
+          href="/" 
+          className="flex items-center gap-2 font-bold text-xs sm:text-sm text-secondary hover:text-primary transition-colors px-3 py-1.5 rounded-full bg-white/80 border border-purple-100 backdrop-blur-md focus-ring cursor-pointer shadow-xs"
+        >
+          <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+          <span>Quay lại Trang chủ</span>
         </Link>
-      </nav>
+        <span className="font-black text-sm tracking-tight text-secondary">
+          Smash<span className="text-primary">Team</span>
+        </span>
+      </header>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col justify-center items-center p-4 z-10 relative">
+      <main className="flex-1 flex flex-col justify-center items-center p-4 z-10 relative pt-20 sm:pt-24 pb-12">
         {!isSuccess ? (
-          <div className="w-full max-w-2xl bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 md:p-12 border border-slate-100 mt-16">
+          <div className="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-6 sm:p-10 border border-purple-100">
             {/* Progress Bar */}
-            <div className="mb-12">
-              <div className="flex justify-between mb-2">
-                <span className="text-sm font-bold text-slate-400">Bước {step}/3</span>
-                <span className="text-sm font-bold text-primary">
-                  {step === 1 ? "Thông tin cơ bản" : step === 2 ? "Học vấn" : "Chọn Ca Casting"}
+            <div className="mb-10">
+              <div className="flex justify-between items-center mb-2.5">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Bước {step}/3</span>
+                <span className="text-xs sm:text-sm font-bold text-primary">
+                  {step === 1 ? "1. Thông tin liên hệ" : step === 2 ? "2. Học vấn & Kỹ năng" : "3. Chọn Ca Casting"}
                 </span>
               </div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
                 <motion.div 
-                  className="h-full bg-primary"
+                  className="h-full bg-gradient-to-r from-primary to-smash-violet"
                   initial={{ width: 0 }}
                   animate={{ width: `${(step / 3) * 100}%` }}
-                  transition={{ duration: 0.3 }}
+                  transition={{ duration: 0.35 }}
                 />
               </div>
             </div>
 
-            {/* Form Area */}
-            <div className="min-h-[300px]">
+            {/* Form Steps */}
+            <div className="min-h-[320px]">
               <AnimatePresence mode="wait">
                 {step === 1 && (
                   <motion.div
@@ -184,25 +197,39 @@ export default function RegisterPage() {
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    className="space-y-6"
+                    className="space-y-5"
                   >
-                    <h2 className="text-3xl font-bold text-secondary mb-8">Thông tin của bạn</h2>
                     <div>
-                      <label className="block text-sm font-bold text-slate-600 mb-2">Họ và tên</label>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-primary bg-purple-50 px-2.5 py-0.5 rounded-full border border-primary/20 mb-2">
+                        <Sparkles className="w-3 h-3" aria-hidden="true" /> Đơn Gia Nhập SmashTeam
+                      </span>
+                      <h1 className="text-2xl sm:text-3xl font-black text-secondary tracking-tight">Thông tin cá nhân</h1>
+                    </div>
+
+                    <div>
+                      <label htmlFor="reg-fullname" className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                        Họ và tên <span className="text-red-500">*</span>
+                      </label>
                       <input 
+                        id="reg-fullname"
                         type="text" 
                         placeholder="Nguyễn Văn A"
-                        className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800"
+                        className="w-full min-h-[48px] px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800 text-sm"
                         value={formData.fullName}
                         onChange={(e) => updateForm("fullName", e.target.value)}
+                        required
                       />
                     </div>
+
                     <div>
-                      <label className="block text-sm font-bold text-slate-600 mb-2">Số điện thoại (Zalo)</label>
+                      <label htmlFor="reg-phone" className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                        Số điện thoại Zalo <span className="text-red-500">*</span>
+                      </label>
                       <input 
+                        id="reg-phone"
                         type="tel" 
                         placeholder="09..."
-                        className={`w-full px-5 py-4 rounded-xl border outline-none transition-all text-slate-800 ${
+                        className={`w-full min-h-[48px] px-4 py-3 rounded-xl border outline-none transition-all text-slate-800 text-sm ${
                           phoneError 
                             ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100" 
                             : "border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -213,35 +240,44 @@ export default function RegisterPage() {
                           updateForm("phoneZalo", val);
                           validatePhone(val);
                         }}
+                        required
                       />
                       {phoneError && (
-                        <p className="text-xs text-red-500 mt-2 font-medium flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <p className="text-xs text-red-500 mt-1.5 font-medium flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                           <span>{phoneError}</span>
                         </p>
                       )}
                     </div>
+
                     <div>
-                      <label className="block text-sm font-bold text-slate-600 mb-2">Địa chỉ Email</label>
+                      <label htmlFor="reg-email" className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                        Địa chỉ Email <span className="text-red-500">*</span>
+                      </label>
                       <input 
+                        id="reg-email"
                         type="email" 
                         placeholder="example@domain.com"
-                        className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800 mb-4"
+                        className="w-full min-h-[48px] px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800 text-sm"
                         value={formData.email}
                         onChange={(e) => updateForm("email", e.target.value)}
+                        required
                       />
                     </div>
+
                     <div>
-                      <label className="block text-sm font-bold text-slate-600 mb-2">Giới tính</label>
-                      <div className="flex gap-4">
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                        Giới tính <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex gap-3">
                         {["Nam", "Nữ", "Khác"].map((g) => (
                           <button
                             key={g}
                             type="button"
                             onClick={() => updateForm("gender", g)}
-                            className={`flex-1 py-3.5 text-sm font-bold border-2 rounded-xl transition-all ${
+                            className={`flex-1 min-h-[44px] py-2.5 text-xs sm:text-sm font-bold border-2 rounded-xl transition-all cursor-pointer focus-ring ${
                               formData.gender === g
-                                ? "border-primary bg-primary/5 text-primary shadow-sm scale-[1.02]"
+                                ? "border-primary bg-purple-50 text-primary shadow-xs scale-[1.02]"
                                 : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
                             }`}
                           >
@@ -261,39 +297,61 @@ export default function RegisterPage() {
                     exit={{ opacity: 0, x: -20 }}
                     className="space-y-6"
                   >
-                    <h2 className="text-3xl font-bold text-secondary mb-8">Trường & Chuyên môn</h2>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-primary bg-purple-50 px-2.5 py-0.5 rounded-full border border-primary/20 mb-2">
+                        <Sparkles className="w-3 h-3" aria-hidden="true" /> Bước 2 / 3
+                      </span>
+                      <h2 className="text-2xl sm:text-3xl font-black text-secondary tracking-tight">Trường & Trình độ</h2>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-bold text-slate-600 mb-2">Trường Đại học</label>
+                        <label htmlFor="reg-uni" className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                          Trường Đại học / Nơi học <span className="text-red-500">*</span>
+                        </label>
                         <input 
+                          id="reg-uni"
                           type="text" 
-                          placeholder="VD: ĐH Bách Khoa"
-                          className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800"
+                          placeholder="VD: ĐH Bách Khoa, ĐH CNTT..."
+                          className="w-full min-h-[48px] px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800 text-sm"
                           value={formData.university}
                           onChange={(e) => updateForm("university", e.target.value)}
+                          required
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-bold text-slate-600 mb-2">Ngành / Khóa</label>
+                        <label htmlFor="reg-course" className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                          Ngành / Khóa
+                        </label>
                         <input 
+                          id="reg-course"
                           type="text" 
-                          placeholder="VD: K64"
-                          className="w-full px-5 py-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800"
+                          placeholder="VD: K64, 2024..."
+                          className="w-full min-h-[48px] px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-slate-800 text-sm"
                           value={formData.courseYear}
                           onChange={(e) => updateForm("courseYear", e.target.value)}
                         />
                       </div>
                     </div>
+
                     <div>
-                      <label className="block text-sm font-bold text-slate-600 mb-4">Trình độ cầu lông của bạn?</label>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <label className="block text-xs font-bold text-slate-700 mb-3 uppercase tracking-wider">
+                        Trình độ cầu lông của bạn? <span className="text-red-500">*</span>
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {levels.map((lvl) => (
                           <div 
                             key={lvl.id}
                             onClick={() => updateForm("level", lvl.id)}
-                            className={`cursor-pointer p-4 rounded-2xl border-2 transition-all duration-300 ${formData.level === lvl.id ? 'border-primary bg-primary/5 shadow-md scale-[1.02]' : 'border-slate-100 hover:border-slate-300 bg-white'}`}
+                            className={`cursor-pointer p-4 rounded-2xl border-2 transition-all duration-200 focus-ring ${
+                              formData.level === lvl.id 
+                                ? 'border-primary bg-purple-50/70 shadow-sm scale-[1.02]' 
+                                : 'border-slate-200 hover:border-purple-200 bg-white'
+                            }`}
                           >
-                            <h3 className={`font-bold mb-1 text-sm ${formData.level === lvl.id ? 'text-primary' : 'text-secondary'}`}>{lvl.label}</h3>
+                            <h3 className={`font-bold mb-1 text-sm ${formData.level === lvl.id ? 'text-primary' : 'text-secondary'}`}>
+                              {lvl.label}
+                            </h3>
                             <p className="text-xs text-slate-500 leading-relaxed">{lvl.desc}</p>
                           </div>
                         ))}
@@ -308,17 +366,26 @@ export default function RegisterPage() {
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    className="space-y-8"
+                    className="space-y-6"
                   >
-                    <h2 className="text-3xl font-bold text-secondary mb-2">Ca Casting & Kỹ năng</h2>
+                    <div>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-primary bg-purple-50 px-2.5 py-0.5 rounded-full border border-primary/20 mb-2">
+                        <Sparkles className="w-3 h-3" aria-hidden="true" /> Bước 3 / 3
+                      </span>
+                      <h2 className="text-2xl sm:text-3xl font-black text-secondary tracking-tight">Ca Casting & Kỹ năng</h2>
+                    </div>
                     
                     <div>
-                      <label className="block text-sm font-bold text-slate-600 mb-4">Chọn 1 Ca Casting phù hợp với bạn <span className="text-red-500">*</span></label>
+                      <label className="block text-xs font-bold text-slate-700 mb-3 uppercase tracking-wider">
+                        Chọn 1 Ca Casting phù hợp <span className="text-red-500">*</span>
+                      </label>
                       {isLoadingSlots ? (
-                        <div className="flex justify-center p-6 text-primary"><Loader2 className="animate-spin w-8 h-8" /></div>
+                        <div className="flex justify-center p-8 text-primary">
+                          <Loader2 className="animate-spin w-8 h-8" aria-hidden="true" />
+                        </div>
                       ) : slots.length === 0 ? (
-                        <div className="p-6 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200 text-sm">
-                          Hiện chưa có khung giờ Casting nào. Vui lòng quay lại sau hoặc liên hệ Fanpage.
+                        <div className="p-6 text-center text-slate-500 bg-purple-50/50 rounded-2xl border border-purple-100 text-sm">
+                          Hiện chưa có khung giờ Casting khả dụng. Vui lòng quay lại sau hoặc liên hệ Fanpage SmashTeam.
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -326,17 +393,28 @@ export default function RegisterPage() {
                             <div 
                               key={slot.id} 
                               onClick={() => slot.is_active && updateForm("selectedSlot", slot.id)}
-                              className={`p-4 border-2 rounded-xl transition-all ${!slot.is_active ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed' : formData.selectedSlot === slot.id ? 'bg-primary/5 border-primary shadow-sm cursor-pointer' : 'bg-white border-slate-100 hover:border-slate-300 cursor-pointer'}`}
+                              className={`p-4 border-2 rounded-2xl transition-all focus-ring ${
+                                !slot.is_active 
+                                  ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed' 
+                                  : formData.selectedSlot === slot.id 
+                                    ? 'bg-purple-50/70 border-primary shadow-sm cursor-pointer scale-[1.02]' 
+                                    : 'bg-white border-slate-200 hover:border-purple-200 cursor-pointer'
+                              }`}
                             >
-                              <div className="font-bold text-secondary mb-2 flex justify-between items-center">
+                              <div className="font-bold text-secondary mb-1.5 flex justify-between items-center">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-lg">{format(new Date(slot.casting_time), "HH:mm")}</span>
-                                  {!slot.is_active && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold uppercase">Đã đóng</span>}
+                                  <span className="text-base font-black tabular-nums">{format(new Date(slot.casting_time), "HH:mm")}</span>
+                                  {!slot.is_active && (
+                                    <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold uppercase">Đã đóng</span>
+                                  )}
                                 </div>
-                                <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">{format(new Date(slot.casting_time), "dd/MM/yyyy")}</span>
+                                <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded tabular-nums">
+                                  {format(new Date(slot.casting_time), "dd/MM/yyyy")}
+                                </span>
                               </div>
-                              <div className="text-sm text-slate-600 flex items-center gap-1">
-                                <MapPin className="w-4 h-4 text-primary/70" /> {slot.location}
+                              <div className="text-xs text-slate-600 flex items-center gap-1.5">
+                                <MapPin className="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true" />
+                                <span>{slot.location}</span>
                               </div>
                             </div>
                           ))}
@@ -345,16 +423,19 @@ export default function RegisterPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-bold text-slate-600 mb-4">Bạn có thể hỗ trợ CLB các mảng nào? (Không bắt buộc)</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-3 uppercase tracking-wider">
+                        Kỹ năng bổ trợ có thể đóng góp cho CLB (Không bắt buộc)
+                      </label>
                       <div className="flex flex-wrap gap-2">
                         {skills.map(skill => (
                           <button 
                             key={skill}
+                            type="button"
                             onClick={() => handleSkillToggle(skill)}
-                            className={`px-4 py-2 text-sm font-bold border-2 rounded-full transition-all ${
+                            className={`min-h-[40px] px-4 py-2 text-xs font-bold border-2 rounded-full transition-all cursor-pointer focus-ring ${
                               formData.selectedSkills.includes(skill) 
-                                ? 'bg-primary border-primary text-white shadow-md' 
-                                : 'bg-white border-slate-100 text-slate-600 hover:border-slate-300'
+                                ? 'bg-primary border-primary text-white shadow-xs' 
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-purple-300'
                             }`}
                           >
                             {skill}
@@ -368,60 +449,69 @@ export default function RegisterPage() {
             </div>
 
             {/* Navigation Buttons */}
-            <div className="mt-12 flex justify-between items-center pt-8 border-t border-slate-100">
+            <div className="mt-10 flex justify-between items-center pt-6 border-t border-purple-100">
               {step > 1 ? (
                 <button 
                   onClick={prevStep}
-                  className="px-6 py-3 rounded-full text-slate-500 hover:bg-slate-100 font-medium transition-colors"
+                  className="min-h-[44px] px-6 py-2.5 rounded-full text-slate-600 hover:bg-slate-100 font-bold text-xs sm:text-sm transition-colors cursor-pointer focus-ring"
                 >
                   Quay lại
                 </button>
-              ) : <div></div>}
+              ) : <div />}
 
               {step < 3 ? (
                 <button 
                   onClick={nextStep}
-                  className="px-8 py-3 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                  className="min-h-[44px] px-8 py-3 bg-primary hover:bg-primary-hover text-white rounded-full font-bold text-xs sm:text-sm transition-all flex items-center gap-2 shadow-md shadow-primary/25 active:scale-95 cursor-pointer focus-ring"
                 >
-                  Tiếp tục <ArrowRight className="w-4 h-4" />
+                  <span>Tiếp tục</span>
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
                 </button>
               ) : (
                 <button 
                   onClick={handleSubmit}
                   disabled={!formData.selectedSlot || isSubmitting}
-                  className="px-8 py-3 bg-secondary hover:bg-slate-900 disabled:opacity-50 text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                  className="min-h-[44px] px-8 py-3 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white rounded-full font-bold text-xs sm:text-sm transition-all flex items-center gap-2 shadow-md shadow-primary/30 active:scale-95 cursor-pointer focus-ring"
                 >
-                  {isSubmitting ? "Đang xử lý..." : "Hoàn tất Đăng ký"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                      <span>Đang xử lý...</span>
+                    </>
+                  ) : (
+                    <span>Hoàn tất Đăng ký</span>
+                  )}
                 </button>
               )}
             </div>
           </div>
         ) : (
           <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-10 text-center relative overflow-hidden mt-16"
+            className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 sm:p-10 text-center relative overflow-hidden border border-purple-100"
           >
-            <div className="absolute top-0 left-0 w-full h-2 bg-primary"></div>
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 className="w-10 h-10 text-green-500" />
+            <div className="w-20 h-20 bg-emerald-50 text-emerald-500 border border-emerald-200 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
+              <CheckCircle2 className="w-10 h-10" aria-hidden="true" />
             </div>
-            <h2 className="text-3xl font-extrabold text-secondary mb-4">Chào mừng bạn!</h2>
-            <p className="text-slate-500 mb-8 leading-relaxed">
-              Hồ sơ của bạn đã được ghi nhận. Đừng quên đến tham gia Casting đúng theo khung giờ bạn đã chọn nhé!
+            <h1 className="text-2xl sm:text-3xl font-black text-secondary mb-3">Chào mừng bạn!</h1>
+            <p className="text-slate-500 text-sm mb-8 leading-relaxed">
+              Hồ sơ đăng ký của bạn đã được ghi nhận thành công. Vui lòng ghi nhớ lịch và có mặt đúng khung giờ Casting bạn đã chọn!
             </p>
             
-            <button onClick={() => window.location.href = "/"} className="block w-full py-4 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-colors shadow-lg">
-              Quay lại Trang Chủ
-            </button>
+            <Link href="/">
+              <button className="min-h-[48px] w-full py-3.5 bg-primary hover:bg-primary-hover text-white rounded-full font-bold text-sm transition-all shadow-lg shadow-primary/30 active:scale-95 cursor-pointer focus-ring">
+                Quay lại Trang Chủ
+              </button>
+            </Link>
           </motion.div>
         )}
-      </div>
+      </main>
 
-      {/* Decorative Background Elements */}
+      {/* Subtle Background Radial Mesh */}
       <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-0 overflow-hidden">
-        <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-primary/5 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-[-10%] left-[-5%] w-[30rem] h-[30rem] bg-slate-200/50 rounded-full blur-3xl"></div>
+        <div className="absolute -top-10 -right-10 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-10 -left-10 w-96 h-96 bg-primary-hover/5 rounded-full blur-3xl" />
       </div>
     </div>
   );

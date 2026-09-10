@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle } from "lucide-react";
+import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle, Clock, Flame, Calendar, MapPin, Save } from "lucide-react";
 import { API_URL } from "@/app/config";
 
 export default function ContentManagementPage() {
@@ -11,6 +11,21 @@ export default function ContentManagementPage() {
   const [coverError, setCoverError] = useState("");
   const [coverSuccess, setCoverSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
+
+  // States for Featured Event Countdown Settings
+  const [eventForm, setEventForm] = useState({
+    title: "",
+    subtitle: "",
+    date: "",
+    location: "",
+    badge: "GIẢI ĐẤU NỔI BẬT",
+    actionText: "Đăng ký tham gia ngay",
+    actionLink: "/schedule",
+    enabled: true
+  });
+  const [eventSaving, setEventSaving] = useState(false);
+  const [eventSuccess, setEventSuccess] = useState(false);
+  const [eventError, setEventError] = useState("");
 
   // States for Media Posts
   const [mediaPosts, setMediaPosts] = useState<any[]>([]);
@@ -50,9 +65,89 @@ export default function ContentManagementPage() {
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
+        if (data) {
+          setEventForm({
+            title: data.featured_event_title || "Giải Đấu Cầu Lông SmashTeam Championship 2026",
+            subtitle: data.featured_event_subtitle || "Sự kiện quy tụ hơn 50 vợt thủ tranh cúp ELO Vàng, vinh danh tay vợt xuất sắc và phần thưởng tài trợ độc quyền.",
+            date: data.featured_event_date ? data.featured_event_date.substring(0, 16) : "2026-09-20T08:30",
+            location: data.featured_event_location || "Cụm Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM",
+            badge: data.featured_event_badge || "GIẢI ĐẤU NỔI BẬT",
+            actionText: data.featured_event_action_text || "Đăng ký tham gia ngay",
+            actionLink: data.featured_event_action_link || "/schedule",
+            enabled: data.featured_event_enabled !== "false"
+          });
+        }
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
+    }
+  };
+
+  // Handle Save Featured Event Countdown
+  const handleSaveEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEventSaving(true);
+    setEventError("");
+    setEventSuccess(false);
+
+    try {
+      const token = localStorage.getItem("admin_token");
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      };
+
+      const updates = [
+        fetch(`${API_URL}/api/settings/featured_event_title`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.title })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_subtitle`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.subtitle })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_date`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.date })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_location`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.location })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_badge`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.badge })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_action_text`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.actionText })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_action_link`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.actionLink })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_enabled`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: String(eventForm.enabled) })
+        })
+      ];
+
+      await Promise.all(updates);
+      setEventSuccess(true);
+      setTimeout(() => setEventSuccess(false), 3500);
+      fetchSettings();
+    } catch (err) {
+      setEventError("Lỗi kết nối khi lưu cài đặt sự kiện.");
+    } finally {
+      setEventSaving(false);
     }
   };
 
@@ -292,6 +387,129 @@ export default function ContentManagementPage() {
                 * Khuyến nghị sử dụng ảnh ngang tỉ lệ 16:9, độ phân giải cao và được nén tối ưu để trang chủ tải nhanh nhất.
               </p>
             </div>
+          </div>
+
+          {/* CÀI ĐẶT SỰ KIỆN ĐẾM NGƯỢC NỔI BẬT */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <h2 className="text-lg font-bold text-secondary mb-4 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-primary" /> Sự kiện Đếm ngược Trang chủ
+            </h2>
+
+            <form onSubmit={handleSaveEvent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Tiêu đề sự kiện</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Giải Đấu Cầu Lông Mở Rộng..."
+                  value={eventForm.title}
+                  onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
+                  className="w-full p-2.5 border rounded-xl text-sm outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Mô tả ngắn</label>
+                <textarea
+                  rows={2}
+                  placeholder="Thông điệp sự kiện hoặc phần thưởng..."
+                  value={eventForm.subtitle}
+                  onChange={(e) => setEventForm({ ...eventForm, subtitle: e.target.value })}
+                  className="w-full p-2.5 border rounded-xl text-sm outline-none focus:border-primary resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Thời gian diễn ra</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={eventForm.date}
+                    onChange={(e) => setEventForm({ ...eventForm, date: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl text-sm outline-none focus:border-primary bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Địa điểm tổ chức</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Sân cầu lông Lan Anh, Q.10..."
+                    value={eventForm.location}
+                    onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Huy hiệu (Badge)</label>
+                  <input
+                    type="text"
+                    placeholder="SỰ KIỆN NỔI BẬT"
+                    value={eventForm.badge}
+                    onChange={(e) => setEventForm({ ...eventForm, badge: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl text-xs outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Chữ nút bấm (CTA)</label>
+                  <input
+                    type="text"
+                    placeholder="Đăng ký tham gia ngay"
+                    value={eventForm.actionText}
+                    onChange={(e) => setEventForm({ ...eventForm, actionText: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl text-xs outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
+                  <input
+                    type="checkbox"
+                    checked={eventForm.enabled}
+                    onChange={(e) => setEventForm({ ...eventForm, enabled: e.target.checked })}
+                    className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary"
+                  />
+                  <span className="text-xs font-bold text-slate-700">
+                    Bật hiển thị bảng đếm ngược tại Trang chủ
+                  </span>
+                </label>
+              </div>
+
+              {eventSuccess && (
+                <div className="p-3 bg-green-50 text-green-700 rounded-xl text-xs flex items-center gap-2 border border-green-200">
+                  <Check className="w-4 h-4 shrink-0" /> Đã lưu cấu hình đếm ngược thành công!
+                </div>
+              )}
+
+              {eventError && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+                  <AlertCircle className="w-4 h-4 shrink-0" /> {eventError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={eventSaving}
+                className="w-full py-2.5 px-4 bg-primary hover:bg-primary-hover text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                {eventSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" /> Lưu cấu hình sự kiện
+                  </>
+                )}
+              </button>
+            </form>
           </div>
         </div>
 
