@@ -22,6 +22,12 @@ export interface ActiveCampaignInfo {
   start_date?: string;
   end_date?: string;
   is_active?: boolean;
+  badge_text?: string;
+  description?: string;
+  location?: string;
+  target_audience?: string;
+  target_capacity?: number;
+  timeline_steps?: any;
   slots?: CastingSlotInfo[];
   total_registered?: number;
 }
@@ -39,27 +45,41 @@ export default function EventRecruitmentCard({
 }: EventRecruitmentCardProps) {
   // Compute numbers from active campaign or fallback to default recruitment campaign
   const campaignName = campaign?.name || "Chiến Dịch Tuyển Vợt Thủ SmashTeam Mùa Giải 2026";
+  const campaignBadge = campaign?.badge_text || "Mùa Tuyển Quân 2026";
+  const campaignDesc = campaign?.description || "Chào đón mọi cấp độ vợt thủ đam mê cầu lông gia nhập ngôi nhà chung SmashTeam. Tham gia ngay để tỏa sáng, nâng hạng ELO và rèn luyện thể lực hàng tuần!";
+  const campaignLocation = campaign?.location || "Sân Cầu Lông Lan Anh";
+  const campaignAudience = campaign?.target_audience || "Mọi cấp độ tay vợt";
   const slots = campaign?.slots || [];
   
   // Calculate total capacity and registered
-  let totalCapacity = 60;
-  let totalRegistered = 45;
+  let totalCapacity = campaign?.target_capacity ? Number(campaign.target_capacity) : 60;
+  let totalRegistered = 0;
   if (slots.length > 0) {
-    totalCapacity = slots.reduce((acc, s) => acc + (Number(s.max_capacity) || 0), 0) || 60;
-    totalRegistered = slots.reduce((acc, s) => acc + (Number(s.registered_count) || 0), 0) || 38;
+    const slotsCap = slots.reduce((acc, s) => acc + (Number(s.max_capacity) || 0), 0);
+    if (slotsCap > 0 && !campaign?.target_capacity) totalCapacity = slotsCap;
+    totalRegistered = slots.reduce((acc, s) => acc + (Number(s.registered_count) || 0), 0);
   }
   if (campaign?.total_registered !== undefined) {
-    totalRegistered = campaign.total_registered;
+    totalRegistered = Number(campaign.total_registered);
   }
 
-  const fillPercent = Math.min(Math.round((totalRegistered / totalCapacity) * 100), 100);
+  const fillPercent = totalCapacity > 0 ? Math.min(Math.round((totalRegistered / totalCapacity) * 100), 100) : 0;
   const remainingSlots = Math.max(0, totalCapacity - totalRegistered);
 
   // Format dates
   const startDateStr = campaign?.start_date ? format(new Date(campaign.start_date), "dd/MM/yyyy") : "01/03/2026";
   const endDateStr = campaign?.end_date ? format(new Date(campaign.end_date), "dd/MM/yyyy") : "30/03/2026";
 
-  const timelineSteps = [
+  let parsedTimeline = null;
+  if (campaign?.timeline_steps) {
+    try {
+      parsedTimeline = typeof campaign.timeline_steps === "string" ? JSON.parse(campaign.timeline_steps) : campaign.timeline_steps;
+    } catch (e) {
+      // fallback
+    }
+  }
+
+  const timelineSteps = Array.isArray(parsedTimeline) && parsedTimeline.length > 0 ? parsedTimeline : [
     {
       step: "01",
       title: "Nộp Đơn Online",
@@ -83,6 +103,8 @@ export default function EventRecruitmentCard({
     }
   ];
 
+  const isActive = campaign?.is_active !== false;
+
   return (
     <section 
       aria-labelledby="recruitment-card-title" 
@@ -101,16 +123,22 @@ export default function EventRecruitmentCard({
             
             {/* Status Badges */}
             <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-black tracking-wider uppercase backdrop-blur-md">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              {isActive ? (
+                <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-black tracking-wider uppercase backdrop-blur-md">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span>Đang Mở Nhận Đơn</span>
                 </span>
-                <span>Đang Mở Nhận Đơn</span>
-              </span>
+              ) : (
+                <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-black tracking-wider uppercase backdrop-blur-md">
+                  <span>Tạm Đóng Nhận Đơn</span>
+                </span>
+              )}
 
               <span className="text-xs font-bold text-purple-300 px-3 py-1 rounded-full bg-white/5 border border-white/10">
-                Mùa Tuyển Quân 2026
+                {campaignBadge}
               </span>
             </div>
 
@@ -120,7 +148,7 @@ export default function EventRecruitmentCard({
                 {campaignName}
               </h2>
               <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-                Chào đón mọi cấp độ vợt thủ đam mê cầu lông gia nhập ngôi nhà chung SmashTeam. Tham gia ngay để tỏa sáng, nâng hạng ELO và rèn luyện thể lực hàng tuần!
+                {campaignDesc}
               </p>
             </div>
 
@@ -138,7 +166,7 @@ export default function EventRecruitmentCard({
                 <MapPin className="w-4 h-4 text-cyan-300 shrink-0" />
                 <div>
                   <p className="text-slate-400 text-[10px] uppercase font-bold">Địa điểm test</p>
-                  <p className="font-bold text-white truncate max-w-[140px]">Sân Cầu Lông Lan Anh</p>
+                  <p className="font-bold text-white truncate max-w-[140px]" title={campaignLocation}>{campaignLocation}</p>
                 </div>
               </div>
 
@@ -146,7 +174,7 @@ export default function EventRecruitmentCard({
                 <Users className="w-4 h-4 text-amber-300 shrink-0" />
                 <div>
                   <p className="text-slate-400 text-[10px] uppercase font-bold">Đối tượng</p>
-                  <p className="font-bold text-white">Mọi cấp độ tay vợt</p>
+                  <p className="font-bold text-white truncate max-w-[140px]" title={campaignAudience}>{campaignAudience}</p>
                 </div>
               </div>
             </div>

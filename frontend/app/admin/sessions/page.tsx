@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Calendar, MapPin, Clock, Plus, Loader2, X, Download, Users, 
-  CheckCircle, ChevronRight, UserCheck, RefreshCw, QrCode, Check
+  CheckCircle, ChevronRight, UserCheck, RefreshCw, QrCode, Check,
+  KeyRound, Copy
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { QRCodeCanvas } from "qrcode.react";
@@ -22,6 +23,14 @@ export default function AdminSessionsPage() {
   const [viewMode, setViewMode] = useState<"upcoming" | "history">("upcoming");
   const [isGeneratingQr, setIsGeneratingQr] = useState(false);
   const [qrMessage, setQrMessage] = useState<string | null>(null);
+  const [isCopiedCode, setIsCopiedCode] = useState(false);
+
+  const copyCheckinCode = (code: string) => {
+    if (!code) return;
+    navigator.clipboard.writeText(code);
+    setIsCopiedCode(true);
+    setTimeout(() => setIsCopiedCode(false), 2500);
+  };
 
   // Form states
   const [title, setTitle] = useState("");
@@ -84,11 +93,13 @@ export default function AdminSessionsPage() {
         setSelectedSession((prev: any) => prev ? { 
           ...prev, 
           qr_code: data.qr_code, 
+          checkin_code: data.checkin_code || prev.checkin_code,
           qr_created_at: data.qr_created_at || new Date().toISOString() 
         } : prev);
         setSessions((prev: any[]) => prev.map(s => s.id === sessionId ? { 
           ...s, 
           qr_code: data.qr_code, 
+          checkin_code: data.checkin_code || s.checkin_code,
           qr_created_at: data.qr_created_at || new Date().toISOString() 
         } : s));
         setQrMessage(forceRefresh ? "Đã làm mới mã QR và cập nhật DB!" : "Đã tạo mã QR điểm danh và lưu vào DB!");
@@ -332,6 +343,46 @@ export default function AdminSessionsPage() {
                       <p className="text-[9px] text-slate-400 mt-2 leading-relaxed">
                         Admin in hoặc chiếu QR lên máy tính bảng tại sân. Thành viên quét bằng Camera/Zalo để check-in.
                       </p>
+
+                      {/* MÃ ĐIỂM DANH 5 KÝ TỰ (CHO THÀNH VIÊN KHÔNG CÓ CAMERA) */}
+                      <div className="mt-4 w-full p-3.5 bg-gradient-to-br from-primary/10 via-purple-500/10 to-primary/5 border-2 border-dashed border-primary/40 rounded-2xl text-center space-y-2 shadow-sm">
+                        <div className="flex items-center justify-between px-1">
+                          <span className="text-[11px] font-black text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                            <KeyRound className="w-3.5 h-3.5 text-primary" /> Mã Điểm Danh 5 Ký Tự
+                          </span>
+                          <span className="text-[10px] bg-primary/20 text-secondary font-black px-2 py-0.5 rounded">
+                            Thủ công
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center justify-center gap-2 pt-1">
+                          <span className="text-2xl font-black font-mono tracking-[0.2em] text-secondary bg-white px-4 py-1.5 rounded-xl border border-slate-200 shadow-inner">
+                            {selectedSession.checkin_code || selectedSession.qr_code?.slice(-5) || "SMASH"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => copyCheckinCode(selectedSession.checkin_code || selectedSession.qr_code?.slice(-5) || "")}
+                            className="px-3 py-2 bg-secondary hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            title="Sao chép mã 5 ký tự để gửi nhóm Zalo/chat"
+                          >
+                            {isCopiedCode ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <span className="text-emerald-400">Đã chép!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Sao chép</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        <p className="text-[10px] text-slate-500 leading-tight">
+                          Thành viên không có camera vào trang <strong>/check-in</strong> và nhập mã này để điểm danh tức thì.
+                        </p>
+                      </div>
                     </>
                   ) : (
                     <div className="py-6 px-4 flex flex-col items-center justify-center space-y-3 text-center">

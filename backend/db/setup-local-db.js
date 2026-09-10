@@ -24,9 +24,35 @@ async function setupLocalDb(existingDb) {
       await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255)");
       await db.query("ALTER TABLE user_quests ADD COLUMN IF NOT EXISTS is_claimed BOOLEAN DEFAULT false");
 
-      // Đảm bảo có cột qr_code trong sessions để admin tạo mã QR điểm danh từng buổi
+      // Đảm bảo có cột qr_code và checkin_code (5 ký tự) trong sessions để admin tạo mã QR & điểm danh thủ công
       await db.query("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS qr_code VARCHAR(255)");
       await db.query("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS qr_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+      // Đảm bảo có bảng club_events và các cột bổ sung cho recruitment_campaigns
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS club_events (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          title VARCHAR(255) NOT NULL,
+          subtitle TEXT,
+          event_date TIMESTAMP NOT NULL,
+          location VARCHAR(255) NOT NULL,
+          badge VARCHAR(100) DEFAULT 'GIẢI ĐẤU NỔI BẬT',
+          action_text VARCHAR(100) DEFAULT 'Đăng ký tham gia ngay',
+          action_link VARCHAR(255) DEFAULT '/schedule',
+          is_featured BOOLEAN DEFAULT false,
+          status VARCHAR(50) DEFAULT 'upcoming',
+          participants_count INTEGER DEFAULT 0,
+          max_participants INTEGER DEFAULT 50,
+          description TEXT,
+          results_summary TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS badge_text VARCHAR(100) DEFAULT 'Mùa Tuyển Quân 2026'");
+      await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS description TEXT");
+      await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS location VARCHAR(255)");
+      await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS target_audience VARCHAR(255)");
+      await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS target_capacity INTEGER DEFAULT 60");
+      await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS timeline_steps JSONB");
 
       // Đảm bảo có cấu hình sự kiện đếm ngược nổi bật
       await db.query(`

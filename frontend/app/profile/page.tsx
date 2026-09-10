@@ -96,7 +96,7 @@ export default function ProfilePage() {
         }
       });
 
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401 || res.status === 403 || res.status === 404) {
         localStorage.removeItem("admin_token");
         localStorage.removeItem("user_role");
         localStorage.removeItem("user");
@@ -105,7 +105,8 @@ export default function ProfilePage() {
       }
 
       if (!res.ok) {
-        throw new Error("Không thể tải thông tin trang cá nhân.");
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || "Không thể tải thông tin trang cá nhân.");
       }
 
       const data = await res.json();
@@ -638,15 +639,42 @@ export default function ProfilePage() {
 
   if (error || !playerData) {
     return (
-      <div className="min-h-screen bg-smash-dark flex flex-col items-center justify-center text-white p-6">
-        <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center mb-4">
-          <X className="w-6 h-6" />
+      <div className="min-h-screen bg-secondary flex flex-col items-center justify-center text-white p-6 relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[450px] h-[350px] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
+        <div className="w-full max-w-md bg-secondary-surface/90 backdrop-blur-xl border border-rose-500/30 rounded-3xl p-8 shadow-2xl text-center z-10 space-y-5">
+          <div className="w-16 h-16 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(244,63,94,0.3)]">
+            <X className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-white">Đã xảy ra lỗi</h2>
+            <p className="text-slate-300 text-sm leading-relaxed">{error || "Không thể tải thông tin trang cá nhân."}</p>
+          </div>
+          <div className="flex flex-col gap-2.5 pt-2">
+            <button 
+              onClick={fetchProfileData} 
+              className="w-full py-3 px-5 bg-primary hover:bg-primary-hover text-white rounded-xl font-bold text-sm shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              Thử lại
+            </button>
+            <button 
+              onClick={() => {
+                localStorage.removeItem("admin_token");
+                localStorage.removeItem("user_role");
+                localStorage.removeItem("user");
+                router.push("/login");
+              }} 
+              className="w-full py-3 px-5 bg-white/10 hover:bg-white/15 text-slate-200 rounded-xl font-bold text-sm border border-white/15 transition-all active:scale-95 cursor-pointer"
+            >
+              Đăng nhập lại
+            </button>
+            <button 
+              onClick={() => router.push("/")} 
+              className="w-full py-2.5 px-5 text-slate-400 hover:text-white font-semibold text-xs transition-colors cursor-pointer"
+            >
+              Quay lại Trang chủ
+            </button>
+          </div>
         </div>
-        <h2 className="text-xl font-bold mb-2">Đã xảy ra lỗi</h2>
-        <p className="text-slate-400 text-sm text-center mb-6 max-w-sm">{error || "Không thể lấy thông tin."}</p>
-        <button onClick={fetchProfileData} className="px-6 py-2.5 bg-primary text-white rounded-full font-bold hover:bg-primary-hover transition-all">
-          Thử lại
-        </button>
       </div>
     );
   }
