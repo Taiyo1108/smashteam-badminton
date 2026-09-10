@@ -23,6 +23,12 @@ export default function ContentManagementPage() {
   const [contactAddress, setContactAddress] = useState("");
   const [contactOrg, setContactOrg] = useState("");
   const [contacts, setContacts] = useState([{ name: "", phone: "", role: "" }]);
+  // Kênh mạng xã hội hiển thị ở footer Liên hệ trang chủ (thêm/sửa link tùy ý)
+  const [socialLinks, setSocialLinks] = useState([
+    { label: "Facebook", url: "" },
+    { label: "Instagram", url: "" },
+    { label: "Youtube", url: "" },
+  ]);
   const [aboutSaving, setAboutSaving] = useState(false);
   const [aboutError, setAboutError] = useState("");
 
@@ -86,6 +92,15 @@ export default function ContentManagementPage() {
               name: String(c?.name ?? ""),
               phone: String(c?.phone ?? ""),
               role: String(c?.role ?? ""),
+            })));
+          }
+        } catch {}
+        try {
+          const socials = typeof data.social_links === "string" ? JSON.parse(data.social_links) : data.social_links;
+          if (Array.isArray(socials) && socials.length > 0) {
+            setSocialLinks(socials.map((s: any) => ({
+              label: String(s?.label ?? ""),
+              url: String(s?.url ?? ""),
             })));
           }
         } catch {}
@@ -260,7 +275,7 @@ export default function ContentManagementPage() {
     }
   };
 
-  // Lưu Giới thiệu & Liên hệ trang chủ (4 keys trong site_settings)
+  // Lưu Giới thiệu & Liên hệ trang chủ (5 keys trong site_settings)
   const handleSaveAbout = async (e: React.FormEvent) => {
     e.preventDefault();
     setAboutError("");
@@ -272,6 +287,7 @@ export default function ContentManagementPage() {
         { key: "contact_address", value: contactAddress },
         { key: "contact_org", value: contactOrg },
         { key: "contacts", value: JSON.stringify(contacts.filter((c) => c.name.trim() || c.phone.trim())) },
+        { key: "social_links", value: JSON.stringify(socialLinks.filter((s) => s.label.trim())) },
       ];
       const results = await Promise.all(
         payloads.map((p) =>
@@ -686,6 +702,50 @@ export default function ContentManagementPage() {
                     onClick={() => setContacts(contacts.filter((_, j) => j !== i))}
                     className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
                     title="Xóa liên hệ"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-slate-600">Kênh mạng xã hội (footer Liên hệ)</label>
+              <button
+                type="button"
+                onClick={() => setSocialLinks([...socialLinks, { label: "", url: "" }])}
+                className="text-xs font-bold text-slate-600 hover:text-black flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Thêm kênh
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">
+              Tên kênh hiển thị ở footer trang chủ. Dán link để bấm vào mở trang mới, bỏ trống link nếu chỉ hiển thị tên.
+            </p>
+            <div className="space-y-2">
+              {socialLinks.map((s, i) => (
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto] gap-2">
+                  <input
+                    type="text"
+                    value={s.label}
+                    onChange={(e) => setSocialLinks(socialLinks.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                    placeholder="Tên kênh (VD: TikTok)"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <input
+                    type="url"
+                    value={s.url}
+                    onChange={(e) => setSocialLinks(socialLinks.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))}
+                    placeholder="Link (VD: https://facebook.com/...)"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSocialLinks(socialLinks.filter((_, j) => j !== i))}
+                    className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                    title="Xóa kênh"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

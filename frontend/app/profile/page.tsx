@@ -8,7 +8,7 @@ import {
   Trophy, Flame, Calendar, Check, X, Sparkles, 
   Camera, Paintbrush, Shield, CalendarDays, Activity, 
   MapPin, Clock, LogOut, Edit2, Home, Loader2, Settings,
-  ShoppingBag, Lock, Gift
+  ShoppingBag, Lock, Gift, Coins
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
@@ -25,19 +25,14 @@ export default function ProfilePage() {
   // Gamification states
   const [gamProfile, setGamProfile] = useState<any>(null);
   const [quests, setQuests] = useState<any[]>([]);
-  const [passRewards, setPassRewards] = useState<any[]>([]);
-  const [claimedPassLevels, setClaimedPassLevels] = useState<number[]>([]);
-  const [isPremiumPass, setIsPremiumPass] = useState(false);
   const [inventory, setInventory] = useState<any[]>([]);
   const [shopItems, setShopItems] = useState<any[]>([]);
-  const [activeGamTab, setActiveGamTab] = useState<"quests" | "smashpass" | "inventory" | "shop" | "matches">("quests");
+  const [activeGamTab, setActiveGamTab] = useState<"quests" | "inventory" | "shop" | "matches">("quests");
   const [matchFilter, setMatchFilter] = useState<"all" | "month" | "week">("all");
   
   const [claimingQuestId, setClaimingQuestId] = useState<number | null>(null);
-  const [claimingPassLevel, setClaimingPassLevel] = useState<number | null>(null);
   const [equippingItemId, setEquippingItemId] = useState<number | null>(null);
   const [buyingItemId, setBuyingItemId] = useState<number | null>(null);
-  const [unlockingPremium, setUnlockingPremium] = useState(false);
   const [isOpeningBox, setIsOpeningBox] = useState(false);
   const [boxCooldown, setBoxCooldown] = useState<number | null>(null);
   const [mysteryBoxReward, setMysteryBoxReward] = useState<any | null>(null);
@@ -183,10 +178,9 @@ export default function ProfilePage() {
       const headers = { Authorization: `Bearer ${token}` };
 
       // Chạy song song thay vì nối tiếp để giảm ~5x RTT
-      const [profileRes, questsRes, passRes, invRes, shopRes] = await Promise.all([
+      const [profileRes, questsRes, invRes, shopRes] = await Promise.all([
         fetch(`${API_URL}/api/gamification/profile`, { headers }),
         fetch(`${API_URL}/api/gamification/quests`, { headers }),
-        fetch(`${API_URL}/api/gamification/smash-pass`, { headers }),
         fetch(`${API_URL}/api/gamification/inventory`, { headers }),
         fetch(`${API_URL}/api/shop/items`, { headers }),
       ]);
@@ -199,12 +193,6 @@ export default function ProfilePage() {
         }
       }
       if (questsRes.ok) setQuests(await questsRes.json());
-      if (passRes.ok) {
-        const data = await passRes.json();
-        setPassRewards(data.rewards || []);
-        setClaimedPassLevels(data.claimed_levels || []);
-        setIsPremiumPass(data.is_premium_unlocked || false);
-      }
       if (invRes.ok) setInventory(await invRes.json());
       if (shopRes.ok) setShopItems(await shopRes.json());
 
@@ -329,52 +317,6 @@ export default function ProfilePage() {
       showToast("Lỗi kết nối.", "error");
     } finally {
       setClaimingQuestId(null);
-    }
-  };
-
-  const handleClaimPass = async (level: number) => {
-    setClaimingPassLevel(level);
-    try {
-      const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/gamification/smash-pass/claim/${level}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(data.message || "Nhận quà SmashPass thành công!");
-        await fetchGamificationData();
-        await fetchProfileData();
-      } else {
-        showToast(data.error || "Lỗi khi nhận quà.", "error");
-      }
-    } catch (e) {
-      showToast("Lỗi kết nối.", "error");
-    } finally {
-      setClaimingPassLevel(null);
-    }
-  };
-
-  const handleUnlockPremium = async () => {
-    if (!confirm("Kích hoạt Premium Pass với giá 200 Smash Coins?")) return;
-    setUnlockingPremium(true);
-    try {
-      const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/gamification/smash-pass/unlock-premium`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(data.message || "Mở khóa Premium thành công!");
-        await fetchGamificationData();
-      } else {
-        showToast(data.error || "Lỗi mở khóa Premium.", "error");
-      }
-    } catch (e) {
-      showToast("Lỗi kết nối.", "error");
-    } finally {
-      setUnlockingPremium(false);
     }
   };
 
@@ -826,7 +768,7 @@ export default function ProfilePage() {
               {/* Stats badges inside card */}
               <div className="flex items-center gap-3.5 mt-3.5 bg-slate-50 px-4 py-2 rounded-full border border-slate-200 text-xs">
                 <div className="flex items-center gap-1 font-bold text-amber-500">
-                  <span className="text-base select-none">🪙</span> {gamProfile?.smash_coins ?? 0} xu
+                  <Coins className="w-4 h-4 text-amber-500" /> {gamProfile?.smash_coins ?? 0} xu
                 </div>
                 <div className="w-px h-3.5 bg-slate-200" />
                 <div className="flex items-center gap-1 font-bold text-orange-500">
@@ -834,7 +776,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="w-px h-3.5 bg-slate-200" />
                 <div className="flex items-center gap-1 font-bold text-indigo-400">
-                  🛡️ {gamProfile?.streak_shields ?? 0} khiên
+                  <Shield className="w-4 h-4 text-indigo-400" /> {gamProfile?.streak_shields ?? 0} khiên
                 </div>
               </div>
             </div>
@@ -995,13 +937,12 @@ export default function ProfilePage() {
           </div>
           )}
 
-          {/* SMASHPASS GAMIFICATION PORTAL */}
+          {/* GAME PORTAL */}
           <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
             {/* Tab selection */}
             <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3 mb-6">
               {[
                 { id: "quests", label: "Nhiệm vụ", icon: Sparkles },
-                { id: "smashpass", label: "SmashPass", icon: Trophy },
                 { id: "inventory", label: "Kho đồ", icon: Shield },
                 { id: "shop", label: "Smash Shop", icon: ShoppingBag },
                 { id: "matches", label: "Lịch sử đấu", icon: Activity }
@@ -1082,95 +1023,6 @@ export default function ProfilePage() {
                 </div>
             )}
 
-            {/* TAB CONTENT: SMASHPASS */}
-            {activeGamTab === "smashpass" && (
-              <div className="space-y-6">
-                {/* Premium activation banner */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-900 tracking-wide flex items-center gap-1.5">
-                      🏆 SmashPass Mùa 1: Khởi Đầu Hoàng Gia
-                    </h4>
-                    <p className="text-[11px] text-slate-500 mt-1">Mở khóa quà Premium với khung viền lấp lánh và danh hiệu độc quyền.</p>
-                  </div>
-                  <div>
-                    {isPremiumPass ? (
-                      <span className="text-xs font-black text-amber-400 bg-amber-400/10 px-3.5 py-1.5 rounded-full border border-amber-400/20">
-                        💎 ĐÃ KÍCH HOẠT PREMIUM
-                      </span>
-                    ) : (
-                      <button
-                        onClick={handleUnlockPremium}
-                        disabled={unlockingPremium}
-                        className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-600 hover:to-yellow-500 disabled:opacity-50 text-slate-950 font-black text-xs rounded-full shadow-lg shadow-amber-500/20 active:scale-95 transition-transform cursor-pointer flex items-center gap-1"
-                      >
-                        🪙 200 Xu: Lên Premium
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Rewards List */}
-                <div className="space-y-3">
-                  {passRewards.map((item: any) => {
-                    const isClaimed = claimedPassLevels.includes(item.level_required);
-                    const isLevelReached = (gamProfile?.level ?? 1) >= item.level_required;
-                    const isLocked = item.is_premium && !isPremiumPass;
-                    const canClaim = isLevelReached && !isClaimed && !isLocked;
-
-                    return (
-                      <div key={item.id} className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
-                        isClaimed 
-                          ? "bg-slate-50 border-slate-200 opacity-60" 
-                          : isLevelReached 
-                          ? "bg-black/5 border-black/20" 
-                          : "bg-slate-50 border-slate-200"
-                      }`}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shrink-0 border-2 ${
-                            isLevelReached
-                              ? "bg-black border-black text-white"
-                              : "bg-white border-slate-200 text-slate-500"
-                          }`}>
-                            Lvl {item.level_required}
-                          </div>
-                          <div>
-                            <h5 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                              {item.reward_name}
-                              {item.is_premium && (
-                                <span className="text-[9px] bg-amber-400/10 text-amber-400 border border-amber-400/20 px-1.5 py-0.5 rounded font-black uppercase">Premium</span>
-                              )}
-                            </h5>
-                            <p className="text-[10px] text-slate-500 mt-0.5">
-                              Loại: <span className="text-slate-600 font-medium">{item.reward_type === 'avatar_frame' ? 'Khung viền' : item.reward_type === 'title' ? 'Danh hiệu' : item.reward_type === 'coins' ? 'Xu' : 'Vật phẩm'}</span>
-                            </p>
-                          </div>
-                        </div>
-
-                        <div>
-                          {isClaimed ? (
-                            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Đã nhận</span>
-                          ) : canClaim ? (
-                            <button
-                              onClick={() => handleClaimPass(item.level_required)}
-                              disabled={claimingPassLevel === item.level_required}
-                              className="px-4 py-1.5 bg-black hover:bg-black/85 text-white text-xs font-black rounded-lg shadow-lg active:scale-95 transition-transform cursor-pointer"
-                            >
-                              {claimingPassLevel === item.level_required ? "Đang nhận..." : "Nhận quà"}
-                            </button>
-                          ) : isLocked ? (
-                            <span className="text-xs font-bold text-amber-500/70 bg-amber-950/20 px-3 py-1.5 rounded-lg border border-amber-500/10">Khóa Premium</span>
-                          ) : (
-                            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Lvl {item.level_required}</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             {/* TAB CONTENT: INVENTORY */}
             {activeGamTab === "inventory" && (() => {
               const filteredAndSortedInventory = inventory
@@ -1226,7 +1078,7 @@ export default function ProfilePage() {
                       <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">
                         {inventorySubTab === "physical" 
                           ? "Hãy tích cực thi đấu, tích lũy xu để đổi những phần quà vật lý hấp dẫn tại Cửa hàng!"
-                          : "Tích cực thăng cấp và làm nhiệm vụ SmashPass để mở khóa nhiều danh hiệu và khung viền độc quyền nhé!"}
+                          : "Hoàn thành nhiệm vụ và mở hộp quà mỗi ngày để sưu tầm thêm danh hiệu và khung viền độc quyền nhé!"}
                       </p>
                     </div>
                   ) : (
@@ -1459,7 +1311,7 @@ export default function ProfilePage() {
                   </h4>
                   <div className="flex items-center gap-1 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
                     <span className="text-[10px] text-slate-500 font-bold uppercase">Số dư:</span>
-                    <span className="text-xs font-black text-amber-400">{gamProfile?.smash_coins || 0}🪙</span>
+                    <span className="text-xs font-black text-amber-400 flex items-center gap-1"><Coins className="w-3.5 h-3.5 text-amber-400" />{gamProfile?.smash_coins || 0}</span>
                   </div>
                 </div>
 

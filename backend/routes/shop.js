@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
-const { upload, cloudinary } = require('../utils/cloudinary');
+const { upload, uploadBufferToImageKit, deleteImageByUrl } = require('../utils/imagekit');
 
 // GET /api/shop/items - Lấy danh sách sản phẩm hoạt động
 router.get('/items', async (req, res) => {
@@ -108,7 +108,7 @@ router.post('/buy', authenticateToken, async (req, res) => {
     }
     const item = itemRes.rows[0];
 
-    // 3. Kiểm tra cấp độ SmashPass yêu cầu
+    // 3. Kiểm tra cấp độ người chơi yêu cầu
     if (user.level < item.level_required) {
       return res.status(400).json({ error: `Yêu cầu Cấp độ ${item.level_required} trở lên để mua vật phẩm này (Cấp hiện tại của bạn: ${user.level}).` });
     }
@@ -415,24 +415,10 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
   }
 });
 
-// Helper trích xuất public_id của Cloudinary để xóa ảnh cũ
-function getCloudinaryPublicId(url) {
-  if (!url || !url.includes('res.cloudinary.com')) return null;
-  try {
-    const parts = url.split('/');
-    const uploadIndex = parts.indexOf('upload');
-    if (uploadIndex === -1) return null;
-    let publicIdParts = parts.slice(uploadIndex + 1);
-    if (publicIdParts[0].match(/^v\d+$/)) {
-      publicIdParts = publicIdParts.slice(1);
-    }
-    const fullId = publicIdParts.join('/');
-    const dotIndex = fullId.lastIndexOf('.');
-    return dotIndex !== -1 ? fullId.substring(0, dotIndex) : fullId;
-  } catch (e) {
-    console.error('Error parsing public_id from Cloudinary URL:', e);
-    return null;
-  }
+// Helper xóa ảnh (ImageKit mới + tương thích Cloudinary cũ chỉ xóa DB)
+async function cleanupImageByUrl(url) {
+  if (!url) return;
+  await deleteImageByUrl(url);
 }
 
 // GET /api/admin/shop-items - Lấy toàn bộ sản phẩm quản trị (kèm cả sản phẩm ẩn)
@@ -448,13 +434,17 @@ router.get('/admin/shop-items', authenticateToken, isAdmin, async (req, res) => 
   }
 });
 
-// POST /api/admin/shop-items - Thêm sản phẩm mới (Tải ảnh trực tiếp lên Cloudinary)
+// POST /api/admin/shop-items - Thêm sản phẩm mới (Tải ảnh trực tiếp lên ImageKit)
 router.post('/admin/shop-items', authenticateToken, isAdmin, upload.single('image'), async (req, res) => {
   try {
     const { name, item_type, coin_price, stock, category, description, level_required, rarity, is_active } = req.body;
     
-    // URL ảnh từ Cloudinary upload middleware
-    const imageUrl = req.file ? req.file.path : null;
+    // URL ảnh từ ImageKit upload
+    let imageUrl = null;
+    if (req.file) {
+      const uploaded = await uploadBufferToImageKit(req.file.buffer, req.file.originalname, '/smashteam/shop');
+      imageUrl = uploaded.url;
+    }
 
     const result = await db.query(
       `INSERT INTO shop_items (name, item_type, coin_price, stock, image_url, category, description, level_required, rarity, is_active)
@@ -500,17 +490,11 @@ router.put('/admin/shop-items/:id', authenticateToken, isAdmin, upload.single('i
 
     let imageUrl = currentItem.image_url;
 
-    // Nếu tải lên hình ảnh mới, thay thế và xóa ảnh cũ trên Cloudinary
+    // Nếu tải lên hình ảnh mới, thay thế và xóa ảnh cũ trên ImageKit
     if (req.file) {
-      imageUrl = req.file.path;
-      if (currentItem.image_url && currentItem.image_url.includes('res.cloudinary.com')) {
-        const oldPublicId = getCloudinaryPublicId(currentItem.image_url);
-        if (oldPublicId) {
-          await cloudinary.uploader.destroy(oldPublicId).catch(err => {
-            console.error('Failed to delete old image from Cloudinary:', err);
-          });
-        }
-      }
+      const uploaded = await uploadBufferToImageKit(req.file.buffer, req.file.originalname, '/smashteam/shop');
+      imageUrl = uploaded.url;
+      await cleanupImageByUrl(currentItem.image_url);
     }
 
     const updatedActive = is_active !== undefined 
@@ -565,22 +549,15 @@ router.delete('/admin/shop-items/:id', authenticateToken, isAdmin, async (req, r
       });
     }
 
-    // 2. Lấy thông tin ảnh để xóa trên Cloudinary
+    // 2. Lấy thông tin ảnh để xóa trên ImageKit
     const itemRes = await db.query('SELECT image_url FROM shop_items WHERE id = $1', [itemId]);
     if (itemRes.rows.length === 0) {
       return res.status(404).json({ error: 'Sản phẩm không tồn tại.' });
     }
     const imageUrl = itemRes.rows[0].image_url;
 
-    // 3. Xóa ảnh trên Cloudinary
-    if (imageUrl && imageUrl.includes('res.cloudinary.com')) {
-      const publicId = getCloudinaryPublicId(imageUrl);
-      if (publicId) {
-        await cloudinary.uploader.destroy(publicId).catch(err => {
-          console.error('Failed to delete image from Cloudinary:', err);
-        });
-      }
-    }
+    // 3. Xóa ảnh trên ImageKit (URL Cloudinary cũ chỉ xóa DB)
+    await cleanupImageByUrl(imageUrl);
 
     // 4. Xóa bản ghi trong database
     await db.query('DELETE FROM shop_items WHERE id = $1', [itemId]);
@@ -613,7 +590,7 @@ router.get('/admin/redemptions/history', authenticateToken, isAdmin, async (req,
          u.phone_zalo AS member_phone
        FROM user_inventory ui
        JOIN users u ON ui.user_id = u.id
-       WHERE ui.item_type != 'smash_pass_reward_level' AND ui.item_type != 'mystery_box_claim'
+       WHERE ui.item_type != 'smash_pass_reward_level' AND ui.item_type != 'premium_pass' AND ui.item_type != 'mystery_box_claim'
        ORDER BY ui.purchased_at DESC`
     );
     res.json(result.rows);

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { upload, cloudinary } = require('../utils/cloudinary');
+const { upload, uploadBufferToImageKit, deleteImageByUrl } = require('../utils/imagekit');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
 
 // GET /api/media - Lấy danh sách media posts
@@ -19,15 +19,16 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/media - Tạo post mới (Image via Cloudinary, Video via URL)
+// POST /api/media - Tạo post mới (Image via ImageKit, Video via URL)
 router.post('/', authenticateToken, isAdmin, upload.single('image'), async (req, res) => {
   try {
     const { title, is_featured, video_url } = req.body;
     let content_url = '';
 
     if (req.file) {
-      // Cloudinary returns the URL in req.file.path
-      content_url = req.file.path;
+      // ImageKit: upload buffer từ multer memoryStorage
+      const uploaded = await uploadBufferToImageKit(req.file.buffer, req.file.originalname, '/smashteam/media');
+      content_url = uploaded.url;
     } else if (video_url) {
       content_url = video_url;
     } else {
@@ -47,28 +48,11 @@ router.post('/', authenticateToken, isAdmin, upload.single('image'), async (req,
   }
 });
 
-// Helper function to extract public_id from Cloudinary URL
-function getPublicIdFromUrl(url) {
-  if (!url || !url.includes('res.cloudinary.com')) return null;
-  try {
-    const parts = url.split('/upload/');
-    if (parts.length < 2) return null;
-    
-    const pathAfterUpload = parts[1];
-    const pathParts = pathAfterUpload.split('/');
-    
-    let startIndex = 0;
-    if (pathParts[0].startsWith('v') || !isNaN(pathParts[0])) {
-      startIndex = 1;
-    }
-    
-    const fileWithExtension = pathParts.slice(startIndex).join('/');
-    const publicId = fileWithExtension.substring(0, fileWithExtension.lastIndexOf('.'));
-    return publicId;
-  } catch (e) {
-    console.error('Error parsing public_id from Cloudinary URL:', e);
-    return null;
-  }
+// Helper giữ tương thích: trước đây dùng Cloudinary, giờ dùng ImageKit.
+// Chỉ xóa remote nếu là URL ImageKit, URL Cloudinary cũ chỉ xóa DB.
+async function cleanupImageByUrl(url) {
+  if (!url) return;
+  await deleteImageByUrl(url);
 }
 
 // DELETE /api/media/:id - Xóa post
@@ -84,14 +68,8 @@ router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
     
     const contentUrl = selectResult.rows[0].content_url;
     
-    // If it's a Cloudinary URL, delete the image from Cloudinary
-    if (contentUrl && contentUrl.includes('res.cloudinary.com')) {
-      const publicId = getPublicIdFromUrl(contentUrl);
-      if (publicId) {
-        console.log(`Deleting image from Cloudinary: ${publicId}`);
-        await cloudinary.uploader.destroy(publicId);
-      }
-    }
+    // Nếu là URL ImageKit thì xóa ảnh remote, URL Cloudinary cũ chỉ xóa DB
+    await cleanupImageByUrl(contentUrl);
     
     await db.query(`DELETE FROM media_posts WHERE id = $1`, [id]);
     res.json({ message: 'Deleted successfully' });

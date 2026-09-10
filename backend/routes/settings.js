@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { upload } = require('../utils/cloudinary');
+const { upload, uploadBufferToImageKit } = require('../utils/imagekit');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
 
 // GET /api/settings - Lấy cấu hình website (công khai)
@@ -42,14 +42,15 @@ router.put('/', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
-// POST /api/settings/upload-cover - Tải ảnh bìa mới lên Cloudinary (yêu cầu Admin)
+// POST /api/settings/upload-cover - Tải ảnh bìa mới lên ImageKit (yêu cầu Admin)
 router.post('/upload-cover', authenticateToken, isAdmin, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file uploaded' });
     }
 
-    const coverUrl = req.file.path; // Cloudinary URL trả về từ middleware
+    const uploaded = await uploadBufferToImageKit(req.file.buffer, req.file.originalname, '/smashteam/covers');
+    const coverUrl = uploaded.url; // ImageKit URL trả về
 
     await db.query(
       `INSERT INTO site_settings (key, value, updated_at)

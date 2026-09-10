@@ -130,6 +130,13 @@ const ABOUT_FALLBACK = [
 const ADDRESS_FALLBACK = "304 ĐT743A, Đông Hòa, Hồ Chí Minh";
 const ORG_FALLBACK = "";
 
+// Kênh mạng xã hội mặc định ở footer (admin sửa link/thêm kênh trong Quản lý Nội dung).
+const SOCIAL_FALLBACK = [
+  { label: "Facebook", url: "" },
+  { label: "Instagram", url: "" },
+  { label: "Youtube", url: "" },
+] as const;
+
 // Parse chuỗi JSON từ site_settings, rớt về fallback khi lỗi/thiếu.
 function parseJsonSetting<T>(value: unknown, fallback: T): T {
   if (typeof value !== "string" || !value) return fallback;
@@ -219,6 +226,11 @@ export default async function Home() {
     settings?.contacts,
     []
   ).filter((c) => c && (String(c.name || "").trim() || String(c.phone || "").trim()));
+  // Kênh mạng xã hội ở footer Liên hệ do admin cấu hình (thêm/sửa/xóa tùy ý).
+  const socialLinks = parseJsonSetting<{ label: string; url: string }[]>(
+    settings?.social_links,
+    [...SOCIAL_FALLBACK] as unknown as { label: string; url: string }[]
+  ).filter((s) => s && String(s.label || "").trim());
 
   const heroBg =
     typeof settings?.homepage_cover_url === "string" && settings.homepage_cover_url
@@ -579,9 +591,25 @@ export default async function Home() {
             <div>
               <p className="text-white font-semibold mb-4 text-[15px]">Liên hệ</p>
               <div className="space-y-2.5 text-sm">
-                <span className="block">Facebook</span>
-                <span className="block">Instagram</span>
-                <span className="block">Youtube</span>
+                {socialLinks.map((s) => {
+                  const label = String(s.label || "").trim();
+                  const url = String(s.url || "").trim();
+                  return url ? (
+                    <a
+                      key={label}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block hover:text-white"
+                    >
+                      {label}
+                    </a>
+                  ) : (
+                    <span key={label} className="block">
+                      {label}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           </nav>

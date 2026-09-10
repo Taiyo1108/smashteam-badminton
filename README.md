@@ -1,6 +1,6 @@
 # SMASH TEAM - HỆ THỐNG QUẢN LÝ CÂU LẠC BỘ CẦU LÔNG (BADMINTON CLUB PLATFORM)
 
-Chào mừng bạn đến với **SMASH TEAM Badminton Platform** - hệ thống quản lý câu lạc bộ cầu lông hiện đại tích hợp tính năng **Gamification** (Thẻ người chơi, xếp hạng điểm ELO, SmashPass, Kho Đồ) và cổng thông tin thành viên (Player Portal) trực quan, được thiết kế chuyên biệt cho Ban chủ nhiệm và Hội viên.
+Chào mừng bạn đến với **SMASH TEAM Badminton Platform** - hệ thống quản lý câu lạc bộ cầu lông hiện đại tích hợp tính năng **Gamification** (Thẻ người chơi, xếp hạng điểm ELO, Nhiệm vụ, Kho Đồ) và cổng thông tin thành viên (Player Portal) trực quan, được thiết kế chuyên biệt cho Ban chủ nhiệm và Hội viên.
 
 ---
 
@@ -26,7 +26,7 @@ graph TD
 ### 1.2. Công nghệ Backend & Database
 * **Runtime Environment:** Node.js v18+ kết hợp Express framework.
 * **Cơ sở dữ liệu:** PostgreSQL lưu trữ dữ liệu quan hệ, được lưu trữ và tối ưu hóa kết nối trên nền tảng Supabase Cloud.
-* **Giao dịch Cơ sở dữ liệu (Database Transactions):** Bọc các logic nhận quà, mua Premium Pass trong khối Transaction để chống lỗi click trùng (Race Condition Prevention).
+* **Giao dịch Cơ sở dữ liệu (Database Transactions):** Bọc các logic nhận quà, mua vật phẩm trong khối Transaction để chống lỗi click trùng (Race Condition Prevention).
 * **Bảo mật & Mã hóa:** Xác thực phiên làm việc bằng JSON Web Tokens (JWT) bảo vệ các API quản trị và API trang cá nhân. Mật khẩu được mã hóa an toàn bằng bcrypt trước khi lưu vào DB.
 * **Lưu trữ tệp tin:** Tích hợp bộ thư viện Multer + Cloudinary SDK để tải ảnh đại diện lên bộ nhớ đám mây Cloudinary của câu lạc bộ, tự động tối ưu hóa dung lượng ảnh đại diện.
 
@@ -40,14 +40,11 @@ Trang cá nhân của hội viên được thiết kế mang đậm phong cách 
 * **Bảng Thông Số Kỹ Thuật (Stats Board):** Thống kê số trận đấu, tỷ lệ thắng, chuỗi thắng/thua liên tục, và hiển thị các huy hiệu (Badges) kỹ năng mềm đóng góp cho CLB (Chụp ảnh, Quay dựng, Thiết kế, Hỗ trợ giải).
 * **Đăng ký Lịch tập (RSVP):** Hiển thị lịch sinh hoạt sắp tới của CLB. Cho phép hội viên chọn RSVP (Tham gia / Vắng mặt) trực tiếp. Hành động này chỉ ghi nhận lịch trình đi tập để BTC chuẩn bị (không cộng điểm khống để tránh trục lợi).
 
-### 2.2. Hệ Thống Gamification SmashPass & Kho Đồ
+### 2.2. Hệ Thống Gamification Nhiệm Vụ & Kho Đồ
 * **Quests Engine (Nhiệm vụ):**
   * Hỗ trợ nhiệm vụ Hàng ngày, Hàng tuần, Hàng tháng và Mùa giải.
   * Tích hợp cơ chế **Lazy-Reset**: Khi thành viên mở tab Nhiệm vụ, Backend tự động đối chiếu thời gian `updated_at` để reset tiến trình của chu kỳ mới mà không cần cron job ngầm.
   * **Chống Spam quà:** Bọc logic nhận quà trong DB Transaction với câu lệnh `FOR UPDATE` khóa dòng dữ liệu nguyên tử.
-* **SmashPass (Battle Pass):**
-  * Hệ thống 10 cấp độ thưởng.
-  * Thành viên dùng Xu kiếm được để mở khóa **Premium Pass** nâng cấp, nhận quà độc quyền (Khung viền Neon Bạc, Neon Tím, Danh hiệu lấp lánh).
 * **Kho Đồ (Inventory):** Nơi lưu trữ vật phẩm (Khung viền, danh hiệu) nhận được. Người dùng có thể click Trang bị/Tháo trang bị realtime, tự động đồng bộ hiển thị lên thẻ người chơi.
 
 ### 2.3. Hệ Thống Điểm Danh QR & Quản lý Buổi Tập (Admin)
@@ -114,15 +111,6 @@ Cấu trúc cơ sở dữ liệu PostgreSQL gồm các bảng chính:
 * `current_count` (INTEGER) - Tiến độ hiện tại
 * `is_completed` / `is_claimed` (BOOLEAN) - Đã hoàn thành / Đã nhận quà
 * `updated_at` (TIMESTAMP)
-
-### Bảng `smash_pass_rewards` (Cấu hình mốc Battle Pass)
-* `id` (SERIAL, Khóa chính)
-* `season_id` (INTEGER)
-* `level_required` (INTEGER) - Cấp độ yêu cầu để nhận (1-10)
-* `reward_type` (VARCHAR) - Loại quà ('title', 'coins', 'avatar_frame', 'streak_shield')
-* `reward_name` (VARCHAR) - Tên hiển thị quà
-* `reward_value` (VARCHAR) - Giá trị lưu trữ/mã của quà
-* `is_premium` (BOOLEAN) - Quà Premium hay miễn phí
 
 ### Bảng `user_inventory` (Túi đồ vật phẩm thành viên sở hữu)
 * `id` (SERIAL, Khóa chính)
