@@ -72,6 +72,9 @@ export default function Home() {
   // Site Settings (Featured event, cover, config)
   const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
 
+  // Số liệu thật cho dải stats (rớt về số mặc định của ClubStats khi API lỗi)
+  const [clubStats, setClubStats] = useState<any>(null);
+
   // Giới thiệu & Liên hệ do admin cấu hình (Quản lý nội dung -> Giới thiệu & Liên hệ)
   const address = (siteSettings.contact_address || "").trim() || ADDRESS_FALLBACK;
   const contacts = parseJsonSetting<{ name: string; phone: string; role: string }[]>(
@@ -184,6 +187,13 @@ export default function Home() {
         }
       })
       .catch(e => console.error("Error loading media:", e));
+
+    fetch(`${API_URL}/api/stats?t=${Date.now()}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) setClubStats(data);
+      })
+      .catch(e => console.error("Error loading club stats:", e));
 
     fetch(`${API_URL}/api/campaigns/active?t=${Date.now()}`)
       .then(res => res.ok ? res.json() : null)
@@ -612,14 +622,19 @@ export default function Home() {
                   </button>
                 </motion.div>
 
-                {/* DẢI STATS COUNTER UY TÍN (ClubStats) */}
+                {/* DẢI STATS COUNTER UY TÍN (số thật từ /api/stats) */}
                 <motion.div
                   initial={{ opacity: 0, y: 25 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.4 }}
                   className="pt-6 w-full"
                 >
-                  <ClubStats />
+                  <ClubStats
+                    memberCount={clubStats ? String(clubStats.activeMembers) : undefined}
+                    sessionsPerWeek={clubStats ? String(clubStats.weeklySessions) : undefined}
+                    tournamentsCount={clubStats ? String(clubStats.eventsCount) : undefined}
+                    topElo={clubStats ? String(clubStats.topElo) : undefined}
+                  />
                 </motion.div>
               </div>
             </section>
