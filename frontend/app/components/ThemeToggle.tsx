@@ -6,7 +6,7 @@ import { Moon, Sun } from "lucide-react";
 export const THEME_KEY = "smash-theme";
 
 /** Nút chế độ ban đêm dùng chung mọi loại tài khoản (chỉ icon trăng/trời). */
-function ThemeToggleBase() {
+function ThemeToggleBase({ className = "", iconClassName = "w-4 h-4" }: { className?: string; iconClassName?: string }) {
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
@@ -31,9 +31,9 @@ function ThemeToggleBase() {
       onClick={toggle}
       aria-pressed={dark}
       title={dark ? "Chế độ ban ngày" : "Chế độ ban đêm"}
-      className="w-10 h-10 rounded-full flex items-center justify-center border border-slate-200 bg-white text-slate-600 hover:text-black hover:border-black/30 transition-colors shrink-0"
+      className={`w-10 h-10 rounded-full flex items-center justify-center border border-slate-200 bg-white text-slate-600 hover:text-black hover:border-black/30 transition-colors shrink-0 cursor-pointer ${className}`}
     >
-      {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      {dark ? <Sun className={iconClassName} /> : <Moon className={iconClassName} />}
     </button>
   );
 }

@@ -110,9 +110,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </nav>
 
         <div className="p-3 border-t border-white/5 space-y-1">
-          <div className="flex items-center gap-3 w-full px-4 py-2.5">
-            <ThemeToggle />
-            <span className="text-xs sm:text-sm text-slate-400">Ban ngày / Ban đêm</span>
+          <div className="flex items-center gap-3 w-full px-4 py-2.5 rounded-xl hover:bg-white/5 transition-colors">
+            <ThemeToggle className="border-white/15 bg-white/5 text-slate-300 hover:text-white hover:border-white/30" />
+            <span className="text-xs sm:text-sm text-slate-300">Ban ngày / Ban đêm</span>
           </div>
           <Link
             href="/"
