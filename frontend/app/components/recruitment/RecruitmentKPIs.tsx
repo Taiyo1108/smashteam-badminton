@@ -16,6 +16,7 @@ export interface CandidateItem {
   casting_time?: string;
   location?: string;
   created_at?: string;
+  extra_answers?: unknown;
 }
 
 interface RecruitmentKPIsProps {
@@ -35,17 +36,17 @@ export default function RecruitmentKPIs({
   // Calculate gender ratio
   const maleCount = candidates.filter(c => c.gender === "Nam").length;
   const femaleCount = candidates.filter(c => c.gender === "Nữ").length;
-  const malePercent = totalCandidates > 0 ? Math.round((maleCount / totalCandidates) * 100) : 60;
-  const femalePercent = totalCandidates > 0 ? Math.round((femaleCount / totalCandidates) * 100) : 40;
+  const malePercent = totalCandidates > 0 ? Math.round((maleCount / totalCandidates) * 100) : 0;
+  const femalePercent = totalCandidates > 0 ? Math.round((femaleCount / totalCandidates) * 100) : 0;
 
   // Calculate skill level distribution
   const beginnerCount = candidates.filter(c => c.badminton_level === "Mới chơi").length;
   const intermediateCount = candidates.filter(c => c.badminton_level === "Trung bình").length;
   const advancedCount = candidates.filter(c => c.badminton_level === "Khá/Giỏi").length;
 
-  const beginnerPct = totalCandidates > 0 ? Math.round((beginnerCount / totalCandidates) * 100) : 25;
-  const intermediatePct = totalCandidates > 0 ? Math.round((intermediateCount / totalCandidates) * 100) : 55;
-  const advancedPct = totalCandidates > 0 ? Math.round((advancedCount / totalCandidates) * 100) : 20;
+  const beginnerPct = totalCandidates > 0 ? Math.round((beginnerCount / totalCandidates) * 100) : 0;
+  const intermediatePct = totalCandidates > 0 ? Math.round((intermediateCount / totalCandidates) * 100) : 0;
+  const advancedPct = totalCandidates > 0 ? Math.round((advancedCount / totalCandidates) * 100) : 0;
 
   const kpis = [
     {
@@ -53,7 +54,7 @@ export default function RecruitmentKPIs({
       label: "Tổng hồ sơ nộp",
       value: totalCandidates,
       sub: "Đợt tuyển hiện tại",
-      badge: "+12% so với mùa trước",
+      badge: totalCandidates > 0 ? `${totalCandidates} hồ sơ` : "Chưa có hồ sơ",
       badgeColor: "bg-purple-100 text-primary border-purple-200",
       icon: Users,
       iconBg: "bg-purple-50 text-primary"
@@ -62,19 +63,23 @@ export default function RecruitmentKPIs({
       id: "pending",
       label: "Đang chờ casting & duyệt",
       value: pendingCount,
-      sub: "Cần xử lý & chấm điểm",
-      badge: "Cần duyệt sớm",
-      badgeColor: "bg-amber-100 text-amber-700 border-amber-200",
+      sub: pendingCount > 0 ? "Cần xử lý & chấm điểm" : "Không còn hồ sơ chờ",
+      badge: pendingCount > 0 ? "Cần duyệt sớm" : "Đã xử lý hết",
+      badgeColor: pendingCount > 0
+        ? "bg-amber-100 text-amber-700 border-amber-200"
+        : "bg-slate-100 text-slate-500 border-slate-200",
       icon: Clock,
       iconBg: "bg-amber-50 text-amber-600"
     },
     {
       id: "approved",
       label: "Thành viên đã duyệt",
-      value: approvedCount > 0 ? approvedCount : "15+",
-      sub: "Đã kích hoạt ELO & Rank",
-      badge: "Đạt tiêu chuẩn",
-      badgeColor: "bg-emerald-100 text-emerald-700 border-emerald-200",
+      value: approvedCount,
+      sub: approvedCount > 0 ? "Đã kích hoạt ELO & Rank" : "Chưa có thành viên nào",
+      badge: approvedCount > 0 ? "Đạt tiêu chuẩn" : "Chưa có dữ liệu",
+      badgeColor: approvedCount > 0
+        ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+        : "bg-slate-100 text-slate-500 border-slate-200",
       icon: CheckCircle2,
       iconBg: "bg-emerald-50 text-emerald-600"
     },

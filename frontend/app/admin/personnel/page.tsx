@@ -12,6 +12,8 @@ import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
 import RecruitmentKPIs from "@/app/components/recruitment/RecruitmentKPIs";
 import ApplicantTable from "@/app/components/recruitment/ApplicantTable";
 import ApplicantDetailDrawer from "@/app/components/recruitment/ApplicantDetailDrawer";
+import CustomQuestionsEditor from "@/app/components/recruitment/CustomQuestionsEditor";
+import { parseQuestions, type CustomQuestion } from "@/app/components/recruitment/customQuestions";
 
 const softSkillsList = [
   "Chụp ảnh",
@@ -84,6 +86,8 @@ export default function PersonnelPage() {
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
   const [cForm, setCForm] = useState({ name: "", start: "", end: "", active: true });
   const [sForm, setSForm] = useState({ time: "", location: "", max: "20" });
+  // Bộ câu hỏi tùy chỉnh của đợt tuyển (hiển thị sau bước 2 ở form ứng tuyển)
+  const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([]);
 
   // States xem danh sách ứng viên theo Ca Casting
   const [viewingSlot, setViewingSlot] = useState<any>(null);
@@ -115,6 +119,7 @@ export default function PersonnelPage() {
         end: new Date(selectedCampaign.end_date).toISOString().slice(0, 16),
         active: selectedCampaign.is_active
       });
+      setCustomQuestions(parseQuestions(selectedCampaign.custom_questions));
       setIsCreatingCampaign(false);
     }
   }, [selectedCampaign]);
@@ -128,6 +133,14 @@ export default function PersonnelPage() {
         : `${API_URL}/api/campaigns`;
       const method = selectedCampaign && !isCreatingCampaign ? "PUT" : "POST";
 
+      const cleanedQuestions = customQuestions
+        .filter((q) => q.label.trim())
+        .map((q) => ({
+          ...q,
+          label: q.label.trim(),
+          options: q.options.map((o) => o.trim()).filter(Boolean),
+        }));
+
       const res = await fetch(url, {
         method,
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
@@ -135,14 +148,19 @@ export default function PersonnelPage() {
           name: cForm.name,
           start_date: new Date(cForm.start).toISOString(),
           end_date: new Date(cForm.end).toISOString(),
-          is_active: cForm.active
+          is_active: cForm.active,
+          custom_questions: cleanedQuestions
         })
       });
       if (res.ok) {
+        const saved = await res.json();
         alert("Lưu Đợt tuyển thành công!");
         setIsCreatingCampaign(false);
+        setCustomQuestions(parseQuestions(saved.custom_questions));
+        if (saved && saved.id) setSelectedCampaign(saved);
         fetchCampaigns();
         if (selectedCampaign) fetchCampaignStats(selectedCampaign.id);
+        else if (saved && saved.id) fetchCampaignStats(saved.id);
       }
     } catch (e) {}
   };
@@ -234,6 +252,7 @@ export default function PersonnelPage() {
   useEffect(() => {
     if (activeTab === 'candidates') {
       fetchCandidates();
+      fetchMembers();
     } else if (activeTab === 'members') {
       fetchMembers();
     } else if (activeTab === 'campaigns') {
@@ -558,7 +577,7 @@ export default function PersonnelPage() {
         </div>
         {activeTab === 'campaigns' && (
           <button 
-            onClick={() => { setIsCreatingCampaign(true); setSelectedCampaign(null); setCForm({ name: "", start: "", end: "", active: true }); }}
+            onClick={() => { setIsCreatingCampaign(true); setSelectedCampaign(null); setCForm({ name: "", start: "", end: "", active: true }); setCustomQuestions([]); }}
             className="flex items-center gap-2 px-5 py-2.5 bg-black hover:bg-black/85 text-secondary rounded-xl font-bold text-sm transition-all shadow-md active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Đợt mới
@@ -592,8 +611,9 @@ export default function PersonnelPage() {
       {activeTab === 'candidates' && (
         <div className="space-y-6">
           {/* Mini KPI Cards & Distributions */}
-          <RecruitmentKPIs 
-            candidates={candidates} 
+          <RecruitmentKPIs
+            candidates={candidates}
+            approvedCount={members.length}
             totalSlotsCapacity={slots.reduce((acc, s) => acc + (Number(s.max_capacity) || 0), 0) || 60}
           />
 
@@ -1287,6 +1307,14 @@ export default function PersonnelPage() {
                       </button>
                     </div>
                   </form>
+                </div>
+
+                {/* Bộ câu hỏi tùy chỉnh (hiển thị sau bước 2 ở form ứng tuyển) */}
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                  <CustomQuestionsEditor value={customQuestions} onChange={setCustomQuestions} />
+                  <p className="text-[11px] text-slate-400 mt-3">
+                    * Nhấn “Lưu đợt tuyển” ở trên để lưu bộ câu hỏi cùng đợt tuyển.
+                  </p>
                 </div>
 
                 {/* Thống kê & Quản lý Ca Casting (Chỉ hiện khi ĐANG CHỌN 1 đợt) */}

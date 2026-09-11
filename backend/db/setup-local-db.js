@@ -53,6 +53,8 @@ async function setupLocalDb(existingDb) {
       await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS target_audience VARCHAR(255)");
       await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS target_capacity INTEGER DEFAULT 60");
       await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS timeline_steps JSONB");
+      await db.query("ALTER TABLE recruitment_campaigns ADD COLUMN IF NOT EXISTS custom_questions JSONB DEFAULT '[]'");
+      await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS extra_answers JSONB");
 
       // Đảm bảo có cấu hình sự kiện đếm ngược nổi bật
       await db.query(`

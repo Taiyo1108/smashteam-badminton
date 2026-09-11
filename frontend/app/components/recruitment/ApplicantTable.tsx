@@ -190,14 +190,14 @@ export default function ApplicantTable({
       </div>
 
       {/* Table Container */}
-      <div className="bg-white border border-slate-200 rounded-3xl shadow-xs overflow-hidden min-h-[350px] relative">
+      <div className="bg-white border border-slate-200 rounded-3xl shadow-xs overflow-hidden min-h-[350px] relative flex flex-col">
         {isLoading ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-primary bg-white/80 z-20 space-y-2">
+          <div className="flex-1 flex flex-col items-center justify-center text-primary bg-white/80 z-20 space-y-2 py-16">
             <Loader2 className="w-8 h-8 animate-spin" />
             <p className="text-xs font-bold text-slate-500">Đang tải danh sách ứng viên...</p>
           </div>
         ) : filteredCandidates.length === 0 ? (
-          <div className="p-16 text-center text-slate-400 space-y-2">
+          <div className="flex-1 flex flex-col items-center justify-center p-16 text-center text-slate-400 space-y-2">
             <User className="w-12 h-12 text-slate-300 mx-auto" />
             <p className="font-bold text-slate-600 text-base">Không tìm thấy ứng viên nào phù hợp</p>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
@@ -205,7 +205,7 @@ export default function ApplicantTable({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="flex-1 overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200">
@@ -337,7 +337,7 @@ export default function ApplicantTable({
         )}
 
         {/* Table Footer Summary */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 font-semibold">
+        <div className="mt-auto p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 font-semibold">
           <span>
             Hiển thị <strong>{filteredCandidates.length}</strong> / {candidates.length} ứng viên
           </span>

@@ -9,6 +9,7 @@ import {
 import { useState } from "react";
 import { format } from "date-fns";
 import { CandidateItem } from "./RecruitmentKPIs";
+import { parseAnswers, formatAnswer } from "./customQuestions";
 
 interface ApplicantDetailDrawerProps {
   candidate: CandidateItem | null;
@@ -199,6 +200,31 @@ export default function ApplicantDetailDrawer({
                     <p className="text-xs text-slate-400">Không đăng ký kỹ năng hỗ trợ thêm.</p>
                   )}
                 </div>
+
+                {/* Custom Q&A Answers */}
+                {(() => {
+                  const qa = parseAnswers(candidate.extra_answers);
+                  if (qa.length === 0) return null;
+                  return (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
+                        Trả lời câu hỏi bổ sung ({qa.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {qa.map((a, idx) => (
+                          <div key={idx} className="p-3 rounded-xl bg-purple-50/60 border border-purple-100">
+                            <p className="text-[11px] font-bold text-slate-500 mb-1">
+                              {idx + 1}. {a.question}
+                            </p>
+                            <p className="text-xs font-semibold text-secondary whitespace-pre-wrap">
+                              {formatAnswer(a.answer)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Registration Timestamp */}
                 {candidate.created_at && (

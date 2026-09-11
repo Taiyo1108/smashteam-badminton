@@ -69,9 +69,10 @@ router.get('/', authenticateToken, isAdmin, async (req, res) => {
 // POST /api/campaigns - Tạo đợt tuyển mới (Admin)
 router.post('/', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { 
-      name, start_date, end_date, is_active, 
-      badge_text, description, location, target_audience, target_capacity, timeline_steps 
+    const {
+      name, start_date, end_date, is_active,
+      badge_text, description, location, target_audience, target_capacity, timeline_steps,
+      custom_questions
     } = req.body;
     
     if (!name || !start_date || !end_date) {
@@ -88,19 +89,20 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const result = await db.query(
       `INSERT INTO recruitment_campaigns (
         name, start_date, end_date, is_active,
-        badge_text, description, location, target_audience, target_capacity, timeline_steps
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        badge_text, description, location, target_audience, target_capacity, timeline_steps, custom_questions
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [
-        name, 
-        start_date, 
-        end_date, 
+        name,
+        start_date,
+        end_date,
         active,
         badge_text || 'Mùa Tuyển Quân 2026',
         description || '',
         location || 'Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM',
         target_audience || 'Mọi cấp độ tay vợt',
         target_capacity || 60,
-        timeline_steps ? (typeof timeline_steps === 'string' ? timeline_steps : JSON.stringify(timeline_steps)) : null
+        timeline_steps ? (typeof timeline_steps === 'string' ? timeline_steps : JSON.stringify(timeline_steps)) : null,
+        custom_questions ? (typeof custom_questions === 'string' ? custom_questions : JSON.stringify(custom_questions)) : '[]'
       ]
     );
 
@@ -134,9 +136,10 @@ router.post('/:id/slots', authenticateToken, isAdmin, async (req, res) => {
 router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
+    const {
       name, start_date, end_date, is_active,
-      badge_text, description, location, target_audience, target_capacity, timeline_steps
+      badge_text, description, location, target_audience, target_capacity, timeline_steps,
+      custom_questions
     } = req.body;
     
     const active = is_active === true || is_active === 'true';
@@ -156,13 +159,15 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
          description = COALESCE($6, description),
          location = COALESCE($7, location),
          target_audience = COALESCE($8, target_audience),
-         target_capacity = COALESCE($9, target_capacity),
-         timeline_steps = COALESCE($10, timeline_steps)
-       WHERE id = $11 RETURNING *`,
+          target_capacity = COALESCE($9, target_capacity),
+          timeline_steps = COALESCE($10, timeline_steps),
+          custom_questions = COALESCE($11, custom_questions)
+        WHERE id = $12 RETURNING *`,
       [
         name, start_date, end_date, active,
         badge_text, description, location, target_audience, target_capacity,
         timeline_steps ? (typeof timeline_steps === 'string' ? timeline_steps : JSON.stringify(timeline_steps)) : null,
+        custom_questions !== undefined ? (typeof custom_questions === 'string' ? custom_questions : JSON.stringify(custom_questions)) : null,
         id
       ]
     );

@@ -8,7 +8,7 @@ const { getRankName } = require('../utils/elo');
 // POST /api/users/register - Đăng ký candidate mới
 router.post('/register', async (req, res) => {
   try {
-    const { full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, casting_slot_id, gender } = req.body;
+    const { full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, casting_slot_id, gender, extra_answers } = req.body;
     
     if (!full_name || !phone_zalo || !academic_info || !badminton_level) {
       return res.status(400).json({ error: 'Vui lòng điền đầy đủ các thông tin bắt buộc.' });
@@ -35,12 +35,30 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    const result = await db.query(
-      `INSERT INTO users (full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender)
-       VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $8) RETURNING id, full_name, role`,
-      [full_name, phone_zalo, email || null, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id, gender]
-    );
-    
+    const extraAnswersJson = extra_answers
+      ? (typeof extra_answers === 'string' ? extra_answers : JSON.stringify(extra_answers))
+      : null;
+
+    let result;
+    try {
+      result = await db.query(
+        `INSERT INTO users (full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender, extra_answers)
+         VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $8, $9) RETURNING id, full_name, role`,
+        [full_name, phone_zalo, email || null, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id, gender, extraAnswersJson]
+      );
+    } catch (e) {
+      // Fallback cho DB chưa chạy migration 19 (thiếu cột extra_answers)
+      if (e && e.code === '42703') {
+        result = await db.query(
+          `INSERT INTO users (full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender)
+           VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $8) RETURNING id, full_name, role`,
+          [full_name, phone_zalo, email || null, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id, gender]
+        );
+      } else {
+        throw e;
+      }
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error(error);
@@ -86,8 +104,8 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
     const { search, level, slot_id } = req.query;
     
     let query = `
-      SELECT u.id, u.full_name, u.gender, u.phone_zalo, COALESCE(u.email, '') as email, u.academic_info, u.badminton_level, u.soft_skills, u.created_at, 
-             u.casting_slot_id, c.casting_time, c.location 
+      SELECT u.id, u.full_name, u.gender, u.phone_zalo, COALESCE(u.email, '') as email, u.academic_info, u.badminton_level, u.soft_skills, u.created_at,
+             u.casting_slot_id, c.casting_time, c.location
       FROM users u
       LEFT JOIN casting_slots c ON u.casting_slot_id = c.id
       WHERE u.role = 'candidate'
@@ -115,7 +133,17 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
 
     query += ` ORDER BY u.created_at DESC`;
 
-    const result = await db.query(query, params);
+    // Ưu tiên kèm câu trả lời tùy chỉnh; rớt về query cũ nếu DB chưa có cột extra_answers
+    let result;
+    try {
+      result = await db.query(query.replace('u.casting_slot_id,', 'u.casting_slot_id, u.extra_answers,'), params);
+    } catch (e) {
+      if (e && e.code === '42703') {
+        result = await db.query(query, params);
+      } else {
+        throw e;
+      }
+    }
     res.json(result.rows);
   } catch (error) {
     console.error(error);

@@ -46,6 +46,43 @@ export default function ContentManagementPage() {
   const [eventSaving, setEventSaving] = useState(false);
   const [eventSuccess, setEventSuccess] = useState(false);
   const [eventError, setEventError] = useState("");
+  const [nearestLoading, setNearestLoading] = useState(false);
+
+  // Đồng bộ form từ buổi tập gần nhất (/api/sessions trả về gần nhất trước)
+  const handleSyncNearest = async () => {
+    setNearestLoading(true);
+    setEventError("");
+    try {
+      const res = await fetch(`${API_URL}/api/sessions`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const nearest = Array.isArray(data) ? data[0] : null;
+      if (!nearest) {
+        setEventError("Chưa có buổi tập sắp tới nào để đồng bộ.");
+        return;
+      }
+      const toLocalInput = (v: string) => {
+        try {
+          const d = new Date(v);
+          if (isNaN(d.getTime())) return "";
+          const pad = (n: number) => String(n).padStart(2, "0");
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        } catch { return ""; }
+      };
+      setEventForm((prev) => ({
+        ...prev,
+        title: nearest.title || prev.title,
+        date: toLocalInput(nearest.date_time) || prev.date,
+        location: nearest.location || prev.location,
+      }));
+      setEventSuccess(true);
+      setTimeout(() => setEventSuccess(false), 2500);
+    } catch {
+      setEventError("Không lấy được buổi tập gần nhất, vui lòng thử lại.");
+    } finally {
+      setNearestLoading(false);
+    }
+  };
 
   // States for Media Posts
   const [mediaPosts, setMediaPosts] = useState<any[]>([]);
@@ -503,9 +540,24 @@ export default function ContentManagementPage() {
 
           {/* CÀI ĐẶT SỰ KIỆN ĐẾM NGƯỢC NỔI BẬT */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-secondary mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-bold text-secondary mb-1 flex items-center gap-2">
               <Clock className="w-5 h-5 text-primary" /> Sự kiện Đếm ngược Trang chủ
             </h2>
+            <p className="text-[11px] text-slate-400 mb-3">
+              Trang chủ sẽ tự đếm ngược tới <strong>buổi tập gần nhất</strong>. Form bên dưới chỉ là dự phòng khi chưa có lịch.
+            </p>
+            <button
+              type="button"
+              onClick={handleSyncNearest}
+              disabled={nearestLoading}
+              className="w-full mb-4 py-2 px-3 border border-dashed border-primary/40 hover:border-primary hover:bg-purple-50 text-primary rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {nearestLoading ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang lấy buổi gần nhất...</>
+              ) : (
+                <><Calendar className="w-3.5 h-3.5" /> Đồng bộ từ buổi tập gần nhất</>
+              )}
+            </button>
 
             <form onSubmit={handleSaveEvent} className="space-y-4">
               <div>

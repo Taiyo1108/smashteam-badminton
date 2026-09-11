@@ -297,6 +297,12 @@ export default function Home() {
     }
   };
 
+  const shortSessionId = (id: unknown) => {
+    const s = String(id ?? "").replace(/-/g, "");
+    if (!s) return "";
+    return s.slice(0, 6).toUpperCase();
+  };
+
   return (
     <main className="flex-1 w-full bg-background min-h-screen text-foreground flex flex-col selection:bg-primary/20 selection:text-primary">
       {/* Toast Notification */}
@@ -1027,36 +1033,51 @@ export default function Home() {
                 upcomingSessions.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {upcomingSessions.map((session) => (
-                      <div 
+                      <div
                         key={session.id}
-                        className="bg-white rounded-3xl p-6 border border-purple-100 shadow-sm hover:shadow-md hover:border-primary/30 transition-all space-y-4 flex flex-col justify-between"
+                        className="group relative bg-white rounded-[20px] p-5 border border-purple-100 shadow-[0_2px_16px_-6px_rgba(122,34,224,0.15)] hover:shadow-[0_12px_32px_-8px_rgba(122,34,224,0.28)] hover:border-primary/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between gap-4 overflow-hidden min-w-0"
                       >
-                        <div className="space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded bg-purple-50 text-primary border border-primary/20">
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-fuchsia-500 to-primary" aria-hidden="true" />
+                        <div className="space-y-3 min-w-0">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full bg-gradient-to-r from-primary to-fuchsia-600 text-white shadow-sm shadow-primary/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" aria-hidden="true" />
                               Lịch sắp tới
                             </span>
-                            <span className="text-xs font-semibold text-slate-400 tabular-nums">#BUOITAP-{session.id}</span>
+                            <span
+                              title={String(session.id ?? "")}
+                              className="shrink-0 max-w-[110px] truncate font-mono text-[11px] font-semibold text-slate-400 bg-slate-50 border border-slate-100 rounded-md px-2 py-1 tabular-nums"
+                            >
+                              #{shortSessionId(session.id)}
+                            </span>
                           </div>
-                          <h4 className="font-bold text-base text-secondary">{session.title}</h4>
-                          
-                          <div className="space-y-1.5 text-xs text-slate-500 pt-1">
-                            <div className="flex items-center gap-2">
-                              <Clock className="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true" />
-                              <span className="tabular-nums">{formatDateTime(session.date_time)}</span>
+                          <h4 className="font-extrabold text-[17px] leading-snug text-secondary line-clamp-2 text-balance">{session.title}</h4>
+
+                          <div className="grid gap-2 bg-slate-50/80 border border-slate-100 rounded-2xl p-3">
+                            <div className="flex items-center gap-2.5 text-[13px] text-slate-600 min-w-0">
+                              <span className="w-7 h-7 rounded-full bg-white border border-purple-100 shadow-sm flex items-center justify-center shrink-0">
+                                <Clock className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+                              </span>
+                              <span className="font-semibold tabular-nums truncate">{formatDateTime(session.date_time)}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true" />
-                              <span>{session.location}</span>
+                            <div className="flex items-center gap-2.5 text-[13px] text-slate-600 min-w-0">
+                              <span className="w-7 h-7 rounded-full bg-white border border-purple-100 shadow-sm flex items-center justify-center shrink-0">
+                                <MapPin className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+                              </span>
+                              <span className="font-medium truncate">{session.location}</span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                          <span className="text-xs text-slate-400">Điểm danh trực tiếp</span>
-                          <Link href="/check-in">
-                            <button className="min-h-[36px] text-xs font-bold text-primary hover:text-primary-hover flex items-center gap-1 cursor-pointer focus-ring p-1">
-                              <span>Mở QR Check-in</span>
+                        <div className="pt-3 border-t border-dashed border-slate-200 flex items-center justify-between gap-2">
+                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                            Điểm danh trực tiếp
+                          </span>
+                          <Link href="/check-in" className="shrink-0">
+                            <button className="min-h-[36px] pl-3 pr-2 py-1.5 rounded-full text-xs font-bold text-white bg-secondary hover:bg-primary flex items-center gap-1.5 shadow-sm hover:shadow-md hover:gap-2.5 transition-all cursor-pointer focus-ring">
+                              <QrCode className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span className="whitespace-nowrap">Mở QR Check-in</span>
                               <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
                             </button>
                           </Link>
@@ -1075,25 +1096,30 @@ export default function Home() {
                 pastSessions.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {pastSessions.map((session) => (
-                      <div 
+                      <div
                         key={session.id}
-                        className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-3 opacity-80 hover:opacity-100 transition-opacity"
+                        className="bg-white rounded-[20px] p-5 border border-slate-100 shadow-sm space-y-3 opacity-80 hover:opacity-100 transition-opacity min-w-0"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="inline-flex items-center shrink-0 whitespace-nowrap text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full bg-slate-100 text-slate-600">
                             Đã hoàn thành
                           </span>
-                          <span className="text-xs text-slate-400 tabular-nums">#BUOITAP-{session.id}</span>
+                          <span
+                            title={String(session.id ?? "")}
+                            className="shrink-0 max-w-[110px] truncate font-mono text-[11px] font-semibold text-slate-400 bg-slate-50 border border-slate-100 rounded-md px-2 py-1 tabular-nums"
+                          >
+                            #{shortSessionId(session.id)}
+                          </span>
                         </div>
-                        <h4 className="font-bold text-base text-secondary">{session.title}</h4>
-                        <div className="space-y-1.5 text-xs text-slate-500">
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
-                            <span className="tabular-nums">{formatDateTime(session.date_time)}</span>
+                        <h4 className="font-bold text-[16px] leading-snug text-secondary line-clamp-2">{session.title}</h4>
+                        <div className="grid gap-2 bg-slate-50/70 border border-slate-100 rounded-2xl p-3 text-[13px] text-slate-500">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                            <span className="font-medium tabular-nums truncate">{formatDateTime(session.date_time)}</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
-                            <span>{session.location}</span>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                            <span className="truncate">{session.location}</span>
                           </div>
                         </div>
                       </div>

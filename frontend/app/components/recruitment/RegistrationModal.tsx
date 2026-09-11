@@ -11,6 +11,11 @@ import {
 import confetti from "canvas-confetti";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
+import {
+  parseQuestions,
+  isAnswerEmpty,
+  type CustomQuestion,
+} from "./customQuestions";
 
 export interface SlotData {
   id: string | number;
@@ -81,7 +86,22 @@ export default function RegistrationModal({
     selectedSlot: ""
   });
 
-  // Fetch active recruitment slots
+  // Bộ câu hỏi tùy chỉnh do admin soạn cho đợt tuyển hiện tại (bước mới sau bước 2)
+  const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([]);
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+
+  const hasQuestions = customQuestions.length > 0;
+  const totalSteps = hasQuestions ? 4 : 3;
+  const isQuestionStep = hasQuestions && step === 3;
+  const isSlotStep = step === totalSteps;
+
+  const stepLabel =
+    step === 1 ? "1. Thông tin cá nhân & Liên hệ" :
+    step === 2 ? "2. Trình độ & Kỹ năng bổ trợ" :
+    isQuestionStep ? "3. Câu hỏi bổ sung" :
+    `${totalSteps}. Chọn Ca Casting & Xác nhận`;
+
+  // Fetch active recruitment slots + custom questions
   useEffect(() => {
     fetch(`${API_URL}/api/campaigns/active`)
       .then(res => res.ok ? res.json() : null)
@@ -92,6 +112,9 @@ export default function RegistrationModal({
           if (activeSlots.length > 0 && !formData.selectedSlot) {
             setFormData(prev => ({ ...prev, selectedSlot: String(activeSlots[0].id) }));
           }
+        }
+        if (data) {
+          setCustomQuestions(parseQuestions(data.custom_questions));
         }
       })
       .catch(e => console.error("Error fetching campaign slots:", e))
@@ -148,6 +171,22 @@ export default function RegistrationModal({
     }));
   };
 
+  const setAnswer = (questionId: string, value: string | string[]) => {
+    setAnswers(prev => ({ ...prev, [questionId]: value }));
+  };
+
+  const toggleCheckboxAnswer = (questionId: string, option: string) => {
+    setAnswers(prev => {
+      const current = Array.isArray(prev[questionId]) ? (prev[questionId] as string[]) : [];
+      return {
+        ...prev,
+        [questionId]: current.includes(option)
+          ? current.filter(v => v !== option)
+          : [...current, option]
+      };
+    });
+  };
+
   const nextStep = () => {
     setSubmitError(null);
     if (step === 1) {
@@ -168,6 +207,13 @@ export default function RegistrationModal({
       }
       if (!formData.level) {
         setSubmitError("Vui lòng chọn trình độ cầu lông của bạn.");
+        return;
+      }
+    }
+    if (isQuestionStep) {
+      const missing = customQuestions.find(q => q.required && isAnswerEmpty(answers[q.id]));
+      if (missing) {
+        setSubmitError(`Vui lòng trả lời câu hỏi bắt buộc: “${missing.label}”.`);
         return;
       }
     }
@@ -200,7 +246,12 @@ export default function RegistrationModal({
           badminton_level: formData.level,
           soft_skills: formData.selectedSkills,
           casting_slot_id: formData.selectedSlot ? Number(formData.selectedSlot) : null,
-          gender: formData.gender
+          gender: formData.gender,
+          extra_answers: customQuestions.map(q => ({
+            questionId: q.id,
+            question: q.label,
+            answer: answers[q.id] ?? (q.type === "checkbox" ? [] : "")
+          }))
         }),
       });
 
@@ -266,19 +317,17 @@ export default function RegistrationModal({
             <div className="mb-8">
               <div className="flex items-center justify-between text-xs font-bold mb-2">
                 <span className="uppercase tracking-wider text-slate-400">
-                  Bước {step} / 3
+                  Bước {step} / {totalSteps}
                 </span>
                 <span className="text-primary font-black">
-                  {step === 1 && "1. Thông tin cá nhân & Liên hệ"}
-                  {step === 2 && "2. Trình độ & Kỹ năng bổ trợ"}
-                  {step === 3 && "3. Chọn Ca Casting & Xác nhận"}
+                  {stepLabel}
                 </span>
               </div>
               <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
                 <motion.div
                   className="h-full bg-gradient-to-r from-primary to-smash-violet"
-                  initial={{ width: "33%" }}
-                  animate={{ width: `${(step / 3) * 100}%` }}
+                  initial={{ width: `${(1 / totalSteps) * 100}%` }}
+                  animate={{ width: `${(step / totalSteps) * 100}%` }}
                   transition={{ duration: 0.35, ease: "easeInOut" }}
                 />
               </div>
@@ -487,8 +536,116 @@ export default function RegistrationModal({
               </motion.div>
             )}
 
-            {/* Step 3: Slot Selection & Confirm */}
-            {step === 3 && (
+            {/* Step mới: Câu hỏi bổ sung do admin soạn (sau bước 2) */}
+            {isQuestionStep && (
+              <motion.div
+                key="step-questions"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-4"
+              >
+                <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-100 text-xs text-slate-600 leading-relaxed">
+                  Ban chủ nhiệm muốn hiểu thêm về bạn trước buổi casting. Vui lòng trả lời các câu hỏi dưới đây.
+                </div>
+                <div className="space-y-4 max-h-[320px] overflow-y-auto pr-1">
+                  {customQuestions.map((q, idx) => {
+                    const value = answers[q.id] ?? (q.type === "checkbox" ? [] : "");
+                    return (
+                      <div key={q.id}>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                          {idx + 1}. {q.label} {q.required && <span className="text-rose-500">*</span>}
+                        </label>
+                        {q.type === "text" && (
+                          <input
+                            type="text"
+                            value={value as string}
+                            onChange={e => setAnswer(q.id, e.target.value)}
+                            placeholder="Nhập câu trả lời của bạn..."
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary focus:outline-none focus:border-primary focus:bg-white transition-all"
+                          />
+                        )}
+                        {q.type === "textarea" && (
+                          <textarea
+                            rows={3}
+                            value={value as string}
+                            onChange={e => setAnswer(q.id, e.target.value)}
+                            placeholder="Chia sẻ chi tiết hơn..."
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary focus:outline-none focus:border-primary focus:bg-white transition-all resize-y"
+                          />
+                        )}
+                        {q.type === "select" && (
+                          <select
+                            value={value as string}
+                            onChange={e => setAnswer(q.id, e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary focus:outline-none focus:border-primary focus:bg-white transition-all cursor-pointer"
+                          >
+                            <option value="">— Chọn một đáp án —</option>
+                            {q.options.map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        )}
+                        {q.type === "radio" && (
+                          <div className="space-y-2">
+                            {q.options.map(opt => {
+                              const selected = value === opt;
+                              return (
+                                <div
+                                  key={opt}
+                                  onClick={() => setAnswer(q.id, opt)}
+                                  className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                                    selected
+                                      ? "bg-purple-50/70 border-primary shadow-sm"
+                                      : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                                  }`}
+                                >
+                                  <span className="text-xs sm:text-sm font-semibold text-secondary">{opt}</span>
+                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                    selected ? "border-primary bg-primary text-white" : "border-slate-300 bg-white"
+                                  }`}>
+                                    {selected && <div className="w-2 h-2 rounded-full bg-white" />}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {q.type === "checkbox" && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {q.options.map(opt => {
+                              const checked = Array.isArray(value) && (value as string[]).includes(opt);
+                              return (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => toggleCheckboxAnswer(q.id, opt)}
+                                  className={`p-3 rounded-2xl border text-xs font-semibold text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                                    checked
+                                      ? "bg-purple-50 text-primary border-primary font-bold shadow-xs"
+                                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
+                                    checked ? "bg-primary border-primary text-white" : "border-slate-300 bg-white"
+                                  }`}>
+                                    {checked && <span className="text-[10px]">✓</span>}
+                                  </div>
+                                  <span>{opt}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Step cuối: Slot Selection & Confirm */}
+            {isSlotStep && (
               <motion.div
                 key="step3"
                 initial={{ opacity: 0, x: 20 }}
@@ -566,6 +723,13 @@ export default function RegistrationModal({
                     <p>Trình độ: <strong className="text-secondary">{formData.level}</strong></p>
                     <p>Giới tính: <strong className="text-secondary">{formData.gender}</strong></p>
                   </div>
+                  {hasQuestions && (
+                    <p className="pt-1 text-slate-500">
+                      Đã trả lời: <strong className="text-secondary">
+                        {customQuestions.filter(q => !isAnswerEmpty(answers[q.id])).length}/{customQuestions.length} câu hỏi bổ sung
+                      </strong>
+                    </p>
+                  )}
                 </div>
               </motion.div>
             )}
@@ -585,7 +749,7 @@ export default function RegistrationModal({
                 <div />
               )}
 
-              {step < 3 ? (
+              {step < totalSteps ? (
                 <button
                   type="button"
                   onClick={nextStep}

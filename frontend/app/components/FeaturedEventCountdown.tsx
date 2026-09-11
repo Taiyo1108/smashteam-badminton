@@ -33,22 +33,24 @@ export default function FeaturedEventCountdown({
     isHappeningNow: false
   });
 
-  // Calculate target event parameters from settings or upcoming session
+  // Đếm ngược tới sự kiện gần nhất: ưu tiên buổi tập sắp tới từ /api/sessions,
+  // cấu hình tay trong site_settings chỉ là fallback khi chưa có buổi nào.
   const eventEnabled = settings.featured_event_enabled !== "false";
-  const eventTitle = settings.featured_event_title || 
-    upcomingSession?.title || 
+  const hasUpcoming = Boolean(upcomingSession?.date_time);
+  const eventTitle = (hasUpcoming ? upcomingSession?.title : undefined) ||
+    settings.featured_event_title ||
     "Giải Đấu Cầu Lông SmashTeam Championship 2026";
-  const eventSubtitle = settings.featured_event_subtitle || 
+  const eventSubtitle = (hasUpcoming ? undefined : settings.featured_event_subtitle) ||
     "Sự kiện quy tụ các vợt thủ tranh cúp ELO Vàng, vinh danh tay vợt xuất sắc và phần thưởng tài trợ độc quyền.";
-  const eventLocation = settings.featured_event_location || 
-    upcomingSession?.location || 
+  const eventLocation = (hasUpcoming ? upcomingSession?.location : undefined) ||
+    settings.featured_event_location ||
     "Cụm Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM";
-  const eventBadge = settings.featured_event_badge || "SỰ KIỆN NỔI BẬT";
+  const eventBadge = hasUpcoming ? "BUỔI TẬP GẦN NHẤT" : (settings.featured_event_badge || "SỰ KIỆN NỔI BẬT");
   const actionText = settings.featured_event_action_text || "Đăng ký tham gia ngay";
   const actionLink = settings.featured_event_action_link || (isLoggedIn ? "/check-in" : "/register");
 
-  // Determine target date/time
-  const targetDateStr = settings.featured_event_date || upcomingSession?.date_time || "2026-09-20T08:30:00";
+  // Determine target date/time — buổi gần nhất luôn được ưu tiên
+  const targetDateStr = upcomingSession?.date_time || settings.featured_event_date || "2026-09-20T08:30:00";
 
   useEffect(() => {
     setMounted(true);
