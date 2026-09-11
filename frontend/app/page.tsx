@@ -1125,13 +1125,13 @@ export default function Home() {
       {/* ABOUT US (động từ site_settings, admin chỉnh ở Quản lý nội dung) */}
       {aboutBlocks.length > 0 && (
         <section aria-label="Về chúng tôi" className="max-w-4xl mx-auto px-4 sm:px-6 mt-16">
-          <div className="rounded-3xl border border-purple-950/60 bg-white/[0.03] p-6 sm:p-8 space-y-4">
-            <h2 className="text-center text-xl sm:text-2xl font-black text-white tracking-tight">
+          <div className="rounded-3xl bg-white border border-purple-100 shadow-sm p-6 sm:p-8 space-y-4">
+            <h2 className="text-center text-xl sm:text-2xl font-black text-secondary tracking-tight">
               Về <span className="text-primary">SmashTeam</span>
             </h2>
             {aboutBlocks.map((b, i) => (
-              <p key={i} className="text-sm leading-relaxed text-slate-400 text-center">
-                {b.lead && <strong className="text-slate-200">{b.lead} </strong>}
+              <p key={i} className="text-sm leading-relaxed text-slate-600 text-center">
+                {b.lead && <strong className="text-secondary">{b.lead} </strong>}
                 {b.tail}
               </p>
             ))}
