@@ -54,8 +54,16 @@ function parseJsonSetting<T>(value: unknown, fallback: T): T {
 export default function Home() {
   const router = useRouter();
 
-  // Active section tab: "intro" | "leaderboard" | "schedule"
-  const [activeTab, setActiveTab] = useState<"intro" | "leaderboard" | "schedule">("intro");
+  // Active section tab: "intro" | "leaderboard" | "schedule" | "media"
+  const [activeTab, setActiveTab] = useState<"intro" | "leaderboard" | "schedule" | "media">("intro");
+
+  // Cấu hình các tab điều hướng trang chủ (dùng chung cho desktop + mobile)
+  const homeTabs = [
+    { id: "intro", label: "Giới thiệu", shortLabel: "Giới thiệu", icon: Sparkles },
+    { id: "leaderboard", label: "Bảng xếp hạng", shortLabel: "Xếp hạng", icon: Trophy },
+    { id: "schedule", label: "Lịch đánh", shortLabel: "Lịch đánh", icon: Calendar },
+    { id: "media", label: "Hoạt động", shortLabel: "Hoạt động", icon: ImageIcon },
+  ] as const;
 
   // Recruitment modal & active campaign state
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -331,46 +339,32 @@ export default function Home() {
             </div>
           </Link>
 
-          {/* SEGMENTED NAVIGATION TABS (Desktop & Tablet) */}
+          {/* SEGMENTED NAVIGATION TABS (Desktop & Tablet) — pill trượt qua lại */}
           <nav aria-label="Điều hướng chính" className="hidden md:flex items-center bg-slate-100/90 p-1.5 rounded-full border border-slate-200/80 shadow-inner">
-            <button
-              id="tab-btn-intro"
-              onClick={() => setActiveTab("intro")}
-              className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer focus-ring ${
-                activeTab === "intro"
-                  ? "bg-primary text-white shadow-md shadow-primary/35 scale-[1.02]"
-                  : "text-slate-600 hover:text-secondary hover:bg-white/70"
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Giới thiệu</span>
-            </button>
-
-            <button
-              id="tab-btn-leaderboard"
-              onClick={() => setActiveTab("leaderboard")}
-              className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer focus-ring ${
-                activeTab === "leaderboard"
-                  ? "bg-primary text-white shadow-md shadow-primary/35 scale-[1.02]"
-                  : "text-slate-600 hover:text-secondary hover:bg-white/70"
-              }`}
-            >
-              <Trophy className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Bảng xếp hạng</span>
-            </button>
-
-            <button
-              id="tab-btn-schedule"
-              onClick={() => setActiveTab("schedule")}
-              className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer focus-ring ${
-                activeTab === "schedule"
-                  ? "bg-primary text-white shadow-md shadow-primary/35 scale-[1.02]"
-                  : "text-slate-600 hover:text-secondary hover:bg-white/70"
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Lịch đánh</span>
-            </button>
+            {homeTabs.map((t) => {
+              const Icon = t.icon;
+              const isActive = activeTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  id={`tab-btn-${t.id}`}
+                  onClick={() => setActiveTab(t.id)}
+                  className={`relative flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-colors duration-200 cursor-pointer focus-ring ${
+                    isActive ? "text-white" : "text-slate-600 hover:text-secondary"
+                  }`}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="desktop-tab-pill"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                      className="absolute inset-0 bg-primary rounded-full shadow-md shadow-primary/35"
+                    />
+                  )}
+                  <Icon className="w-3.5 h-3.5 relative z-10" aria-hidden="true" />
+                  <span className="relative z-10">{t.label}</span>
+                </button>
+              );
+            })}
           </nav>
 
           {/* RIGHT ACTIONS: AUTH BUTTONS / USER PROFILE */}
@@ -475,38 +469,32 @@ export default function Home() {
           </div>
         </div>
 
-        {/* MOBILE SUB-NAVBAR TABS (Touch Target >= 44px) */}
+        {/* MOBILE SUB-NAVBAR TABS (Touch Target >= 44px) — pill trượt qua lại */}
         <nav aria-label="Điều hướng di động" className="md:hidden flex items-center justify-around border-t border-purple-100 bg-white/95 px-2 py-1">
-          <button
-            id="mobile-tab-intro"
-            onClick={() => setActiveTab("intro")}
-            className={`min-h-[44px] flex flex-col items-center justify-center py-1 px-4 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-              activeTab === "intro" ? "text-primary font-black bg-purple-50" : "text-slate-500 hover:text-secondary"
-            }`}
-          >
-            <Sparkles className="w-4 h-4 mb-0.5" aria-hidden="true" />
-            <span>Giới thiệu</span>
-          </button>
-          <button
-            id="mobile-tab-leaderboard"
-            onClick={() => setActiveTab("leaderboard")}
-            className={`min-h-[44px] flex flex-col items-center justify-center py-1 px-4 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-              activeTab === "leaderboard" ? "text-primary font-black bg-purple-50" : "text-slate-500 hover:text-secondary"
-            }`}
-          >
-            <Trophy className="w-4 h-4 mb-0.5" aria-hidden="true" />
-            <span>Xếp hạng</span>
-          </button>
-          <button
-            id="mobile-tab-schedule"
-            onClick={() => setActiveTab("schedule")}
-            className={`min-h-[44px] flex flex-col items-center justify-center py-1 px-4 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-              activeTab === "schedule" ? "text-primary font-black bg-purple-50" : "text-slate-500 hover:text-secondary"
-            }`}
-          >
-            <Calendar className="w-4 h-4 mb-0.5" aria-hidden="true" />
-            <span>Lịch đánh</span>
-          </button>
+          {homeTabs.map((t) => {
+            const Icon = t.icon;
+            const isActive = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                id={`mobile-tab-${t.id}`}
+                onClick={() => setActiveTab(t.id)}
+                className={`relative min-h-[44px] flex flex-col items-center justify-center py-1 px-4 rounded-xl text-[11px] font-bold transition-colors cursor-pointer ${
+                  isActive ? "text-primary font-black" : "text-slate-500 hover:text-secondary"
+                }`}
+              >
+                {isActive && (
+                  <motion.span
+                    layoutId="mobile-tab-pill"
+                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    className="absolute inset-0 bg-purple-50 rounded-xl"
+                  />
+                )}
+                <Icon className="w-4 h-4 mb-0.5 relative z-10" aria-hidden="true" />
+                <span className="relative z-10">{t.shortLabel}</span>
+              </button>
+            );
+          })}
         </nav>
       </header>
 
@@ -1117,6 +1105,33 @@ export default function Home() {
                 <li>Quét mã QR tại bàn tiếp tân sân hoặc bấm <strong>Điểm danh QR</strong> để nhận thưởng <strong>+25 XP</strong> và <strong>+10 Smash Coins</strong>.</li>
               </ul>
             </div>
+          </motion.div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 4: HOẠT ĐỘNG (MEDIA FEED — ẢNH & VIDEO CLB)                            */}
+        {/* ========================================================================= */}
+        {activeTab === "media" && (
+          <motion.div
+            key="tab-media"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.3 }}
+            className="max-w-5xl mx-auto px-4 sm:px-6 py-8 w-full space-y-8"
+          >
+            {/* Header Mục Hoạt Động */}
+            <div className="border-b border-purple-100 pb-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-primary text-xs font-bold uppercase tracking-wider mb-2">
+                <ImageIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Góc nhìn SmashTeam</span>
+              </div>
+              <h2 className="text-3xl font-black text-secondary tracking-tight">Hoạt Động & Khoảnh Khắc</h2>
+              <p className="text-sm text-slate-500 mt-1">Hình ảnh sinh hoạt, giải đấu và video highlight của câu lạc bộ</p>
+            </div>
+
+            {/* Gallery ảnh & video (dữ liệu từ Quản lý nội dung) */}
+            <ClubHighlightsMasonry mediaFeed={mediaFeed} />
           </motion.div>
         )}
 
