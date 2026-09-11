@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { 
-  CheckCircle2, AlertCircle, Loader2, Home, User, Sparkles, 
-  Camera, KeyRound, ArrowRight, RefreshCw, XCircle, LogIn, ShieldCheck, MapPin, Clock 
+import {
+  CheckCircle2, AlertCircle, Loader2, Home, User, Sparkles,
+  Camera, KeyRound, ArrowRight, ArrowLeft, RefreshCw, XCircle, LogIn, ShieldCheck, MapPin, Clock
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import confetti from "canvas-confetti";
@@ -279,6 +279,16 @@ function CheckInContent() {
       {/* Purple Neon Glow Ambient Background */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[400px] bg-primary/20 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-10 right-10 w-[350px] h-[250px] bg-purple-600/10 rounded-full blur-[100px] pointer-events-none" />
+
+      {/* Nút quay lại trang chủ */}
+      <button
+        onClick={() => router.push("/")}
+        aria-label="Quay lại trang chủ"
+        className="absolute top-4 left-4 z-20 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/30 text-slate-300 hover:text-white text-xs font-bold transition-all active:scale-95 cursor-pointer"
+      >
+        <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+        <span>Trang chủ</span>
+      </button>
 
       <div className="w-full max-w-lg bg-secondary-surface/90 backdrop-blur-xl border border-primary/30 rounded-3xl p-6 sm:p-9 shadow-2xl z-10 space-y-6">
         {/* Brand Header */}
