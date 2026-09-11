@@ -4,7 +4,44 @@ const bcrypt = require('bcrypt');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
-const { upload: uploadAvatar, uploadBufferToImageKit, deleteImageByUrl } = require('../utils/imagekit');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const multer = require('multer');
+const { cloudinary } = require('../utils/cloudinary');
+
+// Cấu hình lưu trữ Cloudinary riêng biệt cho Avatar người chơi
+const avatarStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'avatars',
+    allowedFormats: ['jpg', 'png', 'jpeg', 'webp'],
+    transformation: [{ width: 300, height: 300, crop: 'fill', gravity: 'face' }]
+  }
+});
+const uploadAvatar = multer({ storage: avatarStorage });
+
+// Helper trích xuất public_id của Cloudinary để xóa ảnh cũ
+function getPublicIdFromUrl(url) {
+  if (!url || !url.includes('res.cloudinary.com')) return null;
+  try {
+    const parts = url.split('/upload/');
+    if (parts.length < 2) return null;
+    
+    const pathAfterUpload = parts[1];
+    const pathParts = pathAfterUpload.split('/');
+    
+    let startIndex = 0;
+    if (pathParts[0].startsWith('v') || !isNaN(pathParts[0])) {
+      startIndex = 1;
+    }
+    
+    const fileWithExtension = pathParts.slice(startIndex).join('/');
+    const publicId = fileWithExtension.substring(0, fileWithExtension.lastIndexOf('.'));
+    return publicId;
+  } catch (e) {
+    console.error('Error parsing public_id from Cloudinary URL:', e);
+    return null;
+  }
+}
 
 // GET /api/profile/me - Lấy thông tin cá nhân của user đang đăng nhập
 router.get('/me', authenticateToken, async (req, res) => {
@@ -210,7 +247,7 @@ router.put('/update', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/profile/upload-avatar - Tải lên avatar cá nhân lên ImageKit
+// POST /api/profile/upload-avatar - Tải lên avatar cá nhân lên Cloudinary
 router.post('/upload-avatar', authenticateToken, uploadAvatar.single('avatar'), async (req, res) => {
   try {
     const userId = req.user.id;
@@ -219,17 +256,20 @@ router.post('/upload-avatar', authenticateToken, uploadAvatar.single('avatar'), 
       return res.status(400).json({ error: 'Không tìm thấy file ảnh tải lên.' });
     }
 
-    const uploaded = await uploadBufferToImageKit(req.file.buffer, req.file.originalname, '/smashteam/avatars');
-    const newAvatarUrl = uploaded.url;
+    const newAvatarUrl = req.file.path;
 
-    // Lấy thông tin avatar cũ để xóa dọn dẹp dung lượng ImageKit
+    // Lấy thông tin avatar cũ để xóa dọn dẹp dung lượng Cloudinary
     const oldAvatarRes = await db.query('SELECT avatar_url FROM users WHERE id = $1', [userId]);
     const oldAvatarUrl = oldAvatarRes.rows[0]?.avatar_url;
 
-    if (oldAvatarUrl) {
-      await deleteImageByUrl(oldAvatarUrl).catch(err => {
-        console.error('Error deleting old avatar:', err);
-      });
+    if (oldAvatarUrl && oldAvatarUrl.includes('res.cloudinary.com')) {
+      const publicId = getPublicIdFromUrl(oldAvatarUrl);
+      if (publicId) {
+        console.log(`Deleting old avatar from Cloudinary: ${publicId}`);
+        await cloudinary.uploader.destroy(publicId).catch(err => {
+          console.error('Error deleting old avatar:', err);
+        });
+      }
     }
 
     // Cập nhật URL ảnh mới vào DB
