@@ -137,6 +137,14 @@ const SOCIAL_FALLBACK = [
   { label: "Youtube", url: "" },
 ] as const;
 
+// Tự thêm https:// nếu link thiếu protocol (VD: facebook.com/... -> https://facebook.com/...).
+function normalizeSocialUrl(url: unknown): string {
+  const trimmed = String(url ?? "").trim();
+  if (!trimmed) return "";
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 // Parse chuỗi JSON từ site_settings, rớt về fallback khi lỗi/thiếu.
 function parseJsonSetting<T>(value: unknown, fallback: T): T {
   if (typeof value !== "string" || !value) return fallback;
@@ -593,7 +601,7 @@ export default async function Home() {
               <div className="space-y-2.5 text-sm">
                 {socialLinks.map((s) => {
                   const label = String(s.label || "").trim();
-                  const url = String(s.url || "").trim();
+                  const url = normalizeSocialUrl(s.url);
                   return url ? (
                     <a
                       key={label}

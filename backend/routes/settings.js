@@ -63,7 +63,7 @@ router.post('/upload-cover', authenticateToken, isAdmin, upload.single('image'),
     res.json({ url: coverUrl });
   } catch (error) {
     console.error('Error uploading cover photo:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: error?.message || 'Internal server error' });
   }
 });
 

@@ -44,7 +44,7 @@ router.post('/', authenticateToken, isAdmin, upload.single('image'), async (req,
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: error?.message || 'Internal server error' });
   }
 });
 

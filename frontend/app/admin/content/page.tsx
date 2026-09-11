@@ -57,13 +57,21 @@ export default function ContentManagementPage() {
     // Match common YT URL patterns (watch?v=, share link, shorts, embed, etc.)
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
     const match = url.match(regExp);
-    
+
     if (match && match[2].length === 11) {
       const videoId = match[2];
       return `https://www.youtube.com/embed/${videoId}`;
     }
-    
+
     return url;
+  };
+
+  // Tự thêm https:// nếu admin quên nhập (VD: facebook.com/... -> https://facebook.com/...)
+  const normalizeSocialUrl = (url: string): string => {
+    const trimmed = String(url ?? "").trim();
+    if (!trimmed) return "";
+    if (/^(https?:\/\/|mailto:|tel:)/i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
   };
 
   // Fetch all settings
@@ -287,7 +295,7 @@ export default function ContentManagementPage() {
         { key: "contact_address", value: contactAddress },
         { key: "contact_org", value: contactOrg },
         { key: "contacts", value: JSON.stringify(contacts.filter((c) => c.name.trim() || c.phone.trim())) },
-        { key: "social_links", value: JSON.stringify(socialLinks.filter((s) => s.label.trim())) },
+        { key: "social_links", value: JSON.stringify(socialLinks.filter((s) => s.label.trim()).map((s) => ({ label: s.label.trim(), url: normalizeSocialUrl(s.url) }))) },
       ];
       const results = await Promise.all(
         payloads.map((p) =>
