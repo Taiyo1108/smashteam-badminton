@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
 const { sendWelcomeEmail } = require('../utils/emailService');
+const { getRankName } = require('../utils/elo');
 
 // POST /api/users/register - Đăng ký candidate mới
 router.post('/register', async (req, res) => {
@@ -67,16 +68,6 @@ router.get('/leaderboard', async (req, res) => {
        ORDER BY ${elo_col} DESC`
     );
     
-    // Gán nhãn Rank dựa trên Elo score
-    const getRankName = (elo) => {
-      if (elo >= 1800) return 'Challenger';
-      if (elo >= 1600) return 'Diamond';
-      if (elo >= 1400) return 'Platinum';
-      if (elo >= 1200) return 'Gold';
-      if (elo >= 1100) return 'Silver';
-      return 'Bronze';
-    };
-
     const rankedPlayers = result.rows.map(player => ({
       ...player,
       rank_name: getRankName(player.elo_score)
@@ -95,7 +86,7 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
     const { search, level, slot_id } = req.query;
     
     let query = `
-      SELECT u.id, u.full_name, u.gender, u.phone_zalo, u.email, u.academic_info, u.badminton_level, u.soft_skills, u.created_at, 
+      SELECT u.id, u.full_name, u.gender, u.phone_zalo, COALESCE(u.email, '') as email, u.academic_info, u.badminton_level, u.soft_skills, u.created_at, 
              u.casting_slot_id, c.casting_time, c.location 
       FROM users u
       LEFT JOIN casting_slots c ON u.casting_slot_id = c.id
@@ -148,7 +139,19 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
        WHERE role IN ('member', 'admin') 
        ORDER BY full_name ASC`
     );
-    res.json(result.rows);
+    const rankedMembers = result.rows.map(m => {
+      const eloSingles = m.elo_singles ?? 1000;
+      const eloDoubles = m.elo_doubles ?? 1000;
+      return {
+        ...m,
+        elo_singles: eloSingles,
+        elo_doubles: eloDoubles,
+        rank_singles: getRankName(eloSingles),
+        rank_doubles: getRankName(eloDoubles),
+        rank_name: getRankName(Math.max(eloSingles, eloDoubles))
+      };
+    });
+    res.json(rankedMembers);
   } catch (error) {
     console.error('Error fetching members:', error);
     res.status(500).json({ error: 'Internal server error' });

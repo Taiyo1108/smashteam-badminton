@@ -89,4 +89,33 @@ function calculateElo(
   };
 }
 
-module.exports = { calculateElo };
+/**
+ * Bảng quy chuẩn phân cấp ELO của SmashTeam:
+ * - Challenger: 1800+
+ * - Diamond: 1600+
+ * - Platinum: 1400+
+ * - Gold: 1200+
+ * - Silver: 1100+
+ * - Bronze: < 1100
+ */
+const RANK_TIERS = [
+  { name: 'Challenger', minElo: 1800 },
+  { name: 'Diamond', minElo: 1600 },
+  { name: 'Platinum', minElo: 1400 },
+  { name: 'Gold', minElo: 1200 },
+  { name: 'Silver', minElo: 1100 },
+  { name: 'Bronze', minElo: 0 }
+];
+
+function getRankName(elo) {
+  const score = Number(elo) || 0;
+  if (score >= 1800) return 'Challenger';
+  if (score >= 1600) return 'Diamond';
+  if (score >= 1400) return 'Platinum';
+  if (score >= 1200) return 'Gold';
+  if (score >= 1100) return 'Silver';
+  return 'Bronze';
+}
+
+module.exports = { calculateElo, getRankName, RANK_TIERS };
+

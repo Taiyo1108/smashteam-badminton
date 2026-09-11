@@ -170,7 +170,16 @@ router.get('/users/:id/attendance-stats', async (req, res) => {
   }
 });
 
-// POST /api/admin/sessions - Tạo buổi tập mới
+function generateCheckinCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+// POST /api/admin/sessions - Tạo buổi tập mới (Tự động cấp mã QR và lưu DB)
 router.post('/sessions', async (req, res) => {
   try {
     const { title, date_time, location } = req.body;
@@ -178,16 +187,21 @@ router.post('/sessions', async (req, res) => {
       return res.status(400).json({ error: 'Vui lòng cung cấp tiêu đề, thời gian và địa điểm.' });
     }
 
+    // Tự động cấp mã QR điểm danh độc nhất và mã 5 ký tự ngay khi tạo buổi tập
+    const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+    const newQrCode = `SMASH_${Date.now().toString(36).toUpperCase()}_${randomSuffix}`;
+    const newCheckinCode = generateCheckinCode();
+
     const result = await db.query(
-      `INSERT INTO sessions (title, date_time, location) 
-       VALUES ($1, $2, $3) RETURNING *`,
-      [title, date_time, location]
+      `INSERT INTO sessions (title, date_time, location, qr_code, qr_created_at, checkin_code) 
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *`,
+      [title, date_time, location, newQrCode, newCheckinCode]
     );
 
     res.status(201).json({ success: true, session: result.rows[0] });
   } catch (error) {
     console.error('Error creating session:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: error.message || 'Không thể tạo buổi tập.' });
   }
 });
 
@@ -220,13 +234,93 @@ router.get('/sessions/:id/attendees', async (req, res) => {
 
     res.json({
       session: sessionRes.rows[0],
-      attendees: attendeesRes.rows
+      attendees: attendeesRes.rows,
+      total_checked_in: attendeesRes.rows.length
     });
   } catch (error) {
     console.error('Error fetching session attendees:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// GET /api/admin/sessions/:id/qr - Lấy hoặc tạo mã QR điểm danh từng buổi tập (Cập nhật DB)
+router.get('/sessions/:id/qr', async (req, res) => {
+  return handleGenerateSessionQr(req, res);
+});
+
+// POST /api/admin/sessions/:id/qr - Tạo mới hoặc làm mới mã QR điểm danh (Cập nhật DB)
+router.post('/sessions/:id/qr', async (req, res) => {
+  return handleGenerateSessionQr(req, res);
+});
+
+async function handleGenerateSessionQr(req, res) {
+  try {
+    const { id } = req.params;
+    const forceRefresh = req.query.refresh === 'true' || req.method === 'POST';
+
+    // 1. Kiểm tra session có tồn tại không
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [id]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy buổi tập này.' });
+    }
+
+    let session = sessionRes.rows[0];
+
+    // Đảm bảo session luôn có checkin_code 5 ký tự
+    if (!session.checkin_code) {
+      const generatedCode = generateCheckinCode();
+      await db.query('UPDATE sessions SET checkin_code = $1 WHERE id = $2', [generatedCode, id]);
+      session.checkin_code = generatedCode;
+    }
+
+    // 2. Nếu đã có qr_code và không yêu cầu force refresh, trả về mã hiện tại
+    if (session.qr_code && !forceRefresh) {
+      const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3000');
+      const checkinUrl = `${origin}/check-in?session_id=${session.id}&code=${session.qr_code}`;
+      return res.json({
+        success: true,
+        session_id: session.id,
+        qr_code: session.qr_code,
+        checkin_code: session.checkin_code,
+        qr_url: checkinUrl,
+        qr_created_at: session.qr_created_at,
+        session
+      });
+    }
+
+    // 3. Tạo mã QR điểm danh mới độc nhất
+    const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+    const newQrCode = `SMASH_${session.id.toString().slice(0, 4)}_${Date.now().toString(36).toUpperCase()}_${randomSuffix}`;
+    const newCheckinCode = session.checkin_code || generateCheckinCode();
+
+    // 4. Cập nhật mã QR và checkin_code vào cơ sở dữ liệu
+    const updateRes = await db.query(
+      `UPDATE sessions 
+       SET qr_code = $1, qr_created_at = CURRENT_TIMESTAMP, checkin_code = $2 
+       WHERE id = $3 
+       RETURNING *`,
+      [newQrCode, newCheckinCode, id]
+    );
+
+    const updatedSession = updateRes.rows[0];
+    const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3000');
+    const checkinUrl = `${origin}/check-in?session_id=${updatedSession.id}&code=${newQrCode}`;
+
+    res.json({
+      success: true,
+      message: 'Đã tạo mã QR điểm danh mới cho buổi tập thành công và cập nhật DB!',
+      session_id: updatedSession.id,
+      qr_code: newQrCode,
+      checkin_code: newCheckinCode,
+      qr_url: checkinUrl,
+      qr_created_at: updatedSession.qr_created_at,
+      session: updatedSession
+    });
+  } catch (error) {
+    console.error('Error generating session QR code:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
 
 // POST /api/admin/quests - Tạo nhiệm vụ mới
 router.post('/quests', async (req, res) => {

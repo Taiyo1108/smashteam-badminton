@@ -19,7 +19,55 @@ router.get('/', async (req, res) => {
   }
 });
 
-// PUT /api/settings - Cập nhật cấu hình key-value (yêu cầu Admin)
+// PUT /api/settings/bulk - Cập nhật hàng loạt cấu hình website cùng lúc (Admin)
+router.put('/bulk', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const settings = req.body; // { key1: val1, key2: val2, ... }
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({ error: 'Payload must be an object of key-value settings' });
+    }
+
+    const keys = Object.keys(settings);
+    for (const key of keys) {
+      const val = settings[key] !== undefined && settings[key] !== null ? String(settings[key]) : '';
+      await db.query(
+        `INSERT INTO site_settings (key, value, updated_at)
+         VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (key)
+         DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+        [key, val]
+      );
+    }
+
+    res.json({ success: true, message: `Updated ${keys.length} settings successfully` });
+  } catch (error) {
+    console.error('Error updating bulk settings:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/settings/:key - Cập nhật cấu hình theo key trên URL (yêu cầu Admin)
+router.put('/:key', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { key } = req.params;
+    const value = req.body.value !== undefined ? String(req.body.value) : '';
+
+    await db.query(
+      `INSERT INTO site_settings (key, value, updated_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (key)
+       DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+      [key, value]
+    );
+
+    res.json({ message: `Setting '${key}' updated successfully` });
+  } catch (error) {
+    console.error('Error updating setting by key:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/settings - Cập nhật cấu hình key-value qua body (yêu cầu Admin)
 router.put('/', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { key, value } = req.body;
@@ -32,7 +80,7 @@ router.put('/', authenticateToken, isAdmin, async (req, res) => {
        VALUES ($1, $2, CURRENT_TIMESTAMP)
        ON CONFLICT (key)
        DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
-      [key, value]
+      [key, String(value)]
     );
 
     res.json({ message: `Setting '${key}' updated successfully` });

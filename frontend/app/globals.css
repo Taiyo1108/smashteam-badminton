@@ -3,29 +3,33 @@
 @theme {
   --color-primary: #7A22E0; /* Electric Purple */
   --color-primary-hover: #9D4EDD; /* Neon Purple */
-  --color-secondary: #0c0a1a; /* Deep Indigo Black */
-  --color-background: #ffffff;
-  --color-foreground: #0c0a1a;
+  --color-primary-dark: #581C87; /* Deep Royal Purple */
+  --color-primary-light: #F5EEFD; /* Ultra-light Purple tint */
+  --color-secondary: #0C0A1A; /* Deep Indigo Black */
+  --color-secondary-surface: #141026; /* Elevated Dark Surface */
+  --color-background: #F8FAFC; /* Clean Silver/Ice White */
+  --color-foreground: #0C0A1A; /* High Contrast Dark Foreground */
   
   --color-smash-purple: #7A22E0;
   --color-smash-violet: #9D4EDD;
-  --color-smash-dark: #0c0a1a;
-  --color-smash-light: #f8fafc;
+  --color-smash-dark: #0C0A1A;
+  --color-smash-light: #F8FAFC;
   --color-smash-gold: #FFD700;
   --color-smash-bronze: #CD7F32;
   --color-smash-silver: #C0C0C0;
-  --color-smash-diamond: #B9F2FF;
-  --color-smash-platinum: #2dd4bf;
+  --color-smash-diamond: #38BDF8;
+  --color-smash-platinum: #2DD4BF;
   --color-smash-challenger: #FF007F;
 
   /* Custom Glow Box Shadows */
-  --shadow-glow-bronze: 0 0 10px rgba(205, 127, 50, 0.4);
-  --shadow-glow-silver: 0 0 12px rgba(192, 192, 192, 0.5);
-  --shadow-glow-gold: 0 0 20px rgba(255, 215, 0, 0.65);
-  --shadow-glow-platinum: 0 0 15px rgba(45, 212, 191, 0.45);
-  --shadow-glow-diamond: 0 0 22px rgba(185, 242, 255, 0.7);
+  --shadow-glow-bronze: 0 0 12px rgba(205, 127, 50, 0.45);
+  --shadow-glow-silver: 0 0 14px rgba(192, 192, 192, 0.55);
+  --shadow-glow-gold: 0 0 22px rgba(255, 215, 0, 0.65);
+  --shadow-glow-platinum: 0 0 16px rgba(45, 212, 191, 0.5);
+  --shadow-glow-diamond: 0 0 22px rgba(56, 189, 248, 0.7);
   --shadow-glow-challenger: 0 0 25px rgba(255, 0, 127, 0.85);
-  --shadow-glow-mystery: 0 0 20px rgba(157, 78, 221, 0.8);
+  --shadow-glow-primary: 0 0 25px rgba(122, 34, 224, 0.45);
+  --shadow-glow-mystery: 0 0 22px rgba(157, 78, 221, 0.8);
 
   /* Animations definitions */
   --animate-neon-pulse: neon-pulse 2s infinite alternate;
@@ -33,29 +37,29 @@
   --animate-shimmer: shimmer 2.5s infinite linear;
   --animate-float: float 3s ease-in-out infinite;
 
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
   @keyframes neon-pulse {
     from {
       box-shadow: 0 0 8px var(--color-smash-purple), 0 0 3px rgba(122, 34, 224, 0.3);
     }
     to {
-      box-shadow: 0 0 22px var(--color-smash-violet), 0 0 10px rgba(157, 78, 221, 0.7);
+      box-shadow: 0 0 24px var(--color-smash-violet), 0 0 12px rgba(157, 78, 221, 0.7);
     }
   }
 
   @keyframes rainbow-glow {
     0%, 100% {
       border-color: var(--color-smash-purple);
-      box-shadow: 0 0 15px rgba(122, 34, 224, 0.6);
+      box-shadow: 0 0 18px rgba(122, 34, 224, 0.6);
     }
     33% {
       border-color: var(--color-smash-diamond);
-      box-shadow: 0 0 15px rgba(185, 242, 255, 0.6);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.6);
     }
     66% {
       border-color: var(--color-smash-challenger);
-      box-shadow: 0 0 20px rgba(255, 0, 127, 0.7);
+      box-shadow: 0 0 22px rgba(255, 0, 127, 0.75);
     }
   }
 
@@ -79,110 +83,108 @@
 }
 
 :root {
-  --background: #f8fafc; /* Silver white */
-  --foreground: #0c0a1a; /* Deep Indigo Black */
+  --background: #F8FAFC; /* Silver White */
+  --foreground: #0C0A1A; /* Deep Indigo Black */
+  color-scheme: light;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Scrollbar for better UI */
+/* Custom Scrollbar - Sleek Purple Theme */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 7px;
+  height: 7px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #c084fc; /* purple-400 */
-  border-radius: 4px;
+  background: #C084FC; /* purple-400 */
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #9D4EDD; /* Neon Purple */
 }
 
-/* Soundwave Animation Keyframes */
-@keyframes soundwave {
-  0%, 100% {
-    height: 4px;
-  }
-  50% {
-    height: 12px;
-  }
+/* Accessibility Focus Ring Utility (WCAG 2.2 AA) */
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
-.animate-soundwave-1 {
-  animation: soundwave 0.8s ease-in-out infinite;
+/* Glassmorphism Panels */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(122, 34, 224, 0.12);
 }
 
-.animate-soundwave-2 {
-  animation: soundwave 0.5s ease-in-out infinite 0.15s;
+.glass-panel-dark {
+  background: rgba(12, 10, 26, 0.82);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.animate-soundwave-3 {
-  animation: soundwave 0.7s ease-in-out infinite 0.3s;
-}
-
-/* THIẾT LẬP CÁC LỚP TIỆN ÍCH PHÁT SÁNG CỐ ĐỊNH */
-
-/* Bậc Đồng (Bronze) */
+/* Rank Glow Utilities */
 @utility rank-glow-bronze {
   border: 2px solid var(--color-smash-bronze);
   box-shadow: var(--shadow-glow-bronze);
 }
 
-/* Bạc (Silver) */
 @utility rank-glow-silver {
   border: 2px solid var(--color-smash-silver);
   box-shadow: var(--shadow-glow-silver);
 }
 
-/* Vàng (Gold) */
 @utility rank-glow-gold {
   border: 2px solid var(--color-smash-gold);
   box-shadow: var(--shadow-glow-gold);
   animation: var(--animate-neon-pulse);
 }
 
-/* Bạch Kim (Platinum) */
 @utility rank-glow-platinum {
   border: 2px solid var(--color-smash-platinum);
   box-shadow: var(--shadow-glow-platinum);
 }
 
-/* Kim Cương (Diamond) */
 @utility rank-glow-diamond {
   border: 2px solid var(--color-smash-diamond);
   box-shadow: var(--shadow-glow-diamond);
 }
 
-/* Cao Thủ / Thách Đấu (Challenger) */
 @utility rank-glow-challenger {
   border: 2px solid var(--color-smash-challenger);
   animation: var(--animate-rainbow-glow);
 }
 
-/* Hộp quà bí ẩn (Mystery Box) */
 @utility box-glow-mystery {
   box-shadow: var(--shadow-glow-mystery);
   animation: var(--animate-float);
 }
 
-/* Hiệu ứng lấp lánh trượt bóng (Shimmer Card Background) */
 @utility effect-shimmer {
   background: linear-gradient(
     90deg,
-    rgba(12, 10, 26, 0.1) 25%,
+    rgba(12, 10, 26, 0.05) 25%,
     rgba(157, 78, 221, 0.15) 50%,
-    rgba(12, 10, 26, 0.1) 75%
+    rgba(12, 10, 26, 0.05) 75%
   );
   background-size: 200% 100%;
   animation: var(--animate-shimmer);
 }
 
-/* Sóng âm của nút BGM */
+/* Soundwave animations for BGM Player */
 @utility sound-wave-bar {
   display: inline-block;
   width: 3px;

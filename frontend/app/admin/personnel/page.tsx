@@ -8,6 +8,10 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
+import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
+import RecruitmentKPIs from "@/app/components/recruitment/RecruitmentKPIs";
+import ApplicantTable from "@/app/components/recruitment/ApplicantTable";
+import ApplicantDetailDrawer from "@/app/components/recruitment/ApplicantDetailDrawer";
 
 const softSkillsList = [
   "Chụp ảnh",
@@ -29,12 +33,15 @@ export default function PersonnelPage() {
   const [cSlot, setCSlot] = useState("all");
   const [isLoadingC, setIsLoadingC] = useState(false);
   const [slots, setSlots] = useState<any[]>([]);
+  const [drawerCandidate, setDrawerCandidate] = useState<any>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // States cho Members
   const [members, setMembers] = useState<any[]>([]);
   const [isLoadingM, setIsLoadingM] = useState(false);
   const [mSearch, setMSearch] = useState("");
   const [mLevel, setMLevel] = useState("all");
+  const [mRank, setMRank] = useState("all");
   const [mStatus, setMStatus] = useState("all");
   const [mSkill, setMSkill] = useState("all");
 
@@ -521,6 +528,11 @@ export default function PersonnelPage() {
     if (mLevel !== "all") {
       if (m.badminton_level !== mLevel) return false;
     }
+    if (mRank !== "all") {
+      const highestElo = Math.max(m.elo_singles ?? 1000, m.elo_doubles ?? 1000);
+      const userRank = getRankName(highestElo);
+      if (userRank !== mRank) return false;
+    }
     if (mStatus !== "all") {
       const currentStatus = m.status || "active";
       if (currentStatus !== mStatus) return false;
@@ -576,77 +588,46 @@ export default function PersonnelPage() {
         </button>
       </div>
 
-      {/* CANDIDATES TAB */}
+      {/* CANDIDATES TAB (MODULE 2B - ADMIN RECRUITMENT DASHBOARD) */}
       {activeTab === 'candidates' && (
-        <div className="space-y-4">
-          {/* Filter Bar */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-center shadow-sm">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                type="text" placeholder="Tên hoặc SĐT..." 
-                value={cSearch} onChange={e => setCSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none"
-              />
-            </div>
-            <select value={cLevel} onChange={e => setCLevel(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none min-w-[150px]">
-              <option value="all">Tất cả trình độ</option>
-              <option value="Mới chơi">Mới chơi</option>
-              <option value="Trung bình">Trung bình</option>
-              <option value="Khá/Giỏi">Khá/Giỏi</option>
-            </select>
-            <select value={cSlot} onChange={e => setCSlot(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none min-w-[180px]">
-              <option value="all">Tất cả ca Casting</option>
-              {slots.map(s => (
-                <option key={s.id} value={s.id}>{format(new Date(s.casting_time), "HH:mm dd/MM")} - {s.location}</option>
-              ))}
-            </select>
-          </div>
+        <div className="space-y-6">
+          {/* Mini KPI Cards & Distributions */}
+          <RecruitmentKPIs 
+            candidates={candidates} 
+            totalSlotsCapacity={slots.reduce((acc, s) => acc + (Number(s.max_capacity) || 0), 0) || 60}
+          />
 
-          {/* Table Candidates */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden min-h-[300px] relative">
-            {isLoadingC ? (
-              <div className="absolute inset-0 flex items-center justify-center text-black"><Loader2 className="animate-spin" /></div>
-            ) : candidates.length === 0 ? (
-              <div className="p-10 text-center text-slate-500">Không tìm thấy ứng viên nào phù hợp.</div>
-            ) : (
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Họ tên & Liên hệ</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Khung giờ Casting</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trình độ</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Duyệt</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {candidates.map(c => (
-                    <tr key={c.id} className="hover:bg-slate-50">
-                      <td className="p-4">
-                        <p className="font-bold text-secondary">{c.full_name}</p>
-                        <p className="text-xs text-slate-500">{c.phone_zalo} • {c.gender ? `${c.gender} • ` : ""}{c.academic_info}</p>
-                      </td>
-                      <td className="p-4">
-                        {c.casting_time ? (
-                          <span className="text-sm font-medium text-slate-700 bg-slate-100 px-2 py-1 rounded">
-                            {format(new Date(c.casting_time), "HH:mm dd/MM")} ({c.location})
-                          </span>
-                        ) : <span className="text-xs text-slate-400">Chưa chọn</span>}
-                      </td>
-                      <td className="p-4">
-                        <span className="text-xs font-bold px-2 py-1 bg-slate-100 rounded-full">{c.badminton_level}</span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button onClick={() => openAssessmentModal(c)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Duyệt ứng viên">
-                          <CheckCircle2 className="w-5 h-5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          {/* Modern Applicant Data Table */}
+          <ApplicantTable
+            candidates={candidates}
+            isLoading={isLoadingC}
+            slots={slots}
+            onOpenDetail={(c) => {
+              setDrawerCandidate(c);
+              setIsDrawerOpen(true);
+            }}
+            onApprove={(c) => {
+              openAssessmentModal(c);
+            }}
+            onReject={(id) => {
+              handleRejectCandidate(String(id));
+            }}
+          />
+
+          {/* Applicant Detail Drawer */}
+          <ApplicantDetailDrawer
+            candidate={drawerCandidate}
+            isOpen={isDrawerOpen}
+            onClose={() => setIsDrawerOpen(false)}
+            onApprove={(c) => {
+              setIsDrawerOpen(false);
+              openAssessmentModal(c);
+            }}
+            onReject={(id) => {
+              setIsDrawerOpen(false);
+              handleRejectCandidate(String(id));
+            }}
+          />
         </div>
       )}
 
@@ -669,7 +650,16 @@ export default function PersonnelPage() {
               <option value="Trung bình">Trung bình</option>
               <option value="Khá/Giỏi">Khá/Giỏi</option>
             </select>
-            <select value={mStatus} onChange={e => setMStatus(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none min-w-[140px]">
+            <select value={mRank} onChange={e => setMRank(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[150px]">
+              <option value="all">Mọi phân cấp Rank</option>
+              <option value="Challenger">Challenger (1800+)</option>
+              <option value="Diamond">Diamond (1600+)</option>
+              <option value="Platinum">Platinum (1400+)</option>
+              <option value="Gold">Gold (1200+)</option>
+              <option value="Silver">Silver (1100+)</option>
+              <option value="Bronze">Bronze (&lt; 1100)</option>
+            </select>
+            <select value={mStatus} onChange={e => setMStatus(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[140px]">
               <option value="all">Mọi trạng thái</option>
               <option value="active">Hoạt động (Active)</option>
               <option value="inactive">Tạm nghỉ (Inactive)</option>
@@ -695,7 +685,7 @@ export default function PersonnelPage() {
                   <tr>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Thành viên</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trình độ & Lối chơi</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Elo Score</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Phân cấp & Elo</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trạng thái</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase text-center">Thống kê</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Hành động</th>
@@ -706,6 +696,8 @@ export default function PersonnelPage() {
                     const isBlocked = m.is_blocked;
                     const status = m.status || "active";
                     const isCurrentAdmin = m.role === "admin";
+                    const rankSingles = getRankName(m.elo_singles ?? 1000);
+                    const rankDoubles = getRankName(m.elo_doubles ?? 1000);
                     
                     return (
                       <tr key={m.id} className="hover:bg-slate-50">
@@ -726,13 +718,23 @@ export default function PersonnelPage() {
                           <p className="text-sm font-semibold text-slate-700">{m.badminton_level}</p>
                         </td>
                         <td className="p-4">
-                          <div className="flex gap-2">
-                            <span className="text-xs font-bold px-2 py-1 bg-purple-50 text-purple-700 border border-purple-100 rounded">
-                              Đơn: {m.elo_singles ?? 1000}
-                            </span>
-                            <span className="text-xs font-bold px-2 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded">
-                              Đôi: {m.elo_doubles ?? 1000}
-                            </span>
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankSingles)}`}>
+                                {rankSingles}
+                              </span>
+                              <span className="text-xs font-bold text-slate-700 font-mono">
+                                Đơn: {m.elo_singles ?? 1000}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankDoubles)}`}>
+                                {rankDoubles}
+                              </span>
+                              <span className="text-xs font-bold text-slate-700 font-mono">
+                                Đôi: {m.elo_doubles ?? 1000}
+                              </span>
+                            </div>
                           </div>
                         </td>
                         <td className="p-4">
@@ -1030,7 +1032,7 @@ export default function PersonnelPage() {
                               <div>
                                 <p className="text-xs font-bold text-secondary line-clamp-1">{item.title}</p>
                                 <p className="text-[10px] text-slate-400 mt-0.5">
-                                  {format(new Date(item.date_time), "HH:mm dd/MM/yyyy")}
+                                  {format(new Date(item.date_time), "dd/MM/yyyy HH:mm")}
                                 </p>
                               </div>
                               <div>
@@ -1323,7 +1325,7 @@ export default function PersonnelPage() {
                               <div key={slot.id} className={`p-4 border rounded-2xl flex items-center justify-between transition-colors ${!slot.is_active ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}>
                                 <div className="flex-1 pr-4">
                                   <div className="flex items-center gap-2 mb-1.5">
-                                    <h4 className="font-bold text-secondary text-sm">{format(new Date(slot.casting_time), "HH:mm - dd/MM/yyyy")}</h4>
+                                    <h4 className="font-bold text-secondary text-sm">{format(new Date(slot.casting_time), "dd/MM/yyyy HH:mm")}</h4>
                                     <span className="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-bold text-slate-600">{slot.location}</span>
                                     {!slot.is_active && <span className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-black uppercase">Đã đóng</span>}
                                   </div>
