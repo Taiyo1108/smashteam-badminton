@@ -2,8 +2,8 @@
 
 import { motion } from "framer-motion";
 import { 
-  ShieldCheck, Trophy, Users, Flame, Award, 
-  Sparkles, Dumbbell, Compass, HeartHandshake, Check 
+  ShieldCheck, Trophy, Users, Flame,
+  Sparkles, Dumbbell, Compass, HeartHandshake, Check
 } from "lucide-react";
 
 export default function ClubBenefitsBento() {
@@ -72,21 +72,17 @@ export default function ClubBenefitsBento() {
             </h3>
             
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              Tập luyện đều đặn 3 - 4 buổi mỗi tuần trên hệ thống sân thảm BWF chất lượng cao, ánh sáng chuẩn chống lóa. Có ban chuyên môn hỗ trợ khởi động đúng cách, phòng tránh chấn thương và giáo án nâng cao sức bền.
+              Tập luyện đều đặn 2 - 3 buổi mỗi tuần trên hệ thống sân thảm BWF chất lượng cao, ánh sáng chuẩn chống lóa. Có ban chuyên môn hỗ trợ khởi động đúng cách, phòng tránh chấn thương và giáo án nâng cao sức bền.
             </p>
           </div>
 
-          <div className="relative z-10 pt-6 mt-6 border-t border-white/10 grid grid-cols-3 gap-3 text-center">
+          <div className="relative z-10 pt-6 mt-6 border-t border-white/10 grid grid-cols-2 gap-3 text-center">
             <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
-              <p className="font-black text-lg text-primary-hover">100%</p>
-              <p className="text-[10px] text-slate-400 font-medium uppercase">Sân thảm cao cấp</p>
-            </div>
-            <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
-              <p className="font-black text-lg text-emerald-400">4 Buổi</p>
+              <p className="font-black text-lg text-emerald-400">2 - 3 Buổi</p>
               <p className="text-[10px] text-slate-400 font-medium uppercase">Cố định mỗi tuần</p>
             </div>
             <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
-              <p className="font-black text-lg text-amber-400">Victor/Yonex</p>
+              <p className="font-black text-lg text-amber-400">Vinastar</p>
               <p className="text-[10px] text-slate-400 font-medium uppercase">Cầu thi đấu chuẩn</p>
             </div>
           </div>
@@ -209,39 +205,6 @@ export default function ClubBenefitsBento() {
               <Check className="w-4 h-4 text-emerald-500 shrink-0" />
               <span>Tôn trọng thượng võ</span>
             </div>
-          </div>
-        </motion.div>
-
-        {/* CARD 5 (Full width 12 cols): Membership Welcome Kit & Perks */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.4, delay: 0.25 }}
-          className="md:col-span-12 rounded-3xl p-6 sm:p-8 bg-gradient-to-r from-purple-50 via-white to-purple-50 border border-primary/20 shadow-xs flex flex-col md:flex-row items-center justify-between gap-6"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-primary text-white flex items-center justify-center shadow-lg shadow-primary/30 shrink-0">
-              <Award className="w-7 h-7" aria-hidden="true" />
-            </div>
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-primary">Đặc Quyền Tân Binh Mùa Này</span>
-              <h4 className="text-lg sm:text-xl font-black text-secondary">
-                Bộ Quà Tặng Gia Nhập "Welcome Onboard Kit"
-              </h4>
-              <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
-                Áo đấu chính thức SmashTeam in tên riêng, túi phụ kiện thể thao chuyên dụng và thẻ định danh QR cá nhân.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0">
-            <span className="text-xs font-bold text-primary bg-white px-4 py-2 rounded-full border border-primary/20 shadow-xs">
-              Miễn phí tuyển chọn
-            </span>
-            <span className="text-xs font-bold text-slate-700 bg-white px-4 py-2 rounded-full border border-slate-200 shadow-xs">
-              Hạn chót mùa tuyển 2026
-            </span>
           </div>
         </motion.div>
 

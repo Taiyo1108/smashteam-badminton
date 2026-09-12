@@ -83,11 +83,6 @@ export default function Home() {
   const socialLinks = parseJsonSetting<{ label: string; url: string }[]>(
     siteSettings.social_links, [...SOCIAL_FALLBACK]
   ).filter((s) => s && String(s.label || "").trim());
-  const aboutBlocks = parseJsonSetting<{ lead: string; tail: string }[]>(
-    siteSettings.about_blocks, []
-  )
-    .map((b) => ({ lead: String(b?.lead ?? ""), tail: String(b?.tail ?? "") }))
-    .filter((b) => b.lead.trim() || b.tail.trim());
 
   // User auth and profile state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -637,7 +632,7 @@ export default function Home() {
                 >
                   <ClubStats
                     memberCount={clubStats ? String(clubStats.activeMembers) : undefined}
-                    sessionsPerWeek={clubStats ? String(clubStats.weeklySessions) : undefined}
+                     sessionsPerWeek="2 - 3"
                     tournamentsCount={clubStats ? String(clubStats.eventsCount) : undefined}
                     topElo={clubStats ? String(clubStats.topElo) : undefined}
                   />
@@ -1177,23 +1172,6 @@ export default function Home() {
         )}
 
       </div>
-
-      {/* ABOUT US (động từ site_settings, admin chỉnh ở Quản lý nội dung) */}
-      {aboutBlocks.length > 0 && (
-        <section aria-label="Về chúng tôi" className="max-w-4xl mx-auto px-4 sm:px-6 mt-16">
-          <div className="rounded-3xl bg-white border border-purple-100 shadow-sm p-6 sm:p-8 space-y-4">
-            <h2 className="text-center text-xl sm:text-2xl font-black text-secondary tracking-tight">
-              Về <span className="text-primary">SmashTeam</span>
-            </h2>
-            {aboutBlocks.map((b, i) => (
-              <p key={i} className="text-sm leading-relaxed text-slate-600 text-center">
-                {b.lead && <strong className="text-secondary">{b.lead} </strong>}
-                {b.tail}
-              </p>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* CONTACT + FOOTER (động từ site_settings, link tự mở tab mới) */}
       <footer className="bg-secondary text-slate-400 py-12 border-t border-purple-950/60 mt-16">

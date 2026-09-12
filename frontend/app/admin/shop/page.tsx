@@ -404,7 +404,7 @@ export default function AdminShopPage() {
             }}
             className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
               activeTab === "items"
-                ? "bg-black text-secondary shadow-sm font-extrabold"
+                ? "bg-black text-white shadow-sm font-extrabold"
                 : "text-slate-600 hover:text-slate-800"
             }`}
           >
@@ -418,7 +418,7 @@ export default function AdminShopPage() {
             }}
             className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
               activeTab === "redemptions"
-                ? "bg-black text-secondary shadow-sm font-extrabold"
+                ? "bg-black text-white shadow-sm font-extrabold"
                 : "text-slate-600 hover:text-slate-800"
             }`}
           >
@@ -437,7 +437,7 @@ export default function AdminShopPage() {
             }}
             className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
               activeTab === "history"
-                ? "bg-black text-secondary shadow-sm font-extrabold"
+                ? "bg-black text-white shadow-sm font-extrabold"
                 : "text-slate-600 hover:text-slate-800"
             }`}
           >
@@ -463,7 +463,7 @@ export default function AdminShopPage() {
           {activeTab === "items" && (
             <button
               onClick={handleOpenAdd}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-black hover:bg-black/85 text-secondary text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer shrink-0"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-black hover:bg-black/85 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer shrink-0"
             >
               <Plus className="w-4 h-4" /> Thêm sản phẩm
             </button>
@@ -678,7 +678,7 @@ export default function AdminShopPage() {
                         <td className="p-4 pr-6 text-right">
                           <button
                             onClick={() => setSelectedRedemption(row)}
-                            className="px-4 py-1.5 bg-black text-secondary hover:bg-black/85 text-xs font-bold rounded-lg shadow-sm active:scale-95 transition-all cursor-pointer"
+                            className="px-4 py-1.5 bg-black text-white hover:bg-black/85 text-xs font-bold rounded-lg shadow-sm active:scale-95 transition-all cursor-pointer"
                           >
                             Xác nhận trao quà
                           </button>
@@ -972,7 +972,7 @@ export default function AdminShopPage() {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="flex-1 py-2 text-xs font-bold text-secondary bg-black hover:bg-black/85 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+                  className="flex-1 py-2 text-xs font-bold text-white bg-black hover:bg-black/85 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
                 >
                   {isSaving ? (
                     <>

@@ -73,6 +73,49 @@ function getPublicIdFromUrl(url) {
   }
 }
 
+// PUT /api/media/:id - Sửa tiêu đề / nổi bật / link video của post (Admin)
+// (Đổi ảnh: xóa post cũ và đăng lại — giữ đơn giản, tránh rác file Cloudinary)
+router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, is_featured, video_url } = req.body;
+
+    const curr = await db.query(`SELECT * FROM media_posts WHERE id = $1`, [id]);
+    if (curr.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy bài viết.' });
+    }
+    const post = curr.rows[0];
+    const isVideo = (post.content_url || '').includes('youtube.com') ||
+                    (post.content_url || '').includes('youtu.be') ||
+                    (post.content_url || '').includes('embed');
+
+    // Chỉ cho đổi content_url với post dạng video (đổi link YouTube)
+    let contentUrl = post.content_url;
+    if (isVideo && typeof video_url === 'string' && video_url.trim()) {
+      contentUrl = video_url.trim();
+    }
+
+    const result = await db.query(
+      `UPDATE media_posts
+        SET title = COALESCE($1, title),
+            content_url = $2,
+            is_featured = COALESCE($3, is_featured)
+        WHERE id = $4 RETURNING *`,
+      [
+        typeof title === 'string' && title.trim() ? title.trim() : null,
+        contentUrl,
+        is_featured === undefined ? null : (is_featured === true || is_featured === 'true'),
+        id
+      ]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating media post:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // DELETE /api/media/:id - Xóa post
 router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
   try {

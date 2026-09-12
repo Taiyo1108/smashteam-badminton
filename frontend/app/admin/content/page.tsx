@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle, Clock, Flame, Calendar, MapPin, Save } from "lucide-react";
+import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle, Clock, Flame, Calendar, MapPin, Save, Pencil } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { PageHeader, Modal, PillButton, EmptyState, CardSkeleton } from "@/app/components/ui";
 import { format } from "date-fns";
@@ -15,12 +15,7 @@ export default function ContentManagementPage() {
   const [coverSuccess, setCoverSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
-  // States cho Giới thiệu & Liên hệ trang chủ (About)
-  const [aboutBlocks, setAboutBlocks] = useState([
-    { lead: "", tail: "" },
-    { lead: "", tail: "" },
-    { lead: "", tail: "" },
-  ]);
+  // States cho Liên hệ trang chủ (footer)
   const [contactAddress, setContactAddress] = useState("");
   const [contactOrg, setContactOrg] = useState("");
   const [contacts, setContacts] = useState([{ name: "", phone: "", role: "" }]);
@@ -102,6 +97,13 @@ export default function ContentManagementPage() {
   const [notice, setNotice] = useState("");
   const [deletingPost, setDeletingPost] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  // States sửa bài viết thư viện khoảnh khắc
+  const [editingPost, setEditingPost] = useState<any | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editFeatured, setEditFeatured] = useState(false);
+  const [editVideoUrl, setEditVideoUrl] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState("");
 
   // Parse YouTube URL to Standard Embed URL
   const normalizeYoutubeUrl = (url: string): string => {
@@ -133,16 +135,6 @@ export default function ContentManagementPage() {
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
-        // Nạp form About/Liên hệ từ settings (giữ trống để trang chủ dùng mặc định)
-        try {
-          const blocks = typeof data.about_blocks === "string" ? JSON.parse(data.about_blocks) : data.about_blocks;
-          if (Array.isArray(blocks) && blocks.length > 0) {
-            setAboutBlocks([0, 1, 2].map((i) => ({
-              lead: String(blocks[i]?.lead ?? ""),
-              tail: String(blocks[i]?.tail ?? ""),
-            })));
-          }
-        } catch {}
         if (typeof data.contact_address === "string") setContactAddress(data.contact_address);
         if (typeof data.contact_org === "string") setContactOrg(data.contact_org);
         try {
@@ -385,9 +377,52 @@ export default function ContentManagementPage() {
     }
   };
 
+  // Mở modal sửa bài viết thư viện khoảnh khắc
+  const openEditPost = (post: any) => {
+    setEditingPost(post);
+    setEditTitle(post.title || "");
+    setEditFeatured(!!post.is_featured);
+    setEditVideoUrl(post.content_url || "");
+    setUpdateError("");
+  };
+
+  // Lưu chỉnh sửa bài viết
+  const handleUpdatePost = async () => {
+    if (!editingPost) return;
+    if (!editTitle.trim()) {
+      setUpdateError("Tiêu đề không được để trống.");
+      return;
+    }
+    setIsUpdating(true);
+    setUpdateError("");
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/media/${editingPost.id}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          is_featured: editFeatured,
+          video_url: normalizeYoutubeUrl(editVideoUrl),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setUpdateError(data.error || "Không thể lưu chỉnh sửa.");
+        return;
+      }
+      setEditingPost(null);
+      setNotice("Cập nhật bài viết thành công!");
+      fetchMediaPosts();
+    } catch (e) {
+      setUpdateError("Lỗi kết nối mạng khi lưu.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   // Handle Delete Post
-  const handleDeletePost = async () => {
-    if (!deletingPost) return;
+  const handleDeletePost = async () => {    if (!deletingPost) return;
     setIsDeleting(true);
     try {
       const token = localStorage.getItem("admin_token");
@@ -415,7 +450,7 @@ export default function ContentManagementPage() {
     }
   };
 
-  // Lưu Giới thiệu & Liên hệ trang chủ (5 keys trong site_settings)
+  // Lưu Liên hệ trang chủ (4 keys trong site_settings)
   const handleSaveAbout = async (e: React.FormEvent) => {
     e.preventDefault();
     setAboutError("");
@@ -423,7 +458,6 @@ export default function ContentManagementPage() {
     try {
       const token = localStorage.getItem("admin_token");
       const payloads = [
-        { key: "about_blocks", value: JSON.stringify(aboutBlocks) },
         { key: "contact_address", value: contactAddress },
         { key: "contact_org", value: contactOrg },
         { key: "contacts", value: JSON.stringify(contacts.filter((c) => c.name.trim() || c.phone.trim())) },
@@ -439,7 +473,7 @@ export default function ContentManagementPage() {
         )
       );
       if (results.every((r) => r.ok)) {
-        setNotice("Cập nhật Giới thiệu & Liên hệ trang chủ thành công!");
+        setNotice("Cập nhật Liên hệ trang chủ thành công!");
         fetchSettings();
       } else {
         setAboutError("Lưu chưa trọn vẹn, vui lòng thử lại.");
@@ -854,13 +888,22 @@ export default function ContentManagementPage() {
                           <span className="text-[11px] text-slate-500 truncate max-w-[70%]" title={post.content_url}>
                             {post.content_url}
                           </span>
-                          <button
-                            onClick={() => setDeletingPost(post)}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Xóa bài viết"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => openEditPost(post)}
+                              className="p-2 text-slate-500 hover:text-black hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                              title="Sửa bài viết"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeletingPost(post)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Xóa bài viết"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -872,45 +915,14 @@ export default function ContentManagementPage() {
         </div>
       </div>
 
-      {/* GIỚI THIỆU & LIÊN HỆ TRANG CHỦ (About) */}
+      {/* LIÊN HỆ TRANG CHỦ (footer) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <h2 className="text-lg font-bold text-secondary mb-1">Giới thiệu & Liên hệ trang chủ</h2>
+        <h2 className="text-lg font-bold text-secondary mb-1">Liên hệ trang chủ</h2>
         <p className="text-xs text-slate-400 mb-5">
-          Nội dung hiển thị ở mục About trang chủ. Bỏ trống để dùng mặc định. Phần chữ mờ hỗ trợ{" "}
-          <code className="px-1 bg-slate-100 rounded font-bold">{"{members}"}</code> (số hội viên thật),{" "}
-          <code className="px-1 bg-slate-100 rounded font-bold">{"{address}"}</code> (địa chỉ),{" "}
-          <code className="px-1 bg-slate-100 rounded font-bold">{"{org}"}</code> (đơn vị).
+          Nội dung hiển thị ở chân trang (footer) trang chủ.
         </p>
 
         <form onSubmit={handleSaveAbout} className="space-y-5">
-          {aboutBlocks.map((b, i) => (
-            <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-              <div className="md:col-span-2 text-xs font-black text-slate-500 uppercase tracking-wider">
-                Đoạn {i + 1}
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Chữ nổi bật (trắng)</label>
-                <input
-                  type="text"
-                  value={b.lead}
-                  onChange={(e) => setAboutBlocks(aboutBlocks.map((x, j) => (j === i ? { ...x, lead: e.target.value } : x)))}
-                  placeholder="Câu mở đầu nổi bật..."
-                  className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Chữ mờ (xám)</label>
-                <textarea
-                  value={b.tail}
-                  onChange={(e) => setAboutBlocks(aboutBlocks.map((x, j) => (j === i ? { ...x, tail: e.target.value } : x)))}
-                  placeholder="Phần chữ mờ phía sau..."
-                  rows={2}
-                  className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black resize-y"
-                />
-              </div>
-            </div>
-          ))}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">Địa chỉ</label>
@@ -1043,7 +1055,7 @@ export default function ContentManagementPage() {
                   <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu...
                 </>
               ) : (
-                <>Lưu Giới thiệu & Liên hệ</>
+                <>Lưu Liên hệ</>
               )}
             </button>
           </div>
@@ -1066,6 +1078,63 @@ export default function ContentManagementPage() {
           <PillButton variant="danger" loading={isDeleting} onClick={handleDeletePost}>
             Xóa bài viết
           </PillButton>
+        </div>
+      </Modal>
+
+      {/* EDIT POST MODAL (thư viện khoảnh khắc) */}
+      <Modal
+        open={!!editingPost}
+        onClose={() => setEditingPost(null)}
+        title="Sửa bài viết"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">Tiêu đề bài đăng</label>
+            <input
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+            />
+          </div>
+          {editingPost && ((editingPost.content_url || "").includes("youtube.com") || (editingPost.content_url || "").includes("youtu.be") || (editingPost.content_url || "").includes("embed")) && (
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Link video YouTube</label>
+              <input
+                type="text"
+                value={editVideoUrl}
+                onChange={(e) => setEditVideoUrl(e.target.value)}
+                className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Đổi ảnh: xóa bài cũ và đăng lại (tránh rác file).</p>
+            </div>
+          )}
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={editFeatured}
+              onChange={(e) => setEditFeatured(e.target.checked)}
+              className="w-4 h-4 text-black rounded border-slate-300 focus:ring-black"
+            />
+            <span className="text-sm font-medium text-slate-700 flex items-center gap-1">
+              Đánh dấu nổi bật <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+            </span>
+          </label>
+
+          {updateError && (
+            <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+              <AlertCircle className="w-4 h-4 shrink-0" /> {updateError}
+            </div>
+          )}
+
+          <div className="mt-2 flex justify-end gap-2">
+            <PillButton variant="ghost" onClick={() => setEditingPost(null)}>
+              Hủy
+            </PillButton>
+            <PillButton loading={isUpdating} onClick={handleUpdatePost}>
+              Lưu thay đổi
+            </PillButton>
+          </div>
         </div>
       </Modal>
     </div>

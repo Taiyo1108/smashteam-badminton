@@ -198,6 +198,30 @@ export default function PersonnelPage() {
     } catch (e) {}
   };
 
+  const handleDeleteCampaign = async () => {
+    if (!selectedCampaign) return;
+    const count = campaignStats?.total_registered ?? 0;
+    if (!confirm(`Xóa đợt tuyển "${selectedCampaign.name}"?\nCác ca casting trong đợt sẽ bị xóa theo${count > 0 ? `, ${count} ứng viên đã đăng ký sẽ bị gỡ khỏi ca` : ""}. Không thể hoàn tác!`)) return;
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/${selectedCampaign.id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        alert(data.message || "Đã xóa đợt tuyển.");
+        setSelectedCampaign(null);
+        setCampaignStats(null);
+        fetchCampaigns();
+      } else {
+        alert(data.error || "Không thể xóa đợt tuyển.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối mạng.");
+    }
+  };
+
   const handleDeleteSlot = async (slotId: string) => {
     if (!confirm("Bạn có chắc chắn muốn xóa ca casting này không?")) return;
     try {
@@ -1258,7 +1282,19 @@ export default function PersonnelPage() {
                 <div>
                   <div className="flex justify-between items-center mb-4">
                     <h2 className="text-lg font-black text-secondary">{isCreatingCampaign ? "Tạo đợt tuyển mới" : "Chỉnh sửa đợt tuyển"}</h2>
-                    {selectedCampaign && !isCreatingCampaign && <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold tabular-nums">ID: {selectedCampaign.id.split('-')[0]}</span>}
+                    <div className="flex items-center gap-2">
+                      {selectedCampaign && !isCreatingCampaign && <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold tabular-nums">ID: {selectedCampaign.id.split('-')[0]}</span>}
+                      {selectedCampaign && !isCreatingCampaign && (
+                        <button
+                          type="button"
+                          onClick={handleDeleteCampaign}
+                          className="p-2 border border-slate-200 hover:bg-rose-50 hover:border-rose-100 rounded-xl cursor-pointer text-slate-500 hover:text-rose-500 transition-colors"
+                          title="Xóa đợt tuyển này"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <form onSubmit={handleCreateOrUpdateCampaign} className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">

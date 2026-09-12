@@ -397,7 +397,7 @@ export default function AdminSessionsPage() {
                       <button
                         onClick={() => handleGenerateQr(selectedSession.id, false)}
                         disabled={isGeneratingQr}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-primary text-secondary hover:bg-primary-hover font-black text-xs rounded-xl shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white hover:bg-primary-hover font-black text-xs rounded-xl shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
                       >
                         {isGeneratingQr ? (
                           <>

@@ -13,7 +13,7 @@ interface ClubStatsProps {
 
 export default function ClubStats({
   memberCount = "150+",
-  sessionsPerWeek = "3 - 4",
+  sessionsPerWeek = "2 - 3",
   tournamentsCount = "12+",
   topElo = "1850+",
   className = ""
@@ -38,7 +38,7 @@ export default function ClubStats({
       icon: Calendar,
       accentColor: "from-cyan-500 to-blue-600",
       textColor: "text-cyan-300",
-      badge: "Thứ 3 • 5 • 7 • CN",
+      badge: "Thứ 2 • Thứ 4 • Thứ 6",
       badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
     },
     {

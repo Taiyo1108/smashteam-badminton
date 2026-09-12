@@ -226,7 +226,16 @@ export default function RegistrationModal({
   };
 
   const handleSubmit = async () => {
-    if (!formData.selectedSlot && slots.length > 0) {
+    // Bắt buộc chọn ca casting ngay lúc đăng ký (không cho gửi đơn thiếu ca)
+    if (isLoadingSlots) {
+      setSubmitError("Đang tải lịch casting, vui lòng đợi giây lát.");
+      return;
+    }
+    if (slots.length === 0) {
+      setSubmitError("Hiện chưa mở ca casting nào. Bạn vui lòng quay lại đăng ký sau!");
+      return;
+    }
+    if (!formData.selectedSlot) {
       setSubmitError("Vui lòng chọn một ca Casting phù hợp.");
       return;
     }
@@ -245,7 +254,7 @@ export default function RegistrationModal({
           academic_info: `${formData.university.trim()}${formData.courseYear.trim() ? ` - ${formData.courseYear.trim()}` : ""}`,
           badminton_level: formData.level,
           soft_skills: formData.selectedSkills,
-          casting_slot_id: formData.selectedSlot ? Number(formData.selectedSlot) : null,
+          casting_slot_id: formData.selectedSlot || null,
           gender: formData.gender,
           extra_answers: customQuestions.map(q => ({
             questionId: q.id,
@@ -669,8 +678,8 @@ export default function RegistrationModal({
                       <span className="text-xs font-bold">Đang tải lịch casting...</span>
                     </div>
                   ) : slots.length === 0 ? (
-                    <div className="p-6 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs text-center font-medium">
-                      Ban chủ nhiệm sẽ liên hệ sắp xếp ca test riêng qua Zalo cho bạn. Bạn có thể bấm gửi đơn ngay!
+                    <div className="p-6 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs text-center font-bold">
+                      Hiện chưa mở ca casting nào. Bạn vui lòng quay lại đăng ký sau khi CLB mở đợt mới!
                     </div>
                   ) : (
                     <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">

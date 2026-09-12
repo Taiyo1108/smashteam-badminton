@@ -35,6 +35,28 @@ router.post('/register', async (req, res) => {
       }
     }
 
+    // Bắt buộc chọn ca casting ngay lúc đăng ký (ID ca là UUID, không ép kiểu số)
+    if (!casting_slot_id) {
+      return res.status(400).json({ error: 'Vui lòng chọn ca casting trước khi gửi đơn!' });
+    }
+    const slotCheck = await db.query(
+      'SELECT id, max_capacity, is_active FROM casting_slots WHERE id = $1',
+      [casting_slot_id]
+    );
+    if (slotCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'Ca casting bạn chọn không tồn tại. Vui lòng chọn lại!' });
+    }
+    if (slotCheck.rows[0].is_active === false) {
+      return res.status(400).json({ error: 'Ca casting này đã đóng nhận đăng ký. Vui lòng chọn ca khác!' });
+    }
+    const slotCountRes = await db.query(
+      "SELECT COUNT(*) FROM users WHERE casting_slot_id = $1 AND role = 'candidate'",
+      [casting_slot_id]
+    );
+    if (parseInt(slotCountRes.rows[0].count, 10) >= (slotCheck.rows[0].max_capacity || 0)) {
+      return res.status(400).json({ error: 'Ca casting này đã đủ người. Vui lòng chọn ca khác!' });
+    }
+
     const extraAnswersJson = extra_answers
       ? (typeof extra_answers === 'string' ? extra_answers : JSON.stringify(extra_answers))
       : null;
