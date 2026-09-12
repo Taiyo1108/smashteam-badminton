@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import BgmPlayer from "./components/BgmPlayer";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -33,6 +34,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground selection:bg-primary/20 selection:text-primary">
         {children}
+        <BgmPlayer />
       </body>
     </html>
   );

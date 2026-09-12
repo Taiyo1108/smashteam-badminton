@@ -184,6 +184,25 @@ body {
   animation: var(--animate-shimmer);
 }
 
+/* Soundwave animations for BGM Player */
+@utility sound-wave-bar {
+  display: inline-block;
+  width: 3px;
+  height: 15px;
+  background-color: currentColor;
+  border-radius: 999px;
+  animation: soundwave-bgm 1.2s ease-in-out infinite;
+}
+
+@keyframes soundwave-bgm {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
 /* Homepage perf: CSS-only fade-up thay cho framer-motion (giảm ~100KB JS) */
 @keyframes fade-up {
   from {
