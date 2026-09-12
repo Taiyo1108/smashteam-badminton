@@ -44,8 +44,8 @@ export default function EventRecruitmentCard({
   className = ""
 }: EventRecruitmentCardProps) {
   // Compute numbers from active campaign or fallback to default recruitment campaign
-  const campaignName = campaign?.name || "Chiến Dịch Tuyển Vợt Thủ SmashTeam Mùa Giải 2026";
-  const campaignBadge = campaign?.badge_text || "Mùa Tuyển Quân 2026";
+  const campaignName = campaign?.name || `Chiến Dịch Tuyển Vợt Thủ SmashTeam Mùa Giải ${new Date().getFullYear()}`;
+  const campaignBadge = campaign?.badge_text || `Mùa Tuyển Quân ${new Date().getFullYear()}`;
   const campaignDesc = campaign?.description || "Chào đón mọi cấp độ vợt thủ đam mê cầu lông gia nhập ngôi nhà chung SmashTeam. Tham gia ngay để tỏa sáng, nâng hạng ELO và rèn luyện thể lực hàng tuần!";
   const campaignLocation = campaign?.location || "Sân Cầu Lông Lan Anh";
   const campaignAudience = campaign?.target_audience || "Mọi cấp độ tay vợt";

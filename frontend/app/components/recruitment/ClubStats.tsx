@@ -49,7 +49,7 @@ export default function ClubStats({
       icon: Trophy,
       accentColor: "from-amber-400 to-orange-500",
       textColor: "text-amber-400",
-      badge: "Mùa giải 2026",
+      badge: `Mùa giải ${new Date().getFullYear()}`,
       badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/30"
     },
     {

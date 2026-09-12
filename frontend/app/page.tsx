@@ -573,7 +573,7 @@ export default function Home() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
                   </span>
-                  <span>Chiến Dịch Tuyển Vợt Thủ Mùa Giải 2026</span>
+                  <span>Chiến Dịch Tuyển Vợt Thủ Mùa Giải {new Date().getFullYear()}</span>
                 </motion.div>
 
                 {/* Primary H1 Heading */}
@@ -1251,7 +1251,7 @@ export default function Home() {
             </nav>
           </div>
           <div className="mt-10 text-center space-y-2">
-            <p className="text-sm font-semibold text-slate-300">© 2026 SmashTeam Badminton Club. All rights reserved.</p>
+            <p className="text-sm font-semibold text-slate-300">© {new Date().getFullYear()} SmashTeam Badminton Club. All rights reserved.</p>
             <p className="text-xs text-slate-500">Nơi đam mê hội tụ • Tinh thần thể thao trung thực • Nâng tầm bản lĩnh</p>
           </div>
         </div>

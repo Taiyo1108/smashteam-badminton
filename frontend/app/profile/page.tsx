@@ -13,7 +13,6 @@ import {
 import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
-import ThemeToggle from "@/app/components/ThemeToggle";
 import { format } from "date-fns";
 
 export default function ProfilePage() {
@@ -714,7 +713,6 @@ export default function ProfilePage() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
-            <ThemeToggle />
             <Link href="/">
               <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all text-sm font-semibold">
                 <Home className="w-4 h-4" /> Trang chủ
@@ -1836,7 +1834,7 @@ export default function ProfilePage() {
       )}
 
       <footer className="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-xs">
-        <p>© 2026 SmashTeam Badminton Club. All rights reserved.</p>
+        <p>© {new Date().getFullYear()} SmashTeam Badminton Club. All rights reserved.</p>
       </footer>
     </main>
   );

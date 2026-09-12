@@ -44,7 +44,7 @@ export default function RegisterPage() {
         <div className="text-center max-w-xl mx-auto space-y-2 mb-8">
           <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-black uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Tuyển Thành Viên Mới 2026</span>
+            <span>Tuyển Thành Viên Mới {new Date().getFullYear()}</span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-black text-secondary tracking-tight">
             Đăng Ký Gia Nhập <span className="text-primary">SmashTeam</span>
@@ -69,7 +69,7 @@ export default function RegisterPage() {
 
       {/* Footer Minimal */}
       <footer className="py-6 text-center text-xs text-slate-400 border-t border-purple-100 z-10 bg-white/50">
-        © 2026 SmashTeam Badminton Club. All rights reserved.
+        © {new Date().getFullYear()} SmashTeam Badminton Club. All rights reserved.
       </footer>
     </div>
   );

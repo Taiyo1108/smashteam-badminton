@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import BgmPlayer from "./components/BgmPlayer";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -33,14 +32,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background text-foreground selection:bg-primary/20 selection:text-primary">
-        {/* Áp dụng chế độ ban đêm đã lưu (trừ trang chính luôn sáng) để tránh nháy */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem("smash-theme")==="dark"&&window.location.pathname!=="/")document.documentElement.classList.add("dark")}catch(e){}`,
-          }}
-        />
         {children}
-        <BgmPlayer />
       </body>
     </html>
   );

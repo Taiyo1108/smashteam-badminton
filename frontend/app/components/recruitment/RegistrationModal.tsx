@@ -292,7 +292,7 @@ export default function RegistrationModal({
               Đơn Ứng Tuyển Gia Nhập CLB
             </h3>
             <p className="text-xs text-purple-300 font-medium">
-              SmashTeam Badminton Club • Mùa giải 2026
+              SmashTeam Badminton Club • Mùa giải {new Date().getFullYear()}
             </p>
           </div>
         </div>

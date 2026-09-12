@@ -7,7 +7,6 @@ import {
   LayoutDashboard, Users, Swords, LogOut, Loader2, Menu, X,
   Image as ImageIcon, Calendar, Sparkles, ShoppingBag, Home, Trophy
 } from "lucide-react";
-import ThemeToggle from "@/app/components/ThemeToggle";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -110,10 +109,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </nav>
 
         <div className="p-3 border-t border-white/5 space-y-1">
-          <div className="flex items-center gap-3 w-full px-4 py-2.5 rounded-xl hover:bg-white/5 transition-colors">
-            <ThemeToggle className="border-white/15 bg-white/5 text-slate-300 hover:text-white hover:border-white/30" />
-            <span className="text-xs sm:text-sm text-slate-300">Ban ngày / Ban đêm</span>
-          </div>
           <Link
             href="/"
             className="min-h-[44px] flex items-center gap-3 w-full px-4 py-2.5 rounded-xl text-xs sm:text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors focus-ring"
