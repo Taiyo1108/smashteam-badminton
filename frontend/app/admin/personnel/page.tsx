@@ -163,6 +163,32 @@ export default function PersonnelPage() {
     } catch (e) {}
   };
 
+  // Kích hoạt 1 đợt tuyển ngay trên thẻ (đợt đang chạy khác sẽ tự chuyển vào lịch sử)
+  const handleActivateCampaign = async (c: any) => {
+    if (c.is_active) return;
+    if (!confirm(`Kích hoạt đợt tuyển "${c.name}"?\nĐợt đang chạy hiện tại sẽ tự chuyển vào lịch sử.`)) return;
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/${c.id}/toggle-active`, {
+        method: "PUT",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || `Đã kích hoạt đợt tuyển "${c.name}"!`);
+        await fetchCampaigns();
+        if (data.campaign) {
+          setSelectedCampaign(data.campaign);
+          fetchCampaignStats(data.campaign.id);
+        }
+      } else {
+        alert(data.error || "Không thể kích hoạt đợt tuyển.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    }
+  };
+
   const handleAddSlot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCampaign) return;
@@ -1396,6 +1422,20 @@ export default function PersonnelPage() {
                         <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Mở: {format(new Date(c.start_date), "dd/MM/yyyy HH:mm")}</span>
                         <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Đóng: {format(new Date(c.end_date), "dd/MM/yyyy HH:mm")}</span>
                       </div>
+                      {c.is_active ? (
+                        <div className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Đang kích hoạt tuyển quân
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleActivateCampaign(c); }}
+                          className="mt-3 w-full py-2 px-3 bg-secondary hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                          title="Kích hoạt đợt tuyển này (đợt đang chạy sẽ vào lịch sử)"
+                        >
+                          <Power className="w-3.5 h-3.5 text-emerald-400" /> Kích hoạt đợt tuyển
+                        </button>
+                      )}
                     </div>
                   ))
                 )}

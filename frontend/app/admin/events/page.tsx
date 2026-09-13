@@ -855,6 +855,13 @@ export default function AdminEventsPage() {
                           )}
 
                           <button
+                            onClick={() => openEditEventModal(evt)}
+                            className="p-1.5 text-slate-400 hover:text-primary hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                            title="Chỉnh sửa sự kiện"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => handleDeleteEvent(evt.id)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                             title="Xóa sự kiện"
@@ -1230,15 +1237,17 @@ export default function AdminEventsPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL THÊM GIẢI ĐẤU MỚI                                                   */}
+      {/* MODAL THÊM MỚI / CHỈNH SỬA GIẢI ĐẤU                                      */}
       {/* ========================================================================= */}
       {isEventModalOpen && (
         <div className="fixed inset-0 z-50 bg-secondary/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-white rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 animate-fade-in border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-black text-lg text-secondary">Tạo Giải Đấu / Sự Kiện Mới</h3>
+              <h3 className="font-black text-lg text-secondary">
+                {editingEvent ? `Chỉnh Sửa: ${editingEvent.title}` : "Tạo Giải Đấu / Sự Kiện Mới"}
+              </h3>
               <button
-                onClick={() => setIsEventModalOpen(false)}
+                onClick={closeEventModal}
                 className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -1246,43 +1255,8 @@ export default function AdminEventsPage() {
             </div>
 
             <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                setIsSavingEvent(true);
-                const formData = new FormData(e.currentTarget);
-                try {
-                  const token = localStorage.getItem("admin_token");
-                  const res = await fetch(`${API_URL}/api/events`, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                      title: formData.get("title"),
-                      subtitle: formData.get("subtitle"),
-                      event_date: formData.get("event_date"),
-                      location: formData.get("location"),
-                      badge: formData.get("badge") || "GIẢI ĐẤU NỔI BẬT",
-                      max_participants: Number(formData.get("max_participants")) || 50,
-                      is_featured: formData.get("is_featured") === "on",
-                      status: "upcoming"
-                    })
-                  });
-
-                  if (res.ok) {
-                    showToast("Đã tạo sự kiện giải đấu mới thành công!");
-                    setIsEventModalOpen(false);
-                    fetchAllEventsData();
-                  } else {
-                    showToast("Không thể tạo sự kiện.", "error");
-                  }
-                } catch {
-                  showToast("Lỗi kết nối.", "error");
-                } finally {
-                  setIsSavingEvent(false);
-                }
-              }}
+              key={editingEvent?.id || "new"}
+              onSubmit={handleSubmitEventModal}
               className="space-y-4 text-xs"
             >
               <div>
@@ -1290,6 +1264,7 @@ export default function AdminEventsPage() {
                 <input
                   name="title"
                   required
+                  defaultValue={editingEvent?.title || ""}
                   placeholder="VD: Giải Đấu Cầu Lông SmashTeam Championship 2026"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs"
                 />
@@ -1300,6 +1275,7 @@ export default function AdminEventsPage() {
                 <textarea
                   name="subtitle"
                   rows={2}
+                  defaultValue={editingEvent?.subtitle || editingEvent?.description || ""}
                   placeholder="VD: Sự kiện quy tụ hơn 50 vợt thủ tranh cúp ELO Vàng..."
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs"
                 />
@@ -1312,7 +1288,7 @@ export default function AdminEventsPage() {
                     name="event_date"
                     type="datetime-local"
                     required
-                    defaultValue="2026-09-20T08:30"
+                    defaultValue={editingEvent?.event_date ? String(editingEvent.event_date).substring(0, 16) : "2026-09-20T08:30"}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs font-bold"
                   />
                 </div>
@@ -1321,7 +1297,7 @@ export default function AdminEventsPage() {
                   <input
                     name="max_participants"
                     type="number"
-                    defaultValue={50}
+                    defaultValue={editingEvent?.max_participants || 50}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs font-bold"
                   />
                 </div>
@@ -1332,9 +1308,35 @@ export default function AdminEventsPage() {
                 <input
                   name="location"
                   required
+                  defaultValue={editingEvent?.location || ""}
                   placeholder="VD: Sân Cầu Lông Lan Anh, 291 CMT8, Q.10"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Huy hiệu / Nhãn giải</label>
+                  <input
+                    name="badge"
+                    defaultValue={editingEvent?.badge || "GIẢI ĐẤU NỔI BẬT"}
+                    placeholder="GIẢI ĐẤU NỔI BẬT"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Trạng thái</label>
+                  <select
+                    name="status"
+                    defaultValue={editingEvent?.status || "upcoming"}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs font-bold bg-white"
+                  >
+                    <option value="upcoming">Sắp tới</option>
+                    <option value="ongoing">Đang diễn ra</option>
+                    <option value="completed">Đã kết thúc</option>
+                    <option value="cancelled">Đã hủy</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-2">
@@ -1342,7 +1344,7 @@ export default function AdminEventsPage() {
                   id="is_featured_check"
                   name="is_featured"
                   type="checkbox"
-                  defaultChecked={true}
+                  defaultChecked={editingEvent ? !!editingEvent.is_featured : true}
                   className="w-4 h-4 text-primary rounded"
                 />
                 <label htmlFor="is_featured_check" className="font-bold text-slate-700 cursor-pointer">
@@ -1353,7 +1355,7 @@ export default function AdminEventsPage() {
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsEventModalOpen(false)}
+                  onClick={closeEventModal}
                   className="px-4 py-2 text-slate-500 hover:text-slate-800 font-bold rounded-xl cursor-pointer"
                 >
                   Hủy
@@ -1363,7 +1365,7 @@ export default function AdminEventsPage() {
                   disabled={isSavingEvent}
                   className="px-5 py-2 bg-primary hover:bg-primary-hover text-white font-bold rounded-xl shadow cursor-pointer disabled:opacity-50"
                 >
-                  {isSavingEvent ? "Đang tạo..." : "Tạo Sự Kiện"}
+                  {isSavingEvent ? "Đang lưu..." : editingEvent ? "Lưu Thay Đổi" : "Tạo Sự Kiện"}
                 </button>
               </div>
             </form>
