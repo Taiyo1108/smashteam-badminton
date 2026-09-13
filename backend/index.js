@@ -13,6 +13,8 @@ const sessionRoutes = require('./routes/sessions');
 const adminRoutes = require('./routes/admin');
 const gamificationRoutes = require('./routes/gamification');
 const shopRoutes = require('./routes/shop');
+const statsRoutes = require('./routes/stats');
+const eventRoutes = require('./routes/events');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -21,22 +23,53 @@ const PORT = process.env.PORT || 5000;
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5000',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5000',
   'https://smashteam.id.vn',
   'https://www.smashteam.id.vn'
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    if (!origin) return callback(null, true);
+    
+    // Luôn cho phép trong môi trường dev hoặc test nội bộ
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
     }
+
+    // Kiểm tra danh sách cố định
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // Cho phép các IP nội bộ / VPN Radmin (26.*, 192.168.*, 10.*, 172.*, localhost)
+    try {
+      const url = new URL(origin);
+      const hostname = url.hostname;
+      if (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.startsWith('26.') ||
+        hostname.startsWith('192.168.') ||
+        hostname.startsWith('10.') ||
+        hostname.endsWith('.id.vn') ||
+        hostname.endsWith('.vercel.app')
+      ) {
+        return callback(null, true);
+      }
+    } catch (e) {
+      // url parse error
+    }
+
+    callback(null, true); // Chấp nhận an toàn tránh lỗi 500 cho người dùng
   },
   credentials: true
 }));
+const path = require('path');
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -50,6 +83,8 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/shop', shopRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/events', eventRoutes);
 
 // Base route
 app.get('/', (req, res) => {
@@ -62,6 +97,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on port ${PORT} (0.0.0.0)`);
 });

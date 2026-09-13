@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle } from "lucide-react";
+import Image from "next/image";
+import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle, Clock, Flame, Calendar, MapPin, Save, Pencil } from "lucide-react";
 import { API_URL } from "@/app/config";
+import { PageHeader, Modal, PillButton, EmptyState, CardSkeleton } from "@/app/components/ui";
+import { format } from "date-fns";
 
 export default function ContentManagementPage() {
   // States for Site settings (Cover Image)
@@ -11,6 +14,73 @@ export default function ContentManagementPage() {
   const [coverError, setCoverError] = useState("");
   const [coverSuccess, setCoverSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
+
+  // States cho Liên hệ trang chủ (footer)
+  const [contactAddress, setContactAddress] = useState("");
+  const [contactOrg, setContactOrg] = useState("");
+  const [contacts, setContacts] = useState([{ name: "", phone: "", role: "" }]);
+  // Kênh mạng xã hội hiển thị ở footer Liên hệ trang chủ (thêm/sửa link tùy ý)
+  const [socialLinks, setSocialLinks] = useState([
+    { label: "Facebook", url: "" },
+    { label: "Instagram", url: "" },
+    { label: "Youtube", url: "" },
+  ]);
+  const [aboutSaving, setAboutSaving] = useState(false);
+  const [aboutError, setAboutError] = useState("");
+  // States for Featured Event Countdown Settings
+  const [eventForm, setEventForm] = useState({
+    title: "",
+    subtitle: "",
+    date: "",
+    location: "",
+    badge: "GIẢI ĐẤU NỔI BẬT",
+    actionText: "Đăng ký tham gia ngay",
+    actionLink: "/schedule",
+    enabled: true
+  });
+  const [eventSaving, setEventSaving] = useState(false);
+  const [eventSuccess, setEventSuccess] = useState(false);
+  const [eventError, setEventError] = useState("");
+  const [syncInfo, setSyncInfo] = useState("");
+  const [nearestLoading, setNearestLoading] = useState(false);
+
+  // Đồng bộ form từ buổi tập gần nhất (/api/sessions trả về gần nhất trước)
+  // Lưu ý: chỉ điền vào form, admin phải nhấn "Lưu cấu hình sự kiện" mới hiện lên trang chủ.
+  const handleSyncNearest = async () => {
+    setNearestLoading(true);
+    setEventError("");
+    setSyncInfo("");
+    try {
+      const res = await fetch(`${API_URL}/api/sessions`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const nearest = Array.isArray(data) ? data[0] : null;
+      if (!nearest) {
+        setEventError("Chưa có buổi tập sắp tới nào để đồng bộ.");
+        return;
+      }
+      const toLocalInput = (v: string) => {
+        try {
+          const d = new Date(v);
+          if (isNaN(d.getTime())) return "";
+          const pad = (n: number) => String(n).padStart(2, "0");
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        } catch { return ""; }
+      };
+      setEventForm((prev) => ({
+        ...prev,
+        title: nearest.title || prev.title,
+        date: toLocalInput(nearest.date_time) || prev.date,
+        location: nearest.location || prev.location,
+      }));
+      setSyncInfo("Đã điền từ buổi tập gần nhất. Nhấn “Lưu cấu hình sự kiện” để hiển thị lên trang chủ.");
+      setTimeout(() => setSyncInfo(""), 5000);
+    } catch {
+      setEventError("Không lấy được buổi tập gần nhất, vui lòng thử lại.");
+    } finally {
+      setNearestLoading(false);
+    }
+  };
 
   // States for Media Posts
   const [mediaPosts, setMediaPosts] = useState<any[]>([]);
@@ -27,6 +97,16 @@ export default function ContentManagementPage() {
   });
   const [postFile, setPostFile] = useState<File | null>(null);
   const postFileInputRef = useRef<HTMLInputElement>(null);
+  const [notice, setNotice] = useState("");
+  const [deletingPost, setDeletingPost] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  // States sửa bài viết thư viện khoảnh khắc
+  const [editingPost, setEditingPost] = useState<any | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editFeatured, setEditFeatured] = useState(false);
+  const [editVideoUrl, setEditVideoUrl] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState("");
 
   // Parse YouTube URL to Standard Embed URL
   const normalizeYoutubeUrl = (url: string): string => {
@@ -34,13 +114,21 @@ export default function ContentManagementPage() {
     // Match common YT URL patterns (watch?v=, share link, shorts, embed, etc.)
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
     const match = url.match(regExp);
-    
+
     if (match && match[2].length === 11) {
       const videoId = match[2];
       return `https://www.youtube.com/embed/${videoId}`;
     }
-    
+
     return url;
+  };
+
+  // Tự thêm https:// nếu admin quên nhập (VD: facebook.com/... -> https://facebook.com/...)
+  const normalizeSocialUrl = (url: string): string => {
+    const trimmed = String(url ?? "").trim();
+    if (!trimmed) return "";
+    if (/^(https?:\/\/|mailto:|tel:)/i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
   };
 
   // Fetch all settings
@@ -50,9 +138,121 @@ export default function ContentManagementPage() {
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
+        if (typeof data.contact_address === "string") setContactAddress(data.contact_address);
+        if (typeof data.contact_org === "string") setContactOrg(data.contact_org);
+        try {
+          const list = typeof data.contacts === "string" ? JSON.parse(data.contacts) : data.contacts;
+          if (Array.isArray(list) && list.length > 0) {
+            setContacts(list.map((c: any) => ({
+              name: String(c?.name ?? ""),
+              phone: String(c?.phone ?? ""),
+              role: String(c?.role ?? ""),
+            })));
+          }
+        } catch {}
+        try {
+          const socials = typeof data.social_links === "string" ? JSON.parse(data.social_links) : data.social_links;
+          if (Array.isArray(socials) && socials.length > 0) {
+            setSocialLinks(socials.map((s: any) => ({
+              label: String(s?.label ?? ""),
+              url: String(s?.url ?? ""),
+            })));
+          }
+        } catch {}
+        if (data) {
+          setEventForm({
+            title: data.featured_event_title || "Giải Đấu Cầu Lông SmashTeam Championship 2026",
+            subtitle: data.featured_event_subtitle || "Sự kiện quy tụ hơn 50 vợt thủ tranh cúp ELO Vàng, vinh danh tay vợt xuất sắc và phần thưởng tài trợ độc quyền.",
+            date: data.featured_event_date ? data.featured_event_date.substring(0, 16) : "2026-09-20T08:30",
+            location: data.featured_event_location || "Cụm Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM",
+            badge: data.featured_event_badge || "GIẢI ĐẤU NỔI BẬT",
+            actionText: data.featured_event_action_text || "Đăng ký tham gia ngay",
+            actionLink: data.featured_event_action_link || "/schedule",
+            enabled: data.featured_event_enabled !== "false"
+          });
+        }
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
+    }
+  };
+
+  // Handle Save Featured Event Countdown
+  const handleSaveEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEventSaving(true);
+    setEventError("");
+    setEventSuccess(false);
+    setSyncInfo("");
+
+    try {
+      const token = localStorage.getItem("admin_token");
+      if (!token) {
+        setEventError("Phiên đăng nhập hết hạn, vui lòng đăng nhập lại.");
+        return;
+      }
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      };
+
+      const updates = [
+        fetch(`${API_URL}/api/settings/featured_event_title`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.title })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_subtitle`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.subtitle })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_date`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.date })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_location`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.location })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_badge`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.badge })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_action_text`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.actionText })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_action_link`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: eventForm.actionLink })
+        }),
+        fetch(`${API_URL}/api/settings/featured_event_enabled`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ value: String(eventForm.enabled) })
+        })
+      ];
+
+      const results = await Promise.all(updates);
+      if (results.every((r) => r.ok)) {
+        setEventSuccess(true);
+        setTimeout(() => setEventSuccess(false), 3500);
+        fetchSettings();
+      } else if (results.some((r) => r.status === 401 || r.status === 403)) {
+        setEventError("Không có quyền lưu (phiên hết hạn). Đăng nhập lại tài khoản admin rồi thử lại.");
+      } else {
+        setEventError("Lưu chưa trọn vẹn, một số mục thất bại. Vui lòng thử lại.");
+      }
+    } catch (err) {
+      setEventError("Lỗi kết nối khi lưu cài đặt sự kiện.");
+    } finally {
+      setEventSaving(false);
     }
   };
 
@@ -167,7 +367,7 @@ export default function ContentManagementPage() {
       });
 
       if (res.ok) {
-        alert("Đăng bài viết mới thành công!");
+        setNotice("Đăng bài viết mới thành công!");
         // Reset form
         setPostForm({
           title: "",
@@ -177,7 +377,7 @@ export default function ContentManagementPage() {
         });
         setPostFile(null);
         if (postFileInputRef.current) postFileInputRef.current.value = "";
-        
+
         // Refresh posts list
         fetchMediaPosts();
       } else {
@@ -191,13 +391,56 @@ export default function ContentManagementPage() {
     }
   };
 
-  // Handle Delete Post
-  const handleDeletePost = async (postId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa bài viết này không? Điều này sẽ gỡ bài khỏi Trang chủ và xóa file ảnh liên quan.")) return;
+  // Mở modal sửa bài viết thư viện khoảnh khắc
+  const openEditPost = (post: any) => {
+    setEditingPost(post);
+    setEditTitle(post.title || "");
+    setEditFeatured(!!post.is_featured);
+    setEditVideoUrl(post.content_url || "");
+    setUpdateError("");
+  };
 
+  // Lưu chỉnh sửa bài viết
+  const handleUpdatePost = async () => {
+    if (!editingPost) return;
+    if (!editTitle.trim()) {
+      setUpdateError("Tiêu đề không được để trống.");
+      return;
+    }
+    setIsUpdating(true);
+    setUpdateError("");
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/media/${postId}`, {
+      const res = await fetch(`${API_URL}/api/media/${editingPost.id}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          is_featured: editFeatured,
+          video_url: normalizeYoutubeUrl(editVideoUrl),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setUpdateError(data.error || "Không thể lưu chỉnh sửa.");
+        return;
+      }
+      setEditingPost(null);
+      setNotice("Cập nhật bài viết thành công!");
+      fetchMediaPosts();
+    } catch (e) {
+      setUpdateError("Lỗi kết nối mạng khi lưu.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Handle Delete Post
+  const handleDeletePost = async () => {    if (!deletingPost) return;
+    setIsDeleting(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/media/${deletingPost.id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -205,41 +448,90 @@ export default function ContentManagementPage() {
       });
 
       if (res.ok) {
-        alert("Xóa bài viết thành công!");
+        setDeletingPost(null);
+        setNotice("Xóa bài viết thành công!");
         fetchMediaPosts();
       } else {
-        const err = await res.json();
-        alert(err.error || "Lỗi khi xóa bài viết.");
+        const err = await res.json().catch(() => ({}));
+        setCreateError(err.error || "Lỗi khi xóa bài viết.");
+        setDeletingPost(null);
       }
     } catch (e) {
-      alert("Lỗi kết nối mạng.");
+      setCreateError("Lỗi kết nối mạng.");
+      setDeletingPost(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Lưu Liên hệ trang chủ (4 keys trong site_settings)
+  const handleSaveAbout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAboutError("");
+    setAboutSaving(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const payloads = [
+        { key: "contact_address", value: contactAddress },
+        { key: "contact_org", value: contactOrg },
+        { key: "contacts", value: JSON.stringify(contacts.filter((c) => c.name.trim() || c.phone.trim())) },
+        { key: "social_links", value: JSON.stringify(socialLinks.filter((s) => s.label.trim()).map((s) => ({ label: s.label.trim(), url: normalizeSocialUrl(s.url) }))) },
+      ];
+      const results = await Promise.all(
+        payloads.map((p) =>
+          fetch(`${API_URL}/api/settings`, {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify(p),
+          })
+        )
+      );
+      if (results.every((r) => r.ok)) {
+        setNotice("Cập nhật Liên hệ trang chủ thành công!");
+        fetchSettings();
+      } else {
+        setAboutError("Lưu chưa trọn vẹn, vui lòng thử lại.");
+      }
+    } catch (e) {
+      setAboutError("Lỗi kết nối mạng khi lưu.");
+    } finally {
+      setAboutSaving(false);
     }
   };
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-secondary mb-2">Quản lý nội dung</h1>
-        <p className="text-slate-500">Cập nhật ảnh bìa giao diện và đăng các hoạt động truyền thông của câu lạc bộ.</p>
-      </div>
+      <PageHeader
+        title="Nội dung"
+        desc="Cập nhật ảnh bìa giao diện và đăng các hoạt động truyền thông của câu lạc bộ."
+      />
+
+      {notice && (
+        <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 px-4 py-3 rounded-2xl font-medium">
+          {notice}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* CỘT TRÁI: THAY THẾ ẢNH BÌA */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-secondary mb-4 flex items-center gap-2">
-              <ImageIcon className="w-5 h-5 text-primary" /> Ảnh bìa Trang chủ
+              <ImageIcon className="w-5 h-5 text-black" /> Ảnh bìa Trang chủ
             </h2>
 
             <div className="space-y-4">
               {/* Cover Photo Preview */}
               <div className="relative aspect-[16/9] rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
                 {settings.homepage_cover_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
                     src={settings.homepage_cover_url}
                     alt="Homepage Cover"
-                    className="w-full h-full object-cover"
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 380px"
+                    loading="lazy"
+                    unoptimized
+                    className="object-cover"
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
@@ -268,7 +560,7 @@ export default function ContentManagementPage() {
                   type="button"
                   onClick={() => coverInputRef.current?.click()}
                   disabled={coverLoading}
-                  className="w-full py-3 px-4 border border-dashed border-slate-300 hover:border-primary hover:bg-slate-50 text-slate-600 hover:text-primary rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3 px-4 border border-dashed border-slate-300 hover:border-black hover:bg-slate-50 text-slate-600 hover:text-black rounded-xl font-bold transition-all flex items-center justify-center gap-2"
                 >
                   <Upload className="w-4 h-4" />
                   {coverLoading ? "Đang tải lên..." : "Tải ảnh bìa mới"}
@@ -293,6 +585,150 @@ export default function ContentManagementPage() {
               </p>
             </div>
           </div>
+
+          {/* CÀI ĐẶT SỰ KIỆN ĐẾM NGƯỢC NỔI BẬT */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <h2 className="text-lg font-bold text-secondary mb-1 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-primary" /> Sự kiện Đếm ngược Trang chủ
+            </h2>
+            <p className="text-[11px] text-slate-400 mb-3">
+              Nội dung bên dưới hiển thị trực tiếp lên trang chủ sau khi nhấn <strong>Lưu</strong>.
+            </p>
+            <button
+              type="button"
+              onClick={handleSyncNearest}
+              disabled={nearestLoading}
+              className="w-full mb-4 py-2 px-3 border border-dashed border-primary/40 hover:border-primary hover:bg-purple-50 text-primary rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {nearestLoading ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang lấy buổi gần nhất...</>
+              ) : (
+                <><Calendar className="w-3.5 h-3.5" /> Đồng bộ từ buổi tập gần nhất</>
+              )}
+            </button>
+
+            <form onSubmit={handleSaveEvent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Tiêu đề sự kiện</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Giải Đấu Cầu Lông Mở Rộng..."
+                  value={eventForm.title}
+                  onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
+                  className="w-full p-2.5 border rounded-xl text-sm outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Mô tả ngắn</label>
+                <textarea
+                  rows={2}
+                  placeholder="Thông điệp sự kiện hoặc phần thưởng..."
+                  value={eventForm.subtitle}
+                  onChange={(e) => setEventForm({ ...eventForm, subtitle: e.target.value })}
+                  className="w-full p-2.5 border rounded-xl text-sm outline-none focus:border-primary resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Thời gian diễn ra</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={eventForm.date}
+                    onChange={(e) => setEventForm({ ...eventForm, date: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl text-sm outline-none focus:border-primary bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Địa điểm tổ chức</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Sân cầu lông Lan Anh, Q.10..."
+                    value={eventForm.location}
+                    onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Huy hiệu (Badge)</label>
+                  <input
+                    type="text"
+                    placeholder="SỰ KIỆN NỔI BẬT"
+                    value={eventForm.badge}
+                    onChange={(e) => setEventForm({ ...eventForm, badge: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl text-xs outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Chữ nút bấm (CTA)</label>
+                  <input
+                    type="text"
+                    placeholder="Đăng ký tham gia ngay"
+                    value={eventForm.actionText}
+                    onChange={(e) => setEventForm({ ...eventForm, actionText: e.target.value })}
+                    className="w-full p-2.5 border rounded-xl text-xs outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
+                  <input
+                    type="checkbox"
+                    checked={eventForm.enabled}
+                    onChange={(e) => setEventForm({ ...eventForm, enabled: e.target.checked })}
+                    className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary"
+                  />
+                  <span className="text-xs font-bold text-slate-700">
+                    Bật hiển thị bảng đếm ngược tại Trang chủ
+                  </span>
+                </label>
+              </div>
+
+              {syncInfo && (
+                <div className="p-3 bg-blue-50 text-blue-700 rounded-xl text-xs flex items-center gap-2 border border-blue-200 mb-3">
+                  <Check className="w-4 h-4 shrink-0" /> {syncInfo}
+                </div>
+              )}
+
+              {eventSuccess && (
+                <div className="p-3 bg-green-50 text-green-700 rounded-xl text-xs flex items-center gap-2 border border-green-200">
+                  <Check className="w-4 h-4 shrink-0" /> Đã lưu cấu hình đếm ngược thành công! Mở trang chủ để kiểm tra.
+                </div>
+              )}
+
+              {eventError && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+                  <AlertCircle className="w-4 h-4 shrink-0" /> {eventError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={eventSaving}
+                className="w-full py-2.5 px-4 bg-primary hover:bg-primary-hover text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                {eventSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" /> Lưu cấu hình sự kiện
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
         </div>
 
         {/* CỘT PHẢI: ĐĂNG BÀI MỚI & DANH SÁCH BÀI VIẾT */}
@@ -300,7 +736,7 @@ export default function ContentManagementPage() {
           {/* Biểu mẫu đăng bài */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-secondary mb-4 flex items-center gap-2">
-              <Plus className="w-5 h-5 text-primary" /> Đăng bài viết / Hoạt động mới
+              <Plus className="w-5 h-5 text-black" /> Đăng bài viết / Hoạt động mới
             </h2>
 
             <form onSubmit={handleCreatePost} className="space-y-4">
@@ -312,7 +748,7 @@ export default function ContentManagementPage() {
                   placeholder="Ví dụ: Giải đấu Mùa Xuân 2026, Tập luyện hàng tuần..."
                   value={postForm.title}
                   onChange={(e) => setPostForm({ ...postForm, title: e.target.value })}
-                  className="w-full p-3 border rounded-xl text-sm outline-none focus:border-primary"
+                  className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
                 />
               </div>
 
@@ -322,7 +758,7 @@ export default function ContentManagementPage() {
                   <select
                     value={postForm.type}
                     onChange={(e) => setPostForm({ ...postForm, type: e.target.value })}
-                    className="w-full p-3 border rounded-xl text-sm outline-none focus:border-primary bg-white"
+                    className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-black bg-white"
                   >
                     <option value="image">Hình ảnh (Upload)</option>
                     <option value="video">Video (YouTube URL)</option>
@@ -335,7 +771,7 @@ export default function ContentManagementPage() {
                       type="checkbox"
                       checked={postForm.isFeatured}
                       onChange={(e) => setPostForm({ ...postForm, isFeatured: e.target.checked })}
-                      className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary"
+                      className="w-4 h-4 text-black rounded border-slate-300 focus:ring-black"
                     />
                     <span className="text-sm font-medium text-slate-700 flex items-center gap-1">
                       Đánh dấu nổi bật <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
@@ -353,7 +789,7 @@ export default function ContentManagementPage() {
                     accept="image/*"
                     ref={postFileInputRef}
                     onChange={(e) => setPostFile(e.target.files?.[0] || null)}
-                    className="w-full p-2.5 border rounded-xl text-sm outline-none bg-slate-50"
+                    className="w-full p-2.5 border border-slate-200 rounded-xl text-sm outline-none bg-slate-50"
                   />
                   {postFile && (
                     <p className="text-xs text-green-600 mt-1">Đã chọn: {postFile.name} ({(postFile.size / 1024 / 1024).toFixed(2)} MB)</p>
@@ -367,7 +803,7 @@ export default function ContentManagementPage() {
                     placeholder="Dán link YouTube (Ví dụ: https://www.youtube.com/watch?v=... hoặc https://youtu.be/...)"
                     value={postForm.videoUrl}
                     onChange={(e) => setPostForm({ ...postForm, videoUrl: e.target.value })}
-                    className="w-full p-3 border rounded-xl text-sm outline-none focus:border-primary"
+                    className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
                     * Hệ thống sẽ tự động chuyển đổi thành link nhúng Embed dạng chuẩn.
@@ -385,7 +821,7 @@ export default function ContentManagementPage() {
                 <button
                   type="submit"
                   disabled={createLoading}
-                  className="px-6 py-3 bg-secondary hover:bg-slate-900 text-white rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm"
+                  className="px-6 h-12 bg-black hover:bg-black/85 text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-sm"
                 >
                   {createLoading ? (
                     <>
@@ -404,11 +840,9 @@ export default function ContentManagementPage() {
             <h2 className="text-lg font-bold text-secondary mb-4">Danh sách Hoạt động nổi bật</h2>
 
             {postsLoading ? (
-              <div className="py-12 flex justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              </div>
+              <CardSkeleton rows={2} />
             ) : mediaPosts.length === 0 ? (
-              <p className="text-sm text-slate-400 italic text-center py-8">Chưa có bài viết nào được đăng.</p>
+              <EmptyState title="Chưa có bài viết nào" desc="Đăng hoạt động đầu tiên để hiển thị lên trang chủ." />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {mediaPosts.map((post) => {
@@ -431,16 +865,20 @@ export default function ContentManagementPage() {
                             <iframe
                               src={post.content_url}
                               title={post.title}
+                              loading="lazy"
                               className="w-full h-full pointer-events-none opacity-40"
                               frameBorder="0"
                             />
                           </>
                         ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <Image
                             src={post.content_url}
                             alt={post.title}
-                            className="w-full h-full object-cover"
+                            fill
+                            sizes="(max-width: 768px) 100vw, 400px"
+                            loading="lazy"
+                            unoptimized
+                            className="object-cover"
                           />
                         )}
 
@@ -462,13 +900,7 @@ export default function ContentManagementPage() {
                             {post.title}
                           </h3>
                           <p className="text-[10px] text-slate-400 mt-1">
-                            Đăng ngày: {new Date(post.created_at).toLocaleDateString("vi-VN", {
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit"
-                            })}
+                            Đăng ngày: {format(new Date(post.created_at), "dd/MM/yyyy HH:mm")}
                           </p>
                         </div>
 
@@ -476,13 +908,22 @@ export default function ContentManagementPage() {
                           <span className="text-[11px] text-slate-500 truncate max-w-[70%]" title={post.content_url}>
                             {post.content_url}
                           </span>
-                          <button
-                            onClick={() => handleDeletePost(post.id)}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Xóa bài viết"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => openEditPost(post)}
+                              className="p-2 text-slate-500 hover:text-black hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                              title="Sửa bài viết"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeletingPost(post)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Xóa bài viết"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -493,6 +934,229 @@ export default function ContentManagementPage() {
           </div>
         </div>
       </div>
+
+      {/* LIÊN HỆ TRANG CHỦ (footer) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <h2 className="text-lg font-bold text-secondary mb-1">Liên hệ trang chủ</h2>
+        <p className="text-xs text-slate-400 mb-5">
+          Nội dung hiển thị ở chân trang (footer) trang chủ.
+        </p>
+
+        <form onSubmit={handleSaveAbout} className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Địa chỉ</label>
+              <input
+                type="text"
+                value={contactAddress}
+                onChange={(e) => setContactAddress(e.target.value)}
+                placeholder="304 ĐT743A, Đông Hòa, Hồ Chí Minh"
+                className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Đơn vị</label>
+              <input
+                type="text"
+                value={contactOrg}
+                onChange={(e) => setContactOrg(e.target.value)}
+                placeholder="Đơn vị chủ quản (nếu có)"
+                className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-slate-600">Main contact</label>
+              <button
+                type="button"
+                onClick={() => setContacts([...contacts, { name: "", phone: "", role: "" }])}
+                className="text-xs font-bold text-slate-600 hover:text-black flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Thêm liên hệ
+              </button>
+            </div>
+            <div className="space-y-2">
+              {contacts.map((c, i) => (
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2">
+                  <input
+                    type="text"
+                    value={c.name}
+                    onChange={(e) => setContacts(contacts.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                    placeholder="Họ tên"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <input
+                    type="text"
+                    value={c.phone}
+                    onChange={(e) => setContacts(contacts.map((x, j) => (j === i ? { ...x, phone: e.target.value } : x)))}
+                    placeholder="SĐT"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <input
+                    type="text"
+                    value={c.role}
+                    onChange={(e) => setContacts(contacts.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))}
+                    placeholder="Vai trò"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setContacts(contacts.filter((_, j) => j !== i))}
+                    className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                    title="Xóa liên hệ"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-slate-600">Kênh mạng xã hội (footer Liên hệ)</label>
+              <button
+                type="button"
+                onClick={() => setSocialLinks([...socialLinks, { label: "", url: "" }])}
+                className="text-xs font-bold text-slate-600 hover:text-black flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Thêm kênh
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">
+              Tên kênh hiển thị ở footer trang chủ. Dán link để bấm vào mở trang mới, bỏ trống link nếu chỉ hiển thị tên.
+            </p>
+            <div className="space-y-2">
+              {socialLinks.map((s, i) => (
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto] gap-2">
+                  <input
+                    type="text"
+                    value={s.label}
+                    onChange={(e) => setSocialLinks(socialLinks.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                    placeholder="Tên kênh (VD: TikTok)"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <input
+                    type="url"
+                    value={s.url}
+                    onChange={(e) => setSocialLinks(socialLinks.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))}
+                    placeholder="Link (VD: https://facebook.com/...)"
+                    className="p-2.5 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSocialLinks(socialLinks.filter((_, j) => j !== i))}
+                    className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                    title="Xóa kênh"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {aboutError && (
+            <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+              <AlertCircle className="w-4 h-4 shrink-0" /> {aboutError}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={aboutSaving}
+              className="px-6 h-12 bg-black hover:bg-black/85 text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+            >
+              {aboutSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu...
+                </>
+              ) : (
+                <>Lưu Liên hệ</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* DELETE CONFIRM MODAL */}
+      <Modal
+        open={!!deletingPost}
+        onClose={() => setDeletingPost(null)}
+        title="Xóa bài viết?"
+      >
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Xóa bài <strong>“{deletingPost?.title}”</strong>? Bài sẽ bị gỡ khỏi trang chủ và xóa file ảnh liên quan.
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <PillButton variant="ghost" onClick={() => setDeletingPost(null)}>
+            Hủy
+          </PillButton>
+          <PillButton variant="danger" loading={isDeleting} onClick={handleDeletePost}>
+            Xóa bài viết
+          </PillButton>
+        </div>
+      </Modal>
+
+      {/* EDIT POST MODAL (thư viện khoảnh khắc) */}
+      <Modal
+        open={!!editingPost}
+        onClose={() => setEditingPost(null)}
+        title="Sửa bài viết"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">Tiêu đề bài đăng</label>
+            <input
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+            />
+          </div>
+          {editingPost && ((editingPost.content_url || "").includes("youtube.com") || (editingPost.content_url || "").includes("youtu.be") || (editingPost.content_url || "").includes("embed")) && (
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Link video YouTube</label>
+              <input
+                type="text"
+                value={editVideoUrl}
+                onChange={(e) => setEditVideoUrl(e.target.value)}
+                className="w-full p-3 border border-slate-200 bg-white rounded-xl text-sm outline-none focus:border-black"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Đổi ảnh: xóa bài cũ và đăng lại (tránh rác file).</p>
+            </div>
+          )}
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={editFeatured}
+              onChange={(e) => setEditFeatured(e.target.checked)}
+              className="w-4 h-4 text-black rounded border-slate-300 focus:ring-black"
+            />
+            <span className="text-sm font-medium text-slate-700 flex items-center gap-1">
+              Đánh dấu nổi bật <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+            </span>
+          </label>
+
+          {updateError && (
+            <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+              <AlertCircle className="w-4 h-4 shrink-0" /> {updateError}
+            </div>
+          )}
+
+          <div className="mt-2 flex justify-end gap-2">
+            <PillButton variant="ghost" onClick={() => setEditingPost(null)}>
+              Hủy
+            </PillButton>
+            <PillButton loading={isUpdating} onClick={handleUpdatePost}>
+              Lưu thay đổi
+            </PillButton>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

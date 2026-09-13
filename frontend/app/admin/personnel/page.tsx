@@ -1,13 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useDeferredValue, useRef } from "react";
 import { 
   Search, CheckCircle2, Loader2, MoreHorizontal, X, ShieldAlert, Award, Ban, Unlock, 
-  Phone, Clock, Star, Copy, Check, Plus, Calendar, MapPin, Users, Edit, Trash2, Power, 
-  PowerOff, Save 
+  Phone, Clock, Star, Copy, Check, Plus, Calendar, MapPin, Edit, Trash2, Power,
+  PowerOff, Save, Download
 } from "lucide-react";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
+import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
+import RecruitmentKPIs from "@/app/components/recruitment/RecruitmentKPIs";
+import ApplicantTable from "@/app/components/recruitment/ApplicantTable";
+import ApplicantDetailDrawer from "@/app/components/recruitment/ApplicantDetailDrawer";
+import CustomQuestionsEditor from "@/app/components/recruitment/CustomQuestionsEditor";
+import { parseQuestions, type CustomQuestion } from "@/app/components/recruitment/customQuestions";
 
 const softSkillsList = [
   "Chụp ảnh",
@@ -22,16 +28,25 @@ export default function PersonnelPage() {
   // States cho Candidates
   const [candidates, setCandidates] = useState<any[]>([]);
   const [cSearch, setCSearch] = useState("");
+  // Debounce tìm kiếm server-side: chỉ gọi API khi user ngừng gõ
+  const deferredCSearch = useDeferredValue(cSearch);
+  const abortRef = useRef<AbortController | null>(null);
   const [cLevel, setCLevel] = useState("all");
   const [cSlot, setCSlot] = useState("all");
+  // Đợt casting đang xem — dashboard độc lập theo từng đợt, không gộp chung.
+  // "" = chưa chọn (đang tải), luôn auto-chọn đợt đang active sau khi load campaigns.
+  const [cCampaign, setCCampaign] = useState(""); // Lọc ứng viên theo đợt casting
   const [isLoadingC, setIsLoadingC] = useState(false);
   const [slots, setSlots] = useState<any[]>([]);
+  const [drawerCandidate, setDrawerCandidate] = useState<any>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // States cho Members
   const [members, setMembers] = useState<any[]>([]);
   const [isLoadingM, setIsLoadingM] = useState(false);
   const [mSearch, setMSearch] = useState("");
   const [mLevel, setMLevel] = useState("all");
+  const [mRank, setMRank] = useState("all");
   const [mStatus, setMStatus] = useState("all");
   const [mSkill, setMSkill] = useState("all");
 
@@ -74,6 +89,8 @@ export default function PersonnelPage() {
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
   const [cForm, setCForm] = useState({ name: "", start: "", end: "", active: true });
   const [sForm, setSForm] = useState({ time: "", location: "", max: "20" });
+  // Bộ câu hỏi tùy chỉnh của đợt tuyển (hiển thị sau bước 2 ở form ứng tuyển)
+  const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([]);
 
   const fetchCampaigns = async () => {
     try {
@@ -100,6 +117,7 @@ export default function PersonnelPage() {
         end: new Date(selectedCampaign.end_date).toISOString().slice(0, 16),
         active: selectedCampaign.is_active
       });
+      setCustomQuestions(parseQuestions(selectedCampaign.custom_questions));
       setIsCreatingCampaign(false);
     }
   }, [selectedCampaign]);
@@ -113,6 +131,14 @@ export default function PersonnelPage() {
         : `${API_URL}/api/campaigns`;
       const method = selectedCampaign && !isCreatingCampaign ? "PUT" : "POST";
 
+      const cleanedQuestions = customQuestions
+        .filter((q) => q.label.trim())
+        .map((q) => ({
+          ...q,
+          label: q.label.trim(),
+          options: q.options.map((o) => o.trim()).filter(Boolean),
+        }));
+
       const res = await fetch(url, {
         method,
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
@@ -120,16 +146,47 @@ export default function PersonnelPage() {
           name: cForm.name,
           start_date: new Date(cForm.start).toISOString(),
           end_date: new Date(cForm.end).toISOString(),
-          is_active: cForm.active
+          is_active: cForm.active,
+          custom_questions: cleanedQuestions
         })
       });
       if (res.ok) {
+        const saved = await res.json();
         alert("Lưu Đợt tuyển thành công!");
         setIsCreatingCampaign(false);
+        setCustomQuestions(parseQuestions(saved.custom_questions));
+        if (saved && saved.id) setSelectedCampaign(saved);
         fetchCampaigns();
         if (selectedCampaign) fetchCampaignStats(selectedCampaign.id);
+        else if (saved && saved.id) fetchCampaignStats(saved.id);
       }
     } catch (e) {}
+  };
+
+  // Kích hoạt 1 đợt tuyển ngay trên thẻ (đợt đang chạy khác sẽ tự chuyển vào lịch sử)
+  const handleActivateCampaign = async (c: any) => {
+    if (c.is_active) return;
+    if (!confirm(`Kích hoạt đợt tuyển "${c.name}"?\nĐợt đang chạy hiện tại sẽ tự chuyển vào lịch sử.`)) return;
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/${c.id}/toggle-active`, {
+        method: "PUT",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || `Đã kích hoạt đợt tuyển "${c.name}"!`);
+        await fetchCampaigns();
+        if (data.campaign) {
+          setSelectedCampaign(data.campaign);
+          fetchCampaignStats(data.campaign.id);
+        }
+      } else {
+        alert(data.error || "Không thể kích hoạt đợt tuyển.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    }
   };
 
   const handleAddSlot = async (e: React.FormEvent) => {
@@ -170,6 +227,30 @@ export default function PersonnelPage() {
     } catch (e) {}
   };
 
+  const handleDeleteCampaign = async () => {
+    if (!selectedCampaign) return;
+    const count = campaignStats?.total_registered ?? 0;
+    if (!confirm(`Xóa đợt tuyển "${selectedCampaign.name}"?\nCác ca casting trong đợt sẽ bị xóa theo${count > 0 ? `, ${count} ứng viên đã đăng ký sẽ bị gỡ khỏi ca` : ""}. Không thể hoàn tác!`)) return;
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/${selectedCampaign.id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        alert(data.message || "Đã xóa đợt tuyển.");
+        setSelectedCampaign(null);
+        setCampaignStats(null);
+        fetchCampaigns();
+      } else {
+        alert(data.error || "Không thể xóa đợt tuyển.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối mạng.");
+    }
+  };
+
   const handleDeleteSlot = async (slotId: string) => {
     if (!confirm("Bạn có chắc chắn muốn xóa ca casting này không?")) return;
     try {
@@ -189,31 +270,107 @@ export default function PersonnelPage() {
     }
   };
 
-  useEffect(() => {
-    // Fetch Slots for filter dropdown
-    fetch(`${API_URL}/api/campaigns/active`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.slots) setSlots(data.slots);
+  const [exportingSlotId, setExportingSlotId] = useState<string | null>(null);
+
+  // Xuất danh sách ứng viên của 1 ca casting ra file CSV (tải trực tiếp)
+  const handleExportSlotCsv = async (slot: any) => {
+    try {
+      setExportingSlotId(String(slot.id));
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/slots/${slot.id}/export-csv`, {
+        headers: { "Authorization": `Bearer ${token}` }
       });
-  }, []);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Không thể xuất file CSV.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const disp = res.headers.get("Content-Disposition") || "";
+      const m = disp.match(/filename="?([^"]+)"?/);
+      a.href = url;
+      a.download = m?.[1] || `ung-vien-ca-casting.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("Lỗi kết nối mạng.");
+    } finally {
+      setExportingSlotId(null);
+    }
+  };
+
+  // Slots theo đợt casting đang chọn (để lọc ca + tính chỉ tiêu KPI)
+  // Mỗi đợt độc lập: chỉ lấy slots của đúng campaignId đang chọn.
+  const fetchSlotsForCampaign = async (campaignId: string) => {
+    try {
+      if (!campaignId) {
+        setSlots([]);
+        return;
+      }
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/${campaignId}/stats`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSlots(data.slots || []);
+      } else {
+        setSlots([]);
+      }
+    } catch (e) {
+      setSlots([]);
+    }
+  };
+
+  // Auto-chọn đợt đang active (hoặc đợt mới nhất) ngay khi load xong campaigns
+  // để dashboard luôn hiển thị độc lập theo 1 đợt cụ thể, không gộp "Tất cả".
+  useEffect(() => {
+    if (!cCampaign && campaigns.length > 0) {
+      const active = campaigns.find((c: any) => c.is_active) || campaigns[0];
+      if (active) setCCampaign(String(active.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaigns]);
+
+  // Đổi đợt casting -> nạp lại slots của đợt + reset lọc ca
+  useEffect(() => {
+    fetchSlotsForCampaign(cCampaign);
+    setCSlot("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cCampaign]);
 
   useEffect(() => {
     if (activeTab === 'candidates') {
+      // Chưa chọn đợt -> chỉ nạp danh sách đợt để auto-chọn, không nạp hồ sơ gộp.
+      if (!cCampaign) {
+        fetchCampaigns();
+        return;
+      }
       fetchCandidates();
+      fetchMembers(cCampaign);
+      fetchCampaigns();
     } else if (activeTab === 'members') {
       fetchMembers();
     } else if (activeTab === 'campaigns') {
       fetchCampaigns();
     }
-  }, [activeTab, cSearch, cLevel, cSlot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, deferredCSearch, cLevel, cSlot, cCampaign]);
 
   const fetchCandidates = async () => {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setIsLoadingC(true);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/users/candidates?search=${cSearch}&level=${cLevel}&slot_id=${cSlot}`, {
-        headers: { "Authorization": `Bearer ${token}` }
+      const res = await fetch(`${API_URL}/api/users/candidates?search=${encodeURIComponent(deferredCSearch)}&level=${cLevel}&slot_id=${cSlot}&campaign_id=${cCampaign}`, {
+        headers: { "Authorization": `Bearer ${token}` },
+        signal: ctrl.signal,
       });
       if (res.ok) {
         const data = await res.json();
@@ -222,14 +379,19 @@ export default function PersonnelPage() {
           skills: typeof c.soft_skills === 'string' ? JSON.parse(c.soft_skills) : (c.soft_skills || [])
         })));
       }
-    } catch (e) {} finally { setIsLoadingC(false); }
+    } catch (e: any) {
+      if (e?.name !== "AbortError") console.error(e);
+    } finally {
+      if (!ctrl.signal.aborted) setIsLoadingC(false);
+    }
   };
 
-  const fetchMembers = async () => {
+  const fetchMembers = async (campaignId?: string) => {
     setIsLoadingM(true);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/users/members`, {
+      const q = campaignId ? `?campaign_id=${campaignId}` : "";
+      const res = await fetch(`${API_URL}/api/users/members${q}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
@@ -475,6 +637,32 @@ export default function PersonnelPage() {
     setShowActionsModal(true);
   };
 
+  // Dữ liệu dashboard độc lập theo từng đợt:
+  // Backend đã lọc sẵn theo ?campaign_id= (candidates + members),
+  // client chỉ lọc dự phòng khi slots của đợt đã load xong để chống lẫn đợt.
+  const slotIdsOfCampaign = new Set(slots.map((s: any) => String(s.id)));
+  const inSelectedCampaign = (slotId: unknown) => {
+    if (!cCampaign) return true; // đang tải đợt -> giữ nguyên để tránh nháy rỗng
+    if (slotIdsOfCampaign.size === 0) return false; // đợt chưa có ca -> không tính hồ sơ vãng lai
+    return slotIdsOfCampaign.has(String(slotId));
+  };
+
+  const campaignCandidates = candidates.filter((c: any) => inSelectedCampaign(c.casting_slot_id));
+  const campaignMembers = members.filter((m: any) => inSelectedCampaign(m.casting_slot_id));
+  const approvedMembersCount = campaignMembers.filter(
+    (m: any) => m.full_name !== "Super Admin" && m.phone_zalo !== "0999999999"
+  ).length;
+
+  // Đợt đang chọn + chỉ tiêu riêng của đợt (độc lập tuyệt đối)
+  const selectedCampaignObj =
+    campaigns.find((c: any) => String(c.id) === String(cCampaign)) ?? null;
+  const selectedCampaignName = selectedCampaignObj?.name ?? null;
+  const campaignCapacity =
+    slots.reduce((acc, s) => acc + (Number(s.max_capacity) || 0), 0) ||
+    Number(selectedCampaignObj?.total_capacity) ||
+    Number(selectedCampaignObj?.target_capacity) ||
+    20;
+
   // Client-side filtering for Members
   const filteredMembers = members.filter(m => {
     if (mSearch) {
@@ -485,6 +673,11 @@ export default function PersonnelPage() {
     }
     if (mLevel !== "all") {
       if (m.badminton_level !== mLevel) return false;
+    }
+    if (mRank !== "all") {
+      const highestElo = Math.max(m.elo_singles ?? 1000, m.elo_doubles ?? 1000);
+      const userRank = getRankName(highestElo);
+      if (userRank !== mRank) return false;
     }
     if (mStatus !== "all") {
       const currentStatus = m.status || "active";
@@ -511,8 +704,8 @@ export default function PersonnelPage() {
         </div>
         {activeTab === 'campaigns' && (
           <button 
-            onClick={() => { setIsCreatingCampaign(true); setSelectedCampaign(null); setCForm({ name: "", start: "", end: "", active: true }); }}
-            className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-hover text-secondary rounded-xl font-bold text-sm transition-all shadow-md active:scale-95 cursor-pointer"
+            onClick={() => { setIsCreatingCampaign(true); setSelectedCampaign(null); setCForm({ name: "", start: "", end: "", active: true }); setCustomQuestions([]); }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-black hover:bg-black/85 text-white rounded-xl font-bold text-sm transition-all shadow-md active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Đợt mới
           </button>
@@ -523,95 +716,94 @@ export default function PersonnelPage() {
       <div className="flex gap-4 border-b border-slate-200">
         <button 
           onClick={() => setActiveTab('candidates')}
-          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'candidates' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'candidates' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
           Ứng viên Casting
         </button>
         <button 
           onClick={() => setActiveTab('members')}
-          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'members' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'members' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
           Thành viên chính thức
         </button>
         <button 
           onClick={() => setActiveTab('campaigns')}
-          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'campaigns' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'campaigns' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
           Đợt tuyển thành viên
         </button>
       </div>
 
-      {/* CANDIDATES TAB */}
+      {/* CANDIDATES TAB (MODULE 2B - ADMIN RECRUITMENT DASHBOARD) */}
       {activeTab === 'candidates' && (
-        <div className="space-y-4">
-          {/* Filter Bar */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-center shadow-sm">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                type="text" placeholder="Tên hoặc SĐT..." 
-                value={cSearch} onChange={e => setCSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none"
-              />
-            </div>
-            <select value={cLevel} onChange={e => setCLevel(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[150px]">
-              <option value="all">Tất cả trình độ</option>
-              <option value="Mới chơi">Mới chơi</option>
-              <option value="Trung bình">Trung bình</option>
-              <option value="Khá/Giỏi">Khá/Giỏi</option>
-            </select>
-            <select value={cSlot} onChange={e => setCSlot(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[180px]">
-              <option value="all">Tất cả ca Casting</option>
-              {slots.map(s => (
-                <option key={s.id} value={s.id}>{format(new Date(s.casting_time), "HH:mm dd/MM")} - {s.location}</option>
+        <div className="space-y-6">
+          {/* Bộ lọc Đợt casting — mỗi đợt độc lập tuyệt đối */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <Calendar className="w-4 h-4 text-primary" /> Đợt casting:
+            </span>
+            <select
+              value={cCampaign}
+              onChange={e => setCCampaign(e.target.value)}
+              className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:outline-none focus:border-primary cursor-pointer min-w-[220px] max-w-full"
+            >
+              {campaigns.length === 0 && (
+                <option value="">Đang tải đợt tuyển...</option>
+              )}
+              {campaigns.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.is_active ? "● " : ""}{c.name}
+                </option>
               ))}
             </select>
-          </div>
-
-          {/* Table Candidates */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden min-h-[300px] relative">
-            {isLoadingC ? (
-              <div className="absolute inset-0 flex items-center justify-center text-primary"><Loader2 className="animate-spin" /></div>
-            ) : candidates.length === 0 ? (
-              <div className="p-10 text-center text-slate-500">Không tìm thấy ứng viên nào phù hợp.</div>
-            ) : (
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Họ tên & Liên hệ</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Khung giờ Casting</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trình độ</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Duyệt</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {candidates.map(c => (
-                    <tr key={c.id} className="hover:bg-slate-50">
-                      <td className="p-4">
-                        <p className="font-bold text-secondary">{c.full_name}</p>
-                        <p className="text-xs text-slate-500">{c.phone_zalo} • {c.gender ? `${c.gender} • ` : ""}{c.academic_info}</p>
-                      </td>
-                      <td className="p-4">
-                        {c.casting_time ? (
-                          <span className="text-sm font-medium text-slate-700 bg-slate-100 px-2 py-1 rounded">
-                            {format(new Date(c.casting_time), "HH:mm dd/MM")} ({c.location})
-                          </span>
-                        ) : <span className="text-xs text-slate-400">Chưa chọn</span>}
-                      </td>
-                      <td className="p-4">
-                        <span className="text-xs font-bold px-2 py-1 bg-slate-100 rounded-full">{c.badminton_level}</span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button onClick={() => openAssessmentModal(c)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Duyệt ứng viên">
-                          <CheckCircle2 className="w-5 h-5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {cCampaign && (
+              <span className="text-[11px] text-slate-400 font-semibold">
+                {slots.length} ca • {campaignCandidates.length} hồ sơ • {approvedMembersCount} đã duyệt — số liệu riêng đợt này
+              </span>
             )}
           </div>
+
+          {/* Mini KPI Cards & Distributions */}
+          <RecruitmentKPIs
+            candidates={campaignCandidates}
+            approvedCount={approvedMembersCount}
+            campaignName={selectedCampaignName}
+            totalSlotsCapacity={campaignCapacity}
+          />
+
+          {/* Modern Applicant Data Table */}
+          <ApplicantTable
+            key={cCampaign}
+            candidates={campaignCandidates}
+            isLoading={isLoadingC}
+            slots={slots}
+            questionLabels={parseQuestions(selectedCampaignObj?.custom_questions).map((q) => q.label)}
+            onOpenDetail={(c) => {
+              setDrawerCandidate(c);
+              setIsDrawerOpen(true);
+            }}
+            onApprove={(c) => {
+              openAssessmentModal(c);
+            }}
+            onReject={(id) => {
+              handleRejectCandidate(String(id));
+            }}
+          />
+
+          {/* Applicant Detail Drawer */}
+          <ApplicantDetailDrawer
+            candidate={drawerCandidate}
+            isOpen={isDrawerOpen}
+            onClose={() => setIsDrawerOpen(false)}
+            onApprove={(c) => {
+              setIsDrawerOpen(false);
+              openAssessmentModal(c);
+            }}
+            onReject={(id) => {
+              setIsDrawerOpen(false);
+              handleRejectCandidate(String(id));
+            }}
+          />
         </div>
       )}
 
@@ -625,14 +817,23 @@ export default function PersonnelPage() {
               <input 
                 type="text" placeholder="Tìm tên, SĐT thành viên..." 
                 value={mSearch} onChange={e => setMSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none"
               />
             </div>
-            <select value={mLevel} onChange={e => setMLevel(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[140px]">
+            <select value={mLevel} onChange={e => setMLevel(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none min-w-[140px]">
               <option value="all">Mọi trình độ</option>
               <option value="Mới chơi">Mới chơi</option>
               <option value="Trung bình">Trung bình</option>
               <option value="Khá/Giỏi">Khá/Giỏi</option>
+            </select>
+            <select value={mRank} onChange={e => setMRank(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[150px]">
+              <option value="all">Mọi phân cấp Rank</option>
+              <option value="Challenger">Challenger (1800+)</option>
+              <option value="Diamond">Diamond (1600+)</option>
+              <option value="Platinum">Platinum (1400+)</option>
+              <option value="Gold">Gold (1200+)</option>
+              <option value="Silver">Silver (1100+)</option>
+              <option value="Bronze">Bronze (&lt; 1100)</option>
             </select>
             <select value={mStatus} onChange={e => setMStatus(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[140px]">
               <option value="all">Mọi trạng thái</option>
@@ -640,7 +841,7 @@ export default function PersonnelPage() {
               <option value="inactive">Tạm nghỉ (Inactive)</option>
               <option value="left">Đã rời CLB (Left)</option>
             </select>
-            <select value={mSkill} onChange={e => setMSkill(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[180px]">
+            <select value={mSkill} onChange={e => setMSkill(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none min-w-[180px]">
               <option value="all">Mọi kỹ năng mềm</option>
               {softSkillsList.map(skill => (
                 <option key={skill} value={skill}>{skill}</option>
@@ -651,7 +852,7 @@ export default function PersonnelPage() {
           {/* Smart Table members */}
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden min-h-[300px] relative">
             {isLoadingM ? (
-              <div className="absolute inset-0 flex items-center justify-center text-primary"><Loader2 className="animate-spin" /></div>
+              <div className="absolute inset-0 flex items-center justify-center text-black"><Loader2 className="animate-spin" /></div>
             ) : filteredMembers.length === 0 ? (
               <div className="p-10 text-center text-slate-500">Không tìm thấy thành viên nào khớp điều kiện.</div>
             ) : (
@@ -660,7 +861,7 @@ export default function PersonnelPage() {
                   <tr>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Thành viên</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trình độ & Lối chơi</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Elo Score</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Phân cấp & Elo</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trạng thái</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase text-center">Thống kê</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Hành động</th>
@@ -671,6 +872,8 @@ export default function PersonnelPage() {
                     const isBlocked = m.is_blocked;
                     const status = m.status || "active";
                     const isCurrentAdmin = m.role === "admin";
+                    const rankSingles = getRankName(m.elo_singles ?? 1000);
+                    const rankDoubles = getRankName(m.elo_doubles ?? 1000);
                     
                     return (
                       <tr key={m.id} className="hover:bg-slate-50">
@@ -691,13 +894,23 @@ export default function PersonnelPage() {
                           <p className="text-sm font-semibold text-slate-700">{m.badminton_level}</p>
                         </td>
                         <td className="p-4">
-                          <div className="flex gap-2">
-                            <span className="text-xs font-bold px-2 py-1 bg-purple-50 text-purple-700 border border-purple-100 rounded">
-                              Đơn: {m.elo_singles ?? 1000}
-                            </span>
-                            <span className="text-xs font-bold px-2 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded">
-                              Đôi: {m.elo_doubles ?? 1000}
-                            </span>
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankSingles)}`}>
+                                {rankSingles}
+                              </span>
+                              <span className="text-xs font-bold text-slate-700 font-mono">
+                                Đơn: {m.elo_singles ?? 1000}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankDoubles)}`}>
+                                {rankDoubles}
+                              </span>
+                              <span className="text-xs font-bold text-slate-700 font-mono">
+                                Đôi: {m.elo_doubles ?? 1000}
+                              </span>
+                            </div>
                           </div>
                         </td>
                         <td className="p-4">
@@ -767,13 +980,13 @@ export default function PersonnelPage() {
               {/* 1. Đổi vai trò (Role) */}
               <div className="pb-6 border-b border-slate-100">
                 <h4 className="font-bold text-sm text-secondary mb-3 flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-primary" /> Quyền hạn (Role)
+                  <ShieldAlert className="w-4 h-4 text-black" /> Quyền hạn (Role)
                 </h4>
                 <div className="flex items-center gap-3">
                   <select 
                     value={quickRole} 
                     onChange={e => setQuickRole(e.target.value)} 
-                    className="p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none flex-1"
+                    className="p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none flex-1"
                   >
                     <option value="member">Thành viên chính thức (Member)</option>
                     <option value="admin">Quản trị viên (Admin)</option>
@@ -782,7 +995,7 @@ export default function PersonnelPage() {
                   <button 
                     onClick={() => handleUpdateRole(selectedMember.id, quickRole)}
                     disabled={isUpdatingRole}
-                    className="px-4 py-2.5 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-bold text-sm rounded-lg transition-colors"
+                    className="px-4 py-2.5 bg-black hover:bg-black/85 disabled:opacity-50 text-white font-bold text-sm rounded-lg transition-colors"
                   >
                     {isUpdatingRole ? "Lưu..." : "Cập nhật"}
                   </button>
@@ -801,7 +1014,7 @@ export default function PersonnelPage() {
                       <select 
                         value={eloType} 
                         onChange={e => setEloType(e.target.value as any)} 
-                        className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                        className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none"
                       >
                         <option value="singles">Điểm Đơn (Singles)</option>
                         <option value="doubles">Điểm Đôi (Doubles)</option>
@@ -814,7 +1027,7 @@ export default function PersonnelPage() {
                         placeholder="+/- Điểm"
                         value={eloAmount} 
                         onChange={e => setEloAmount(e.target.value)} 
-                        className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                        className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none"
                       />
                     </div>
                   </div>
@@ -825,7 +1038,7 @@ export default function PersonnelPage() {
                       placeholder="Nhập lý do điều chỉnh..."
                       value={eloReason} 
                       onChange={e => setEloReason(e.target.value)} 
-                      className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                      className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none"
                       required
                     />
                   </div>
@@ -850,7 +1063,7 @@ export default function PersonnelPage() {
                     <select 
                       value={quickStatus} 
                       onChange={e => setQuickStatus(e.target.value)}
-                      className="p-2 text-sm border rounded focus:ring-1 focus:ring-primary outline-none bg-white min-w-[120px]"
+                      className="p-2 text-sm border rounded focus:ring-1 focus:ring-black outline-none bg-white min-w-[120px]"
                     >
                       <option value="active">Hoạt động</option>
                       <option value="inactive">Tạm nghỉ</option>
@@ -956,7 +1169,7 @@ export default function PersonnelPage() {
             {/* Content */}
             <div className="p-6">
               {isLoadingAttendance ? (
-                <div className="py-20 flex justify-center text-primary"><Loader2 className="animate-spin w-8 h-8" /></div>
+                <div className="py-20 flex justify-center text-black"><Loader2 className="animate-spin w-8 h-8" /></div>
               ) : !attendanceStats ? (
                 <div className="py-10 text-center text-slate-500">Không có dữ liệu chuyên cần cho hội viên này.</div>
               ) : (
@@ -995,7 +1208,7 @@ export default function PersonnelPage() {
                               <div>
                                 <p className="text-xs font-bold text-secondary line-clamp-1">{item.title}</p>
                                 <p className="text-[10px] text-slate-400 mt-0.5">
-                                  {format(new Date(item.date_time), "HH:mm dd/MM/yyyy")}
+                                  {format(new Date(item.date_time), "dd/MM/yyyy HH:mm")}
                                 </p>
                               </div>
                               <div>
@@ -1022,21 +1235,22 @@ export default function PersonnelPage() {
 
       {/* MODAL ĐÁNH GIÁ CHUYÊN MÔN & PHÂN LOẠI (CASTING ASSESSMENT) */}
       {assessmentCandidate && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl bg-slate-900 border border-purple-950/40 rounded-3xl shadow-2xl overflow-hidden text-white bg-radial-gradient relative animate-fade-in my-8">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden relative animate-fade-up my-8">
             {/* Header */}
-            <div className="p-6 border-b border-purple-950/30 flex justify-between items-center bg-slate-950/50">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <div>
-                <h3 className="font-bold text-lg tracking-tight text-white flex items-center gap-2">
-                  <Award className="w-5 h-5 text-smash-violet" /> Xác nhận & Đánh giá Tuyển chọn
+                <h3 className="font-bold text-lg tracking-tight flex items-center gap-2">
+                  <Award className="w-5 h-5" /> Xác nhận & Đánh giá Tuyển chọn
                 </h3>
-                <p className="text-xs text-slate-400 mt-1">Buổi tuyển chọn cho ứng viên: {assessmentCandidate.full_name}</p>
+                <p className="text-xs text-slate-500 mt-1">Buổi tuyển chọn cho ứng viên: {assessmentCandidate.full_name}</p>
               </div>
-              <button 
+              <button
                 onClick={() => setAssessmentCandidate(null)}
-                className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-400 hover:text-white cursor-pointer"
+                aria-label="Đóng"
+                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -1044,62 +1258,62 @@ export default function PersonnelPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Cột trái: Chuẩn hóa thông tin cá nhân */}
                 <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase text-smash-violet tracking-wider">1. Chuẩn hóa thông tin cá nhân</h4>
-                  
+                  <h4 className="text-xs font-black uppercase tracking-wider">1. Chuẩn hóa thông tin cá nhân</h4>
+
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Họ và tên</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Họ và tên</label>
                     <input
                       type="text"
                       required
                       value={editFullName}
                       onChange={(e) => setEditFullName(e.target.value)}
-                      className="w-full bg-slate-950 border border-purple-950/40 rounded-xl p-3 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-semibold"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-black transition-all font-semibold"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Số điện thoại Zalo</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Số điện thoại Zalo</label>
                     <input
                       type="text"
                       required
                       value={editPhoneZalo}
                       onChange={(e) => setEditPhoneZalo(e.target.value)}
-                      className="w-full bg-slate-950 border border-purple-950/40 rounded-xl p-3 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-semibold font-mono"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-black transition-all font-semibold tabular-nums"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Địa chỉ Email</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Địa chỉ Email</label>
                     <input
                       type="email"
                       required
                       value={editEmail}
                       onChange={(e) => setEditEmail(e.target.value)}
-                      className="w-full bg-slate-950 border border-purple-950/40 rounded-xl p-3 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-semibold"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-black transition-all font-semibold"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Trường đại học / Học vấn</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Trường đại học / Học vấn</label>
                     <input
                       type="text"
                       required
                       value={editAcademicInfo}
                       onChange={(e) => setEditAcademicInfo(e.target.value)}
-                      className="w-full bg-slate-950 border border-purple-950/40 rounded-xl p-3 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-semibold"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-black transition-all font-semibold"
                     />
                   </div>
                 </div>
 
                 {/* Cột phải: Phân loại trình độ */}
                 <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase text-smash-violet tracking-wider">2. Đánh giá trình độ</h4>
+                  <h4 className="text-xs font-black uppercase tracking-wider">2. Đánh giá trình độ</h4>
 
                   <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block">Trình độ thực tế (Đánh test)</label>
-                    
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block">Trình độ thực tế (Đánh test)</label>
+
                     {/* Stars Selector (1-5 sao) */}
-                    <div className="flex items-center gap-2 bg-slate-950 p-4 rounded-2xl border border-purple-950/30 justify-center">
+                    <div className="flex items-center gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 justify-center">
                       {[1, 2, 3, 4, 5].map((star) => {
                         const active = star <= selectedStars;
                         return (
@@ -1109,28 +1323,28 @@ export default function PersonnelPage() {
                             onClick={() => setSelectedStars(star)}
                             className="p-1 hover:scale-125 transition-all text-amber-400 cursor-pointer"
                           >
-                            <Star className={`w-8 h-8 ${active ? "fill-amber-400 text-amber-400" : "text-slate-600"}`} />
+                            <Star className={`w-8 h-8 ${active ? "fill-amber-400 text-amber-400" : "text-slate-300"}`} />
                           </button>
                         );
                       })}
                     </div>
 
                     {/* Star Level Description Text */}
-                    <div className="bg-slate-950/50 p-3.5 rounded-xl border border-purple-950/10 text-center text-xs">
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-center text-xs">
                       {selectedStars === 1 && (
-                        <p className="text-slate-300">⭐ <span className="font-bold text-amber-400">1 Sao:</span> Mới bắt đầu chơi, chưa nắm vững bộ môn.</p>
+                        <p className="text-slate-600">⭐ <span className="font-bold text-amber-500">1 Sao:</span> Mới bắt đầu chơi, chưa nắm vững bộ môn.</p>
                       )}
                       {selectedStars === 2 && (
-                        <p className="text-slate-300">⭐⭐ <span className="font-bold text-amber-400">2 Sao:</span> Biết chơi cơ bản, di chuyển còn chậm.</p>
+                        <p className="text-slate-600">⭐⭐ <span className="font-bold text-amber-500">2 Sao:</span> Biết chơi cơ bản, di chuyển còn chậm.</p>
                       )}
                       {selectedStars === 3 && (
-                        <p className="text-slate-300">⭐⭐⭐ <span className="font-bold text-amber-400">3 Sao:</span> Trung bình, có thể tham gia giao lưu ELO.</p>
+                        <p className="text-slate-600">⭐⭐⭐ <span className="font-bold text-amber-500">3 Sao:</span> Trung bình, có thể tham gia giao lưu ELO.</p>
                       )}
                       {selectedStars === 4 && (
-                        <p className="text-slate-300">⭐⭐⭐⭐ <span className="font-bold text-amber-400">4 Sao:</span> Trình độ khá, kỹ thuật tốt, di chuyển nhịp nhàng.</p>
+                        <p className="text-slate-600">⭐⭐⭐⭐ <span className="font-bold text-amber-500">4 Sao:</span> Trình độ khá, kỹ thuật tốt, di chuyển nhịp nhàng.</p>
                       )}
                       {selectedStars === 5 && (
-                        <p className="text-slate-300">⭐⭐⭐⭐⭐ <span className="font-bold text-amber-400">5 Sao:</span> Trình độ giỏi, đẳng cấp tuyển thủ hoặc cận chuyên nghiệp.</p>
+                        <p className="text-slate-600">⭐⭐⭐⭐⭐ <span className="font-bold text-amber-500">5 Sao:</span> Trình độ giỏi, đẳng cấp tuyển thủ hoặc cận chuyên nghiệp.</p>
                       )}
                     </div>
                   </div>
@@ -1139,18 +1353,18 @@ export default function PersonnelPage() {
 
               {/* Nhận xét chuyên môn */}
               <div className="space-y-1.5">
-                <h4 className="text-xs font-black uppercase text-smash-violet tracking-wider">3. Nhận xét chuyên môn</h4>
+                <h4 className="text-xs font-black uppercase tracking-wider">3. Nhận xét chuyên môn</h4>
                 <textarea
                   placeholder="Ví dụ: Kỹ năng đập lưới nhanh, lực đập tốt. Thể lực di chuyển cuối sân cần rèn luyện thêm..."
                   value={castingNotes}
                   onChange={(e) => setCastingNotes(e.target.value)}
-                  className="w-full bg-slate-950 border border-purple-950/40 rounded-2xl p-4 text-sm focus:outline-none focus:border-smash-violet transition-all text-white font-medium h-24 resize-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:outline-none focus:border-black transition-all font-medium h-24 resize-none"
                 />
               </div>
 
               {/* Error messages */}
               {assessmentError && (
-                <div className="p-4 bg-rose-950/30 border border-rose-500/20 text-rose-400 rounded-2xl text-xs font-bold leading-relaxed">
+                <div className="p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl text-xs font-bold leading-relaxed">
                   {assessmentError}
                 </div>
               )}
@@ -1160,14 +1374,14 @@ export default function PersonnelPage() {
                 <button
                   type="button"
                   onClick={() => handleRejectCandidate(assessmentCandidate.id)}
-                  className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-700 hover:text-rose-400 text-slate-300 font-bold text-sm rounded-xl transition-all cursor-pointer text-center"
+                  className="flex-1 h-12 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-full transition-all cursor-pointer text-center"
                 >
                   Loại bỏ ứng viên
                 </button>
                 <button
                   type="submit"
                   disabled={isApproving}
-                  className="flex-1 py-3.5 bg-smash-purple hover:bg-smash-violet text-white font-bold text-sm rounded-xl shadow-lg shadow-smash-purple/20 transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  className="flex-1 h-12 bg-black hover:bg-black/85 text-white font-bold text-sm rounded-full transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
                   {isApproving ? (
                     <>
@@ -1198,7 +1412,7 @@ export default function PersonnelPage() {
                     <div 
                       key={c.id} 
                       onClick={() => setSelectedCampaign(c)}
-                      className={`p-4 rounded-2xl border cursor-pointer transition-all ${selectedCampaign?.id === c.id ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'}`}
+                      className={`p-4 rounded-2xl border cursor-pointer transition-all ${selectedCampaign?.id === c.id ? 'border-black bg-black/5' : 'border-slate-200 hover:border-slate-300'}`}
                     >
                       <div className="flex justify-between items-start mb-2">
                         <h3 className="font-bold text-secondary text-sm truncate pr-2">{c.name}</h3>
@@ -1208,6 +1422,20 @@ export default function PersonnelPage() {
                         <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Mở: {format(new Date(c.start_date), "dd/MM/yyyy HH:mm")}</span>
                         <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Đóng: {format(new Date(c.end_date), "dd/MM/yyyy HH:mm")}</span>
                       </div>
+                      {c.is_active ? (
+                        <div className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Đang kích hoạt tuyển quân
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleActivateCampaign(c); }}
+                          className="mt-3 w-full py-2 px-3 bg-secondary hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                          title="Kích hoạt đợt tuyển này (đợt đang chạy sẽ vào lịch sử)"
+                        >
+                          <Power className="w-3.5 h-3.5 text-emerald-400" /> Kích hoạt đợt tuyển
+                        </button>
+                      )}
                     </div>
                   ))
                 )}
@@ -1223,25 +1451,44 @@ export default function PersonnelPage() {
                 <div>
                   <div className="flex justify-between items-center mb-4">
                     <h2 className="text-lg font-black text-secondary">{isCreatingCampaign ? "Tạo đợt tuyển mới" : "Chỉnh sửa đợt tuyển"}</h2>
-                    {selectedCampaign && !isCreatingCampaign && <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold font-mono">ID: {selectedCampaign.id.split('-')[0]}</span>}
+                    <div className="flex items-center gap-2">
+                      {selectedCampaign && !isCreatingCampaign && <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold tabular-nums">ID: {selectedCampaign.id.split('-')[0]}</span>}
+                      {selectedCampaign && !isCreatingCampaign && (
+                        <button
+                          type="button"
+                          onClick={handleDeleteCampaign}
+                          className="p-2 border border-slate-200 hover:bg-rose-50 hover:border-rose-100 rounded-xl cursor-pointer text-slate-500 hover:text-rose-500 transition-colors"
+                          title="Xóa đợt tuyển này"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <form onSubmit={handleCreateOrUpdateCampaign} className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
                     <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Tên chiến dịch</label>
-                      <input type="text" required value={cForm.name} onChange={e => setCForm({...cForm, name: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                      <input type="text" required value={cForm.name} onChange={e => setCForm({...cForm, name: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-black" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Thời gian mở</label>
-                      <input type="datetime-local" required value={cForm.start} onChange={e => setCForm({...cForm, start: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                      <input type="datetime-local" required value={cForm.start} onChange={e => setCForm({...cForm, start: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-black" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Thời gian đóng</label>
-                      <input type="datetime-local" required value={cForm.end} onChange={e => setCForm({...cForm, end: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                      <input type="datetime-local" required value={cForm.end} onChange={e => setCForm({...cForm, end: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-black" />
+                    </div>
+                    {/* Bộ câu hỏi tùy chỉnh (hiển thị sau bước 2 ở form ứng tuyển) */}
+                    <div className="md:col-span-2 pt-4 mt-2 border-t border-slate-200/70">
+                      <CustomQuestionsEditor value={customQuestions} onChange={setCustomQuestions} />
+                      <p className="text-[11px] text-slate-400 mt-3">
+                        * Nhấn “Lưu đợt tuyển” ở dưới để lưu bộ câu hỏi cùng đợt tuyển.
+                      </p>
                     </div>
                     <div className="md:col-span-2 flex justify-between items-center mt-2 pt-2 border-t border-slate-200/50">
                       <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input type="checkbox" checked={cForm.active} onChange={e => setCForm({...cForm, active: e.target.checked})} className="w-4 h-4 text-primary rounded border-slate-200 focus:ring-1 focus:ring-primary" />
+                        <input type="checkbox" checked={cForm.active} onChange={e => setCForm({...cForm, active: e.target.checked})} className="w-4 h-4 text-black rounded border-slate-200 focus:ring-1 focus:ring-black" />
                         <span className="text-sm font-bold text-slate-700">Kích hoạt (Hiển thị Form tuyển quân)</span>
                       </label>
                       <button type="submit" className="px-5 py-2.5 bg-secondary hover:bg-slate-900 text-white rounded-xl font-bold text-xs flex items-center gap-2 transition-colors cursor-pointer">
@@ -1255,8 +1502,8 @@ export default function PersonnelPage() {
                 {!isCreatingCampaign && campaignStats && (
                   <>
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="p-5 bg-primary/10 border border-primary/20 rounded-2xl">
-                        <p className="text-xs text-primary font-bold uppercase tracking-wider mb-1">Tổng đăng ký ứng viên</p>
+                      <div className="p-5 bg-black/5 border border-black/20 rounded-2xl">
+                        <p className="text-xs text-black font-bold uppercase tracking-wider mb-1">Tổng đăng ký ứng viên</p>
                         <p className="text-3xl font-black text-secondary">{campaignStats.total_registered} ứng viên</p>
                       </div>
                       <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl">
@@ -1266,14 +1513,14 @@ export default function PersonnelPage() {
                     </div>
 
                     <div>
-                      <h3 className="text-base font-black text-secondary mb-4 flex items-center gap-2"><MapPin className="w-5 h-5 text-primary" /> Thiết lập Ca Casting</h3>
+                      <h3 className="text-base font-black text-secondary mb-4 flex items-center gap-2"><MapPin className="w-5 h-5 text-black" /> Thiết lập Ca Casting</h3>
                       
                       {/* Form Thêm Ca */}
                       <form onSubmit={handleAddSlot} className="flex flex-wrap gap-2.5 mb-6">
-                        <input type="datetime-local" required value={sForm.time} onChange={e => setSForm({...sForm, time: e.target.value})} className="flex-1 min-w-[150px] p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
-                        <input type="text" placeholder="Sân tập..." required value={sForm.location} onChange={e => setSForm({...sForm, location: e.target.value})} className="flex-1 min-w-[150px] p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
-                        <input type="number" placeholder="Số người tối đa..." min="1" required value={sForm.max} onChange={e => setSForm({...sForm, max: e.target.value})} className="w-28 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
-                        <button type="submit" className="px-4 py-2.5 bg-primary hover:bg-primary-hover text-secondary font-bold text-sm rounded-xl cursor-pointer shadow-sm"><Plus className="w-5 h-5" /></button>
+                        <input type="datetime-local" required value={sForm.time} onChange={e => setSForm({...sForm, time: e.target.value})} className="flex-1 min-w-[150px] p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-black" />
+                        <input type="text" placeholder="Sân tập..." required value={sForm.location} onChange={e => setSForm({...sForm, location: e.target.value})} className="flex-1 min-w-[150px] p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-black" />
+                        <input type="number" placeholder="Số người tối đa..." min="1" required value={sForm.max} onChange={e => setSForm({...sForm, max: e.target.value})} className="w-28 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-black" />
+                        <button type="submit" className="px-4 py-2.5 bg-black hover:bg-black/85 text-white font-bold text-sm rounded-xl cursor-pointer shadow-sm"><Plus className="w-5 h-5" /></button>
                       </form>
 
                       {/* Danh sách Ca */}
@@ -1287,18 +1534,21 @@ export default function PersonnelPage() {
                               <div key={slot.id} className={`p-4 border rounded-2xl flex items-center justify-between transition-colors ${!slot.is_active ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}>
                                 <div className="flex-1 pr-4">
                                   <div className="flex items-center gap-2 mb-1.5">
-                                    <h4 className="font-bold text-secondary text-sm">{format(new Date(slot.casting_time), "HH:mm - dd/MM/yyyy")}</h4>
+                                    <h4 className="font-bold text-secondary text-sm">{format(new Date(slot.casting_time), "dd/MM/yyyy HH:mm")}</h4>
                                     <span className="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-bold text-slate-600">{slot.location}</span>
                                     {!slot.is_active && <span className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-black uppercase">Đã đóng</span>}
                                   </div>
                                   <div className="flex items-center gap-3">
                                     <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/50">
-                                      <div className="bg-primary h-full transition-all" style={{ width: `${fillPercent}%` }}></div>
+                                      <div className="bg-black h-full transition-all" style={{ width: `${fillPercent}%` }}></div>
                                     </div>
-                                    <span className="text-xs font-mono font-bold text-slate-600">{slot.registered_count}/{slot.max_capacity}</span>
+                                    <span className="text-xs tabular-nums font-bold text-slate-600">{slot.registered_count}/{slot.max_capacity}</span>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
+                                  <button onClick={() => handleExportSlotCsv(slot)} disabled={exportingSlotId === String(slot.id)} className="p-2 border border-slate-200 hover:bg-emerald-50 hover:border-emerald-200 rounded-xl cursor-pointer text-slate-500 hover:text-emerald-600 disabled:opacity-50" title="Xuất danh sách ca này ra file CSV">
+                                    {exportingSlotId === String(slot.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                                  </button>
                                   <button onClick={() => handleToggleSlot(slot)} className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl cursor-pointer text-slate-500 hover:text-slate-800" title={slot.is_active ? "Đóng nhận đăng ký" : "Mở nhận đăng ký"}>
                                     {slot.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4 text-emerald-500" />}
                                   </button>
