@@ -287,4 +287,154 @@ router.delete('/slots/:id', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
+// GET /api/campaigns/slots/:id/export-csv - Xuất danh sách ứng viên của ca ra file CSV (Admin)
+// Tải trực tiếp, mở tốt trên Excel (UTF-8 BOM), không cần cấu hình Google.
+router.get('/slots/:id/export-csv', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Lấy thông tin ca casting
+    const slotResult = await db.query(`SELECT * FROM casting_slots WHERE id = $1`, [id]);
+    if (slotResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy ca casting.' });
+    }
+    const slot = slotResult.rows[0];
+
+    // 2. Lấy danh sách ứng viên của ca (kèm extra_answers nếu DB đã có cột)
+    let candResult;
+    try {
+      candResult = await db.query(
+        `SELECT u.id, u.full_name, u.gender, u.phone_zalo, COALESCE(u.email, '') as email,
+                u.academic_info, u.badminton_level, u.soft_skills, u.extra_answers, u.created_at
+         FROM users u WHERE u.casting_slot_id = $1 AND u.role = 'candidate'
+         ORDER BY u.created_at ASC`,
+        [id]
+      );
+    } catch (e) {
+      if (e && e.code === '42703') {
+        candResult = await db.query(
+          `SELECT u.id, u.full_name, u.gender, u.phone_zalo, COALESCE(u.email, '') as email,
+                  u.academic_info, u.badminton_level, u.soft_skills, u.created_at
+           FROM users u WHERE u.casting_slot_id = $1 AND u.role = 'candidate'
+           ORDER BY u.created_at ASC`,
+          [id]
+        );
+      } else {
+        throw e;
+      }
+    }
+    if (candResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Ca này chưa có ứng viên nào để xuất.' });
+    }
+
+    const parseSkills = (s) => {
+      if (Array.isArray(s)) return s.join(', ');
+      if (typeof s === 'string') {
+        try {
+          const p = JSON.parse(s);
+          return Array.isArray(p) ? p.join(', ') : s;
+        } catch { return s; }
+      }
+      return '';
+    };
+    // Parse extra_answers của 1 ứng viên thành map { questionLabel: answerString }
+    const parseAnswersMap = (v) => {
+      const map = {};
+      if (!v) return map;
+      try {
+        const arr = typeof v === 'string' ? JSON.parse(v) : v;
+        if (Array.isArray(arr)) {
+          for (const a of arr) {
+            const label = String(a?.label || a?.question || '').trim();
+            if (!label) continue;
+            const ans = Array.isArray(a?.answer) ? a.answer.join(', ') : String(a?.answer ?? '');
+            map[label] = ans;
+          }
+        }
+      } catch {}
+      return map;
+    };
+    // Lấy full danh sách câu hỏi của đợt để làm cột CSV (kể cả câu chưa ai trả lời)
+    let campaignQuestionLabels = [];
+    try {
+      const campRes = await db.query(
+        `SELECT c.custom_questions FROM casting_slots s
+         LEFT JOIN recruitment_campaigns c ON c.id = s.campaign_id
+         WHERE s.id = $1`,
+        [id]
+      );
+      const rawQ = campRes.rows[0]?.custom_questions;
+      const qArr = typeof rawQ === 'string' ? JSON.parse(rawQ) : rawQ;
+      if (Array.isArray(qArr)) {
+        campaignQuestionLabels = qArr
+          .map((q) => String(q?.label || '').trim())
+          .filter(Boolean);
+      }
+    } catch {}
+    // Union thêm các câu lạ xuất hiện trong bài nộp (đề phòng đổi câu hỏi giữa đợt)
+    const answerMaps = candResult.rows.map((c) => parseAnswersMap(c.extra_answers));
+    for (const m of answerMaps) {
+      for (const label of Object.keys(m)) {
+        if (!campaignQuestionLabels.includes(label)) campaignQuestionLabels.push(label);
+      }
+    }
+    const fmtDate = (d) => {
+      if (!d) return '';
+      const dt = new Date(d);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    };
+    const slotTime = new Date(slot.casting_time);
+    const pad = (n) => String(n).padStart(2, '0');
+    const slotLabel = `${pad(slotTime.getHours())}:${pad(slotTime.getMinutes())} ${pad(slotTime.getDate())}/${pad(slotTime.getMonth() + 1)}/${slotTime.getFullYear()} - ${slot.location}`;
+
+    const header = ['STT', 'Họ tên', 'Giới tính', 'SĐT Zalo', 'Email', 'Trình độ', 'Thông tin học tập', 'Kỹ năng mềm', 'Ca casting', 'Ngày đăng ký', ...campaignQuestionLabels];
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = candResult.rows.map((c, i) => [
+      i + 1,
+      c.full_name || '',
+      c.gender === 'male' ? 'Nam' : c.gender === 'female' ? 'Nữ' : (c.gender || ''),
+      c.phone_zalo || '',
+      c.email || '',
+      c.badminton_level || '',
+      c.academic_info || '',
+      parseSkills(c.soft_skills),
+      slotLabel,
+      fmtDate(c.created_at),
+      ...campaignQuestionLabels.map((label) => answerMaps[i][label] || '')
+    ]);
+
+    const csv = '\uFEFF' + [header, ...rows].map((r) => r.map(esc).join(',')).join('\r\n');
+    const fileSafe = (s) => String(s || 'ca-casting').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 60);
+    const dt = new Date(slot.casting_time);
+    const fname = `ung-vien-${fileSafe(slot.location)}-${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}-${pad(dt.getHours())}${pad(dt.getMinutes())}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    return res.send(csv);
+  } catch (error) {
+    console.error('Error exporting slot to CSV:', error);
+    res.status(500).json({ error: 'Không thể xuất file CSV. Vui lòng thử lại.' });
+  }
+});
+
+// DELETE /api/campaigns/:id - Xóa đợt tuyển (Admin)
+// Các ca casting con tự xóa theo (CASCADE), ứng viên đã đăng ký các ca đó bị gỡ ca (SET NULL).
+router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query(
+      `DELETE FROM recruitment_campaigns WHERE id = $1 RETURNING id, name`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy đợt tuyển.' });
+    }
+    res.json({ success: true, message: `Đã xóa đợt tuyển "${result.rows[0].name}".`, campaign: result.rows[0] });
+  } catch (error) {
+    console.error('Error deleting campaign:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

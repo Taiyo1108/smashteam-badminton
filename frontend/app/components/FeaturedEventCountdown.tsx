@@ -33,24 +33,29 @@ export default function FeaturedEventCountdown({
     isHappeningNow: false
   });
 
-  // Đếm ngược tới sự kiện gần nhất: ưu tiên buổi tập sắp tới từ /api/sessions,
-  // cấu hình tay trong site_settings chỉ là fallback khi chưa có buổi nào.
+  // Trang chủ ưu tiên cấu hình admin trong site_settings (nguồn sự thật duy nhất).
+  // Buổi tập gần nhất từ /api/sessions chỉ là fallback khi admin chưa cấu hình.
   const eventEnabled = settings.featured_event_enabled !== "false";
   const hasUpcoming = Boolean(upcomingSession?.date_time);
-  const eventTitle = (hasUpcoming ? upcomingSession?.title : undefined) ||
-    settings.featured_event_title ||
+  const hasCustomSettings = Boolean(
+    String(settings.featured_event_title || "").trim() ||
+    String(settings.featured_event_date || "").trim()
+  );
+  const eventTitle = String(settings.featured_event_title || "").trim() ||
+    upcomingSession?.title ||
     "Giải Đấu Cầu Lông SmashTeam Championship 2026";
-  const eventSubtitle = (hasUpcoming ? undefined : settings.featured_event_subtitle) ||
+  const eventSubtitle = String(settings.featured_event_subtitle || "").trim() ||
     "Sự kiện quy tụ các vợt thủ tranh cúp ELO Vàng, vinh danh tay vợt xuất sắc và phần thưởng tài trợ độc quyền.";
-  const eventLocation = (hasUpcoming ? upcomingSession?.location : undefined) ||
-    settings.featured_event_location ||
+  const eventLocation = String(settings.featured_event_location || "").trim() ||
+    upcomingSession?.location ||
     "Cụm Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM";
-  const eventBadge = hasUpcoming ? "BUỔI TẬP GẦN NHẤT" : (settings.featured_event_badge || "SỰ KIỆN NỔI BẬT");
+  const eventBadge = String(settings.featured_event_badge || "").trim() ||
+    (hasUpcoming && !hasCustomSettings ? "BUỔI TẬP GẦN NHẤT" : "SỰ KIỆN NỔI BẬT");
   const actionText = settings.featured_event_action_text || "Đăng ký tham gia ngay";
   const actionLink = settings.featured_event_action_link || (isLoggedIn ? "/check-in" : "/register");
 
-  // Determine target date/time — buổi gần nhất luôn được ưu tiên
-  const targetDateStr = upcomingSession?.date_time || settings.featured_event_date || "2026-09-20T08:30:00";
+  // Determine target date/time — cấu hình admin luôn được ưu tiên
+  const targetDateStr = String(settings.featured_event_date || "").trim() || upcomingSession?.date_time || "2026-09-20T08:30:00";
 
   useEffect(() => {
     setMounted(true);

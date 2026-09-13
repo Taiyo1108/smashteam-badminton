@@ -23,12 +23,14 @@ interface RecruitmentKPIsProps {
   candidates: CandidateItem[];
   approvedCount?: number;
   totalSlotsCapacity?: number;
+  campaignName?: string | null; // Tên đợt casting đang lọc (null = tất cả đợt)
 }
 
 export default function RecruitmentKPIs({
   candidates = [],
   approvedCount = 0,
-  totalSlotsCapacity = 60
+  totalSlotsCapacity = 60,
+  campaignName = null
 }: RecruitmentKPIsProps) {
   const totalCandidates = candidates.length;
   const pendingCount = totalCandidates; // Candidates currently in pending queue
@@ -53,7 +55,7 @@ export default function RecruitmentKPIs({
       id: "total",
       label: "Tổng hồ sơ nộp",
       value: totalCandidates,
-      sub: "Đợt tuyển hiện tại",
+      sub: campaignName ? `Đợt: ${campaignName}` : "Đang tải đợt tuyển...",
       badge: totalCandidates > 0 ? `${totalCandidates} hồ sơ` : "Chưa có hồ sơ",
       badgeColor: "bg-purple-100 text-primary border-purple-200",
       icon: Users,
@@ -75,7 +77,9 @@ export default function RecruitmentKPIs({
       id: "approved",
       label: "Thành viên đã duyệt",
       value: approvedCount,
-      sub: approvedCount > 0 ? "Đã kích hoạt ELO & Rank" : "Chưa có thành viên nào",
+      sub: approvedCount > 0
+        ? (campaignName ? `Đã duyệt trong đợt: ${campaignName}` : "Đã kích hoạt ELO & Rank")
+        : "Chưa có thành viên nào",
       badge: approvedCount > 0 ? "Đạt tiêu chuẩn" : "Chưa có dữ liệu",
       badgeColor: approvedCount > 0
         ? "bg-emerald-100 text-emerald-700 border-emerald-200"

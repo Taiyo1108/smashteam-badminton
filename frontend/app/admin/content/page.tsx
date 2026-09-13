@@ -41,12 +41,15 @@ export default function ContentManagementPage() {
   const [eventSaving, setEventSaving] = useState(false);
   const [eventSuccess, setEventSuccess] = useState(false);
   const [eventError, setEventError] = useState("");
+  const [syncInfo, setSyncInfo] = useState("");
   const [nearestLoading, setNearestLoading] = useState(false);
 
   // Đồng bộ form từ buổi tập gần nhất (/api/sessions trả về gần nhất trước)
+  // Lưu ý: chỉ điền vào form, admin phải nhấn "Lưu cấu hình sự kiện" mới hiện lên trang chủ.
   const handleSyncNearest = async () => {
     setNearestLoading(true);
     setEventError("");
+    setSyncInfo("");
     try {
       const res = await fetch(`${API_URL}/api/sessions`);
       if (!res.ok) throw new Error();
@@ -70,8 +73,8 @@ export default function ContentManagementPage() {
         date: toLocalInput(nearest.date_time) || prev.date,
         location: nearest.location || prev.location,
       }));
-      setEventSuccess(true);
-      setTimeout(() => setEventSuccess(false), 2500);
+      setSyncInfo("Đã điền từ buổi tập gần nhất. Nhấn “Lưu cấu hình sự kiện” để hiển thị lên trang chủ.");
+      setTimeout(() => setSyncInfo(""), 5000);
     } catch {
       setEventError("Không lấy được buổi tập gần nhất, vui lòng thử lại.");
     } finally {
@@ -180,9 +183,14 @@ export default function ContentManagementPage() {
     setEventSaving(true);
     setEventError("");
     setEventSuccess(false);
+    setSyncInfo("");
 
     try {
       const token = localStorage.getItem("admin_token");
+      if (!token) {
+        setEventError("Phiên đăng nhập hết hạn, vui lòng đăng nhập lại.");
+        return;
+      }
       const headers = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`
@@ -231,10 +239,16 @@ export default function ContentManagementPage() {
         })
       ];
 
-      await Promise.all(updates);
-      setEventSuccess(true);
-      setTimeout(() => setEventSuccess(false), 3500);
-      fetchSettings();
+      const results = await Promise.all(updates);
+      if (results.every((r) => r.ok)) {
+        setEventSuccess(true);
+        setTimeout(() => setEventSuccess(false), 3500);
+        fetchSettings();
+      } else if (results.some((r) => r.status === 401 || r.status === 403)) {
+        setEventError("Không có quyền lưu (phiên hết hạn). Đăng nhập lại tài khoản admin rồi thử lại.");
+      } else {
+        setEventError("Lưu chưa trọn vẹn, một số mục thất bại. Vui lòng thử lại.");
+      }
     } catch (err) {
       setEventError("Lỗi kết nối khi lưu cài đặt sự kiện.");
     } finally {
@@ -578,7 +592,7 @@ export default function ContentManagementPage() {
               <Clock className="w-5 h-5 text-primary" /> Sự kiện Đếm ngược Trang chủ
             </h2>
             <p className="text-[11px] text-slate-400 mb-3">
-              Trang chủ sẽ tự đếm ngược tới <strong>buổi tập gần nhất</strong>. Form bên dưới chỉ là dự phòng khi chưa có lịch.
+              Nội dung bên dưới hiển thị trực tiếp lên trang chủ sau khi nhấn <strong>Lưu</strong>.
             </p>
             <button
               type="button"
@@ -680,9 +694,15 @@ export default function ContentManagementPage() {
                 </label>
               </div>
 
+              {syncInfo && (
+                <div className="p-3 bg-blue-50 text-blue-700 rounded-xl text-xs flex items-center gap-2 border border-blue-200 mb-3">
+                  <Check className="w-4 h-4 shrink-0" /> {syncInfo}
+                </div>
+              )}
+
               {eventSuccess && (
                 <div className="p-3 bg-green-50 text-green-700 rounded-xl text-xs flex items-center gap-2 border border-green-200">
-                  <Check className="w-4 h-4 shrink-0" /> Đã lưu cấu hình đếm ngược thành công!
+                  <Check className="w-4 h-4 shrink-0" /> Đã lưu cấu hình đếm ngược thành công! Mở trang chủ để kiểm tra.
                 </div>
               )}
 

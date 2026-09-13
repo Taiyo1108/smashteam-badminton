@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { CandidateItem } from "./RecruitmentKPIs";
+import { parseAnswers } from "./customQuestions";
 
 export interface SlotOption {
   id: string | number;
@@ -19,6 +20,8 @@ interface ApplicantTableProps {
   candidates: CandidateItem[];
   isLoading?: boolean;
   slots?: SlotOption[];
+  // Label các câu hỏi tùy chỉnh của đợt (để xuất cột CSV kể cả khi chưa ai trả lời)
+  questionLabels?: string[];
   onOpenDetail: (candidate: CandidateItem) => void;
   onApprove: (candidate: CandidateItem) => void;
   onReject: (candidateId: string | number) => void;
@@ -28,6 +31,7 @@ export default function ApplicantTable({
   candidates = [],
   isLoading = false,
   slots = [],
+  questionLabels = [],
   onOpenDetail,
   onApprove,
   onReject
@@ -59,37 +63,79 @@ export default function ApplicantTable({
   });
 
   // Export CSV function with UTF-8 BOM
+  // Bao gồm đầy đủ: kỹ năng mềm + MỖI câu trả lời tùy chỉnh là 1 cột riêng
   const handleExportCSV = () => {
     if (filteredCandidates.length === 0) {
       alert("Không có dữ liệu ứng viên để xuất.");
       return;
     }
 
+    const formatSkills = (s: unknown): string => {
+      if (Array.isArray(s)) return (s as unknown[]).map((v) => String(v)).join(", ");
+      if (typeof s === "string") {
+        try {
+          const p = JSON.parse(s);
+          return Array.isArray(p) ? p.map((v) => String(v)).join(", ") : s;
+        } catch { return s; }
+      }
+      return "";
+    };
+
+    // Map câu trả lời của từng ứng viên: { label -> answer }
+    const answerMaps = filteredCandidates.map((c) => {
+      const map: Record<string, string> = {};
+      for (const a of parseAnswers((c as CandidateItem).extra_answers)) {
+        const label = String(a.question || "").trim();
+        if (!label || map[label] !== undefined) continue;
+        const ans = Array.isArray(a.answer) ? a.answer.join(", ") : String(a.answer ?? "");
+        map[label] = ans;
+      }
+      return map;
+    });
+
+    // Union: ưu tiên thứ tự câu hỏi của đợt, bổ sung câu lạ trong bài nộp
+    const allQuestionLabels: string[] = [...questionLabels.filter(Boolean).map((s) => String(s))];
+    for (const m of answerMaps) {
+      for (const label of Object.keys(m)) {
+        if (!allQuestionLabels.includes(label)) allQuestionLabels.push(label);
+      }
+    }
+
     const headers = [
+      "STT",
       "Họ và tên",
       "Số điện thoại Zalo",
       "Email",
       "Giới tính",
       "Trường / Học vấn",
       "Trình độ",
+      "Kỹ năng mềm",
       "Thời gian Casting",
       "Địa điểm",
-      "Ngày nộp đơn"
+      "Ngày nộp đơn",
+      ...allQuestionLabels
     ];
 
-    const rows = filteredCandidates.map(c => [
-      `"${c.full_name || ""}"`,
-      `"${c.phone_zalo || ""}"`,
-      `"${c.email || ""}"`,
-      `"${c.gender || ""}"`,
-      `"${c.academic_info || ""}"`,
-      `"${c.badminton_level || ""}"`,
-      `"${c.casting_time ? format(new Date(c.casting_time), "dd/MM/yyyy HH:mm") : "Chưa chọn"}"`,
-      `"${c.location || ""}"`,
-      `"${c.created_at ? format(new Date(c.created_at), "dd/MM/yyyy HH:mm") : ""}"`
-    ]);
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const rows = filteredCandidates.map((c, idx) => {
+      const ansMap = answerMaps[idx];
+      return [
+        esc(idx + 1),
+        esc(c.full_name || ""),
+        esc(c.phone_zalo || ""),
+        esc(c.email || ""),
+        esc((c as CandidateItem).gender || ""),
+        esc(c.academic_info || ""),
+        esc(c.badminton_level || ""),
+        esc(formatSkills((c as CandidateItem).soft_skills)),
+        esc(c.casting_time ? format(new Date(c.casting_time), "dd/MM/yyyy HH:mm") : "Chưa chọn"),
+        esc(c.location || ""),
+        esc(c.created_at ? format(new Date(c.created_at), "dd/MM/yyyy HH:mm") : ""),
+        ...allQuestionLabels.map((label) => esc(ansMap[label] || ""))
+      ];
+    });
 
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\r\n");
+    const csvContent = "\uFEFF" + [headers.map(esc).join(","), ...rows.map(r => r.join(","))].join("\r\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

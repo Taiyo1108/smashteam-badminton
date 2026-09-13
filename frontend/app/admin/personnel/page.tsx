@@ -4,7 +4,7 @@ import { useState, useEffect, useDeferredValue, useRef } from "react";
 import { 
   Search, CheckCircle2, Loader2, MoreHorizontal, X, ShieldAlert, Award, Ban, Unlock, 
   Phone, Clock, Star, Copy, Check, Plus, Calendar, MapPin, Edit, Trash2, Power,
-  PowerOff, Save
+  PowerOff, Save, Download
 } from "lucide-react";
 import { format } from "date-fns";
 import { API_URL } from "@/app/config";
@@ -33,6 +33,9 @@ export default function PersonnelPage() {
   const abortRef = useRef<AbortController | null>(null);
   const [cLevel, setCLevel] = useState("all");
   const [cSlot, setCSlot] = useState("all");
+  // Đợt casting đang xem — dashboard độc lập theo từng đợt, không gộp chung.
+  // "" = chưa chọn (đang tải), luôn auto-chọn đợt đang active sau khi load campaigns.
+  const [cCampaign, setCCampaign] = useState(""); // Lọc ứng viên theo đợt casting
   const [isLoadingC, setIsLoadingC] = useState(false);
   const [slots, setSlots] = useState<any[]>([]);
   const [drawerCandidate, setDrawerCandidate] = useState<any>(null);
@@ -241,26 +244,96 @@ export default function PersonnelPage() {
     }
   };
 
-  useEffect(() => {
-    // Fetch Slots for filter dropdown
-    fetch(`${API_URL}/api/campaigns/active`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.slots) setSlots(data.slots);
+  const [exportingSlotId, setExportingSlotId] = useState<string | null>(null);
+
+  // Xuất danh sách ứng viên của 1 ca casting ra file CSV (tải trực tiếp)
+  const handleExportSlotCsv = async (slot: any) => {
+    try {
+      setExportingSlotId(String(slot.id));
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/slots/${slot.id}/export-csv`, {
+        headers: { "Authorization": `Bearer ${token}` }
       });
-  }, []);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Không thể xuất file CSV.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const disp = res.headers.get("Content-Disposition") || "";
+      const m = disp.match(/filename="?([^"]+)"?/);
+      a.href = url;
+      a.download = m?.[1] || `ung-vien-ca-casting.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("Lỗi kết nối mạng.");
+    } finally {
+      setExportingSlotId(null);
+    }
+  };
+
+  // Slots theo đợt casting đang chọn (để lọc ca + tính chỉ tiêu KPI)
+  // Mỗi đợt độc lập: chỉ lấy slots của đúng campaignId đang chọn.
+  const fetchSlotsForCampaign = async (campaignId: string) => {
+    try {
+      if (!campaignId) {
+        setSlots([]);
+        return;
+      }
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/campaigns/${campaignId}/stats`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSlots(data.slots || []);
+      } else {
+        setSlots([]);
+      }
+    } catch (e) {
+      setSlots([]);
+    }
+  };
+
+  // Auto-chọn đợt đang active (hoặc đợt mới nhất) ngay khi load xong campaigns
+  // để dashboard luôn hiển thị độc lập theo 1 đợt cụ thể, không gộp "Tất cả".
+  useEffect(() => {
+    if (!cCampaign && campaigns.length > 0) {
+      const active = campaigns.find((c: any) => c.is_active) || campaigns[0];
+      if (active) setCCampaign(String(active.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaigns]);
+
+  // Đổi đợt casting -> nạp lại slots của đợt + reset lọc ca
+  useEffect(() => {
+    fetchSlotsForCampaign(cCampaign);
+    setCSlot("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cCampaign]);
 
   useEffect(() => {
     if (activeTab === 'candidates') {
+      // Chưa chọn đợt -> chỉ nạp danh sách đợt để auto-chọn, không nạp hồ sơ gộp.
+      if (!cCampaign) {
+        fetchCampaigns();
+        return;
+      }
       fetchCandidates();
-      fetchMembers();
+      fetchMembers(cCampaign);
+      fetchCampaigns();
     } else if (activeTab === 'members') {
       fetchMembers();
     } else if (activeTab === 'campaigns') {
       fetchCampaigns();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, deferredCSearch, cLevel, cSlot]);
+  }, [activeTab, deferredCSearch, cLevel, cSlot, cCampaign]);
 
   const fetchCandidates = async () => {
     abortRef.current?.abort();
@@ -269,7 +342,7 @@ export default function PersonnelPage() {
     setIsLoadingC(true);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/users/candidates?search=${encodeURIComponent(deferredCSearch)}&level=${cLevel}&slot_id=${cSlot}`, {
+      const res = await fetch(`${API_URL}/api/users/candidates?search=${encodeURIComponent(deferredCSearch)}&level=${cLevel}&slot_id=${cSlot}&campaign_id=${cCampaign}`, {
         headers: { "Authorization": `Bearer ${token}` },
         signal: ctrl.signal,
       });
@@ -287,11 +360,12 @@ export default function PersonnelPage() {
     }
   };
 
-  const fetchMembers = async () => {
+  const fetchMembers = async (campaignId?: string) => {
     setIsLoadingM(true);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/users/members`, {
+      const q = campaignId ? `?campaign_id=${campaignId}` : "";
+      const res = await fetch(`${API_URL}/api/users/members${q}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
@@ -537,6 +611,32 @@ export default function PersonnelPage() {
     setShowActionsModal(true);
   };
 
+  // Dữ liệu dashboard độc lập theo từng đợt:
+  // Backend đã lọc sẵn theo ?campaign_id= (candidates + members),
+  // client chỉ lọc dự phòng khi slots của đợt đã load xong để chống lẫn đợt.
+  const slotIdsOfCampaign = new Set(slots.map((s: any) => String(s.id)));
+  const inSelectedCampaign = (slotId: unknown) => {
+    if (!cCampaign) return true; // đang tải đợt -> giữ nguyên để tránh nháy rỗng
+    if (slotIdsOfCampaign.size === 0) return false; // đợt chưa có ca -> không tính hồ sơ vãng lai
+    return slotIdsOfCampaign.has(String(slotId));
+  };
+
+  const campaignCandidates = candidates.filter((c: any) => inSelectedCampaign(c.casting_slot_id));
+  const campaignMembers = members.filter((m: any) => inSelectedCampaign(m.casting_slot_id));
+  const approvedMembersCount = campaignMembers.filter(
+    (m: any) => m.full_name !== "Super Admin" && m.phone_zalo !== "0999999999"
+  ).length;
+
+  // Đợt đang chọn + chỉ tiêu riêng của đợt (độc lập tuyệt đối)
+  const selectedCampaignObj =
+    campaigns.find((c: any) => String(c.id) === String(cCampaign)) ?? null;
+  const selectedCampaignName = selectedCampaignObj?.name ?? null;
+  const campaignCapacity =
+    slots.reduce((acc, s) => acc + (Number(s.max_capacity) || 0), 0) ||
+    Number(selectedCampaignObj?.total_capacity) ||
+    Number(selectedCampaignObj?.target_capacity) ||
+    20;
+
   // Client-side filtering for Members
   const filteredMembers = members.filter(m => {
     if (mSearch) {
@@ -611,18 +711,47 @@ export default function PersonnelPage() {
       {/* CANDIDATES TAB (MODULE 2B - ADMIN RECRUITMENT DASHBOARD) */}
       {activeTab === 'candidates' && (
         <div className="space-y-6">
+          {/* Bộ lọc Đợt casting — mỗi đợt độc lập tuyệt đối */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <Calendar className="w-4 h-4 text-primary" /> Đợt casting:
+            </span>
+            <select
+              value={cCampaign}
+              onChange={e => setCCampaign(e.target.value)}
+              className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:outline-none focus:border-primary cursor-pointer min-w-[220px] max-w-full"
+            >
+              {campaigns.length === 0 && (
+                <option value="">Đang tải đợt tuyển...</option>
+              )}
+              {campaigns.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.is_active ? "● " : ""}{c.name}
+                </option>
+              ))}
+            </select>
+            {cCampaign && (
+              <span className="text-[11px] text-slate-400 font-semibold">
+                {slots.length} ca • {campaignCandidates.length} hồ sơ • {approvedMembersCount} đã duyệt — số liệu riêng đợt này
+              </span>
+            )}
+          </div>
+
           {/* Mini KPI Cards & Distributions */}
           <RecruitmentKPIs
-            candidates={candidates}
-            approvedCount={members.length}
-            totalSlotsCapacity={slots.reduce((acc, s) => acc + (Number(s.max_capacity) || 0), 0) || 60}
+            candidates={campaignCandidates}
+            approvedCount={approvedMembersCount}
+            campaignName={selectedCampaignName}
+            totalSlotsCapacity={campaignCapacity}
           />
 
           {/* Modern Applicant Data Table */}
           <ApplicantTable
-            candidates={candidates}
+            key={cCampaign}
+            candidates={campaignCandidates}
             isLoading={isLoadingC}
             slots={slots}
+            questionLabels={parseQuestions(selectedCampaignObj?.custom_questions).map((q) => q.label)}
             onOpenDetail={(c) => {
               setDrawerCandidate(c);
               setIsDrawerOpen(true);
@@ -1377,6 +1506,9 @@ export default function PersonnelPage() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
+                                  <button onClick={() => handleExportSlotCsv(slot)} disabled={exportingSlotId === String(slot.id)} className="p-2 border border-slate-200 hover:bg-emerald-50 hover:border-emerald-200 rounded-xl cursor-pointer text-slate-500 hover:text-emerald-600 disabled:opacity-50" title="Xuất danh sách ca này ra file CSV">
+                                    {exportingSlotId === String(slot.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                                  </button>
                                   <button onClick={() => handleToggleSlot(slot)} className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl cursor-pointer text-slate-500 hover:text-slate-800" title={slot.is_active ? "Đóng nhận đăng ký" : "Mở nhận đăng ký"}>
                                     {slot.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4 text-emerald-500" />}
                                   </button>

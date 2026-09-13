@@ -123,7 +123,7 @@ router.get('/leaderboard', async (req, res) => {
 // GET /api/users/candidates - Lấy danh sách ứng viên (Requires Admin)
 router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { search, level, slot_id } = req.query;
+    const { search, level, slot_id, campaign_id } = req.query;
     
     let query = `
       SELECT u.id, u.full_name, u.gender, u.phone_zalo, COALESCE(u.email, '') as email, u.academic_info, u.badminton_level, u.soft_skills, u.created_at,
@@ -153,6 +153,12 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
       paramIndex++;
     }
 
+    if (campaign_id && campaign_id !== 'all') {
+      query += ` AND c.campaign_id = $${paramIndex}`;
+      params.push(campaign_id);
+      paramIndex++;
+    }
+
     query += ` ORDER BY u.created_at DESC`;
 
     // Ưu tiên kèm câu trả lời tùy chỉnh; rớt về query cũ nếu DB chưa có cột extra_answers
@@ -174,10 +180,21 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
 });
 
 // GET /api/users/members - Lấy danh sách thành viên (Requires Admin)
+// Hỗ trợ ?campaign_id= để chỉ lấy thành viên được duyệt từ đợt casting đó
+// (member giữ nguyên casting_slot_id sau khi duyệt, join qua casting_slots.campaign_id)
 router.get('/members', authenticateToken, isAdmin, async (req, res) => {
   try {
+    const { campaign_id } = req.query;
+    let join = '';
+    let extraWhere = '';
+    const params = [];
+    if (campaign_id && campaign_id !== 'all') {
+      join = 'LEFT JOIN casting_slots c ON users.casting_slot_id = c.id';
+      extraWhere = ' AND c.campaign_id = $1';
+      params.push(campaign_id);
+    }
     const result = await db.query(
-      `SELECT id, full_name, phone_zalo, badminton_level, status, is_blocked, 
+      `SELECT id, casting_slot_id, full_name, phone_zalo, badminton_level, status, is_blocked, 
               hand_preference, play_style, joined_at, soft_skills, role,
               elo_singles, elo_doubles, 
               matches_singles, matches_doubles, 
@@ -186,8 +203,10 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
               win_singles, win_doubles, 
               loss_singles, loss_doubles
        FROM users 
-       WHERE role IN ('member', 'admin') 
-       ORDER BY full_name ASC`
+       ${join}
+       WHERE role IN ('member', 'admin') AND full_name != 'Super Admin' AND phone_zalo != '0999999999'${extraWhere}
+       ORDER BY full_name ASC`,
+      params
     );
     const rankedMembers = result.rows.map(m => {
       const eloSingles = m.elo_singles ?? 1000;
