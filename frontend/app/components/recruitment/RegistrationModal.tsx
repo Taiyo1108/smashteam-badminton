@@ -26,6 +26,13 @@ export interface SlotData {
   is_active?: boolean;
 }
 
+// Số chỗ đã nhận / sức chứa của 1 ca — ca hết slot khi đã nhận đủ sức chứa
+const getSlotUsage = (s: SlotData) => {
+  const capacity = Number(s.max_capacity) || 0;
+  const registered = Number(s.registered_count) || 0;
+  return { capacity, registered, isFull: capacity > 0 && registered >= capacity };
+};
+
 interface RegistrationModalProps {
   isOpen?: boolean;
   onClose?: () => void;
@@ -109,8 +116,12 @@ export default function RegistrationModal({
         if (data && Array.isArray(data.slots)) {
           const activeSlots = data.slots.filter((s: SlotData) => s.is_active !== false);
           setSlots(activeSlots);
+          // Mặc định chọn ca còn chỗ đầu tiên, bỏ qua các ca đã hết slot
           if (activeSlots.length > 0 && !formData.selectedSlot) {
-            setFormData(prev => ({ ...prev, selectedSlot: String(activeSlots[0].id) }));
+            const firstAvailable = activeSlots.find((s: SlotData) => !getSlotUsage(s).isFull) || null;
+            if (firstAvailable) {
+              setFormData(prev => ({ ...prev, selectedSlot: String(firstAvailable.id) }));
+            }
           }
         }
         if (data) {
@@ -237,6 +248,12 @@ export default function RegistrationModal({
     }
     if (!formData.selectedSlot) {
       setSubmitError("Vui lòng chọn một ca Casting phù hợp.");
+      return;
+    }
+    // Chặn gửi đơn vào ca vừa hết slot (ca đầy lên sau khi tải form)
+    const chosenSlot = slots.find(s => String(s.id) === String(formData.selectedSlot));
+    if (chosenSlot && getSlotUsage(chosenSlot).isFull) {
+      setSubmitError("Ca bạn chọn vừa hết chỗ. Vui lòng chọn ca khác còn trống.");
       return;
     }
 
@@ -668,7 +685,7 @@ export default function RegistrationModal({
                       Chọn Ca Thử Sân (Casting Slot) <span className="text-rose-500">*</span>
                     </label>
                     <span className="text-[11px] text-purple-600 font-bold">
-                      {slots.length} ca khả dụng
+                      {slots.filter(s => !getSlotUsage(s).isFull).length}/{slots.length} ca còn chỗ
                     </span>
                   </div>
 
@@ -686,19 +703,23 @@ export default function RegistrationModal({
                       {slots.map(s => {
                         const isSelected = String(formData.selectedSlot) === String(s.id);
                         const dateFormatted = format(new Date(s.casting_time), "dd/MM/yyyy HH:mm");
+                        const { capacity, registered, isFull } = getSlotUsage(s);
                         return (
                           <div
                             key={s.id}
-                            onClick={() => updateForm("selectedSlot", String(s.id))}
-                            className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                              isSelected
-                                ? "bg-purple-50/70 border-primary shadow-sm"
-                                : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                            onClick={() => { if (!isFull) updateForm("selectedSlot", String(s.id)); }}
+                            aria-disabled={isFull}
+                            className={`relative overflow-hidden p-3.5 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 ${
+                              isFull
+                                ? "bg-slate-100 border-slate-200 opacity-70 cursor-not-allowed"
+                                : isSelected
+                                  ? "bg-purple-50/70 border-primary shadow-sm cursor-pointer"
+                                  : "bg-slate-50 border-slate-200 hover:border-slate-300 cursor-pointer"
                             }`}
                           >
-                            <div className="space-y-1">
+                            <div className={`space-y-1 ${isFull ? "grayscale" : ""}`}>
                               <div className="flex items-center gap-2">
-                                <Clock className="w-4 h-4 text-primary" />
+                                <Clock className={`w-4 h-4 ${isFull ? "text-slate-400" : "text-primary"}`} />
                                 <span className="text-xs sm:text-sm font-bold text-secondary capitalize">
                                   {dateFormatted}
                                 </span>
@@ -707,13 +728,24 @@ export default function RegistrationModal({
                                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
                                 <span>{s.location}</span>
                               </div>
+                              <p className={`text-[11px] font-bold ${isFull ? "text-rose-600" : "text-emerald-600"}`}>
+                                {isFull
+                                  ? `Đã đủ ${registered}/${capacity} — hết chỗ`
+                                  : `Còn ${Math.max(0, capacity - registered)}/${capacity} chỗ`}
+                              </p>
                             </div>
 
-                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                              isSelected ? "border-primary bg-primary text-white" : "border-slate-300 bg-white"
-                            }`}>
-                              {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
-                            </div>
+                            {isFull ? (
+                              <span className="shrink-0 rotate-[-8deg] px-3 py-1 rounded-lg border-[3px] double border-rose-600 text-rose-600 text-xs font-black uppercase tracking-widest bg-rose-50/80 shadow-sm select-none">
+                                Hết slot
+                              </span>
+                            ) : (
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                isSelected ? "border-primary bg-primary text-white" : "border-slate-300 bg-white"
+                              }`}>
+                                {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
+                              </div>
+                            )}
                           </div>
                         );
                       })}

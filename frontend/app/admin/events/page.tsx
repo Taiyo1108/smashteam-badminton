@@ -267,6 +267,81 @@ export default function AdminEventsPage() {
     }
   };
 
+  // Mở modal tạo mới (không gắn với giải nào)
+  const openCreateEventModal = () => {
+    setEditingEvent(null);
+    setIsEventModalOpen(true);
+  };
+
+  // Mở modal chỉnh sửa trực tiếp 1 giải bất kỳ (không cần đặt nổi bật trước)
+  const openEditEventModal = (evt: any) => {
+    setEditingEvent(evt);
+    setIsEventModalOpen(true);
+  };
+
+  const closeEventModal = () => {
+    setIsEventModalOpen(false);
+    setEditingEvent(null);
+  };
+
+  // Submit chung cho modal Tạo mới / Chỉnh sửa giải đấu
+  const handleSubmitEventModal = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSavingEvent(true);
+    const formData = new FormData(e.currentTarget);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      };
+
+      if (editingEvent) {
+        // Chỉnh sửa trực tiếp, giữ nguyên trạng thái nổi bật/trạng thái trừ khi admin đổi
+        const res = await fetch(`${API_URL}/api/events/${editingEvent.id}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({
+            title: formData.get("title"),
+            subtitle: formData.get("subtitle"),
+            event_date: formData.get("event_date"),
+            location: formData.get("location"),
+            badge: formData.get("badge") || "GIẢI ĐẤU NỔI BẬT",
+            max_participants: Number(formData.get("max_participants")) || 50,
+            is_featured: formData.get("is_featured") === "on",
+            status: formData.get("status") || "upcoming"
+          })
+        });
+        if (!res.ok) throw new Error();
+        showToast("Đã cập nhật thông tin giải đấu thành công!");
+      } else {
+        const res = await fetch(`${API_URL}/api/events`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            title: formData.get("title"),
+            subtitle: formData.get("subtitle"),
+            event_date: formData.get("event_date"),
+            location: formData.get("location"),
+            badge: formData.get("badge") || "GIẢI ĐẤU NỔI BẬT",
+            max_participants: Number(formData.get("max_participants")) || 50,
+            is_featured: formData.get("is_featured") === "on",
+            status: "upcoming"
+          })
+        });
+        if (!res.ok) throw new Error();
+        showToast("Đã tạo sự kiện giải đấu mới thành công!");
+      }
+
+      closeEventModal();
+      fetchAllEventsData();
+    } catch {
+      showToast(editingEvent ? "Không thể lưu thay đổi." : "Không thể tạo sự kiện.", "error");
+    } finally {
+      setIsSavingEvent(false);
+    }
+  };
+
   // =========================================================================
   // HANDLERS PHÂN HỆ 2: TUYỂN QUÂN
   // =========================================================================
@@ -409,7 +484,7 @@ export default function AdminEventsPage() {
             <ExternalLink className="w-3.5 h-3.5" /> Xem Trang Chủ
           </a>
           <button
-            onClick={() => setIsEventModalOpen(true)}
+            onClick={openCreateEventModal}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
           >
             <Plus className="w-4 h-4" /> Thêm Giải Đấu

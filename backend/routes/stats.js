@@ -40,8 +40,16 @@ router.get('/', async (req, res) => {
            AND date_time < date_trunc('week', NOW()) + INTERVAL '7 days'`,
         'count'
       ),
-      // Tổng số giải đấu / sự kiện của CLB.
-      safeStat(`SELECT COUNT(*)::int AS count FROM club_events`, 'count'),
+      // Số giải đấu / sự kiện TRONG NĂM HIỆN TẠI (khớp badge "Mùa giải YYYY" ở trang chủ).
+      // Admin thêm giải ở Quản lý sự kiện -> club_events -> số tự tăng, sang năm mới tự reset.
+      // Loại trừ giải đã hủy (cancelled).
+      safeStat(
+        `SELECT COUNT(*)::int AS count FROM club_events
+          WHERE event_date >= date_trunc('year', NOW())
+            AND event_date < date_trunc('year', NOW()) + INTERVAL '1 year'
+            AND COALESCE(status, 'upcoming') != 'cancelled'`,
+        'count'
+      ),
       // ELO cao nhất (đơn hoặc đôi) của hội viên đang hoạt động.
       safeStat(
         `SELECT GREATEST(COALESCE(MAX(elo_singles), 0), COALESCE(MAX(elo_doubles), 0))::int AS top FROM users

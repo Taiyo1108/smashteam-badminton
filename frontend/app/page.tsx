@@ -640,14 +640,6 @@ export default function Home() {
               </div>
             </section>
 
-            {/* RECRUITMENT EVENT HIGHLIGHT CARD (MODULE 2A - User Flow) */}
-            <div id="recruitment-event-section" className="pt-8">
-              <EventRecruitmentCard
-                campaign={activeCampaign}
-                onOpenRegister={() => setIsRegisterModalOpen(true)}
-              />
-            </div>
-
             {/* FEATURED EVENT COUNTDOWN BOARD (For Upcoming Sessions / Matches) */}
             <FeaturedEventCountdown
               settings={siteSettings}
@@ -658,6 +650,14 @@ export default function Home() {
               }}
               isLoggedIn={isLoggedIn}
             />
+
+            {/* RECRUITMENT EVENT HIGHLIGHT CARD (MODULE 2A - User Flow) */}
+            <div id="recruitment-event-section" className="pt-8">
+              <EventRecruitmentCard
+                campaign={activeCampaign}
+                onOpenRegister={() => setIsRegisterModalOpen(true)}
+              />
+            </div>
 
             {/* BENTO GRID: WHY JOIN US & CULTURE */}
             <div id="club-benefits-section">

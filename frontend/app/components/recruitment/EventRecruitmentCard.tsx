@@ -1,9 +1,8 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { 
   Calendar, MapPin, Clock, Users, ArrowRight, 
-  Sparkles, CheckCircle2, ShieldCheck, Flame, ChevronRight 
+  Sparkles, CheckCircle2, ShieldCheck, ChevronRight 
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -49,22 +48,6 @@ export default function EventRecruitmentCard({
   const campaignDesc = campaign?.description || "Chào đón mọi cấp độ vợt thủ đam mê cầu lông gia nhập ngôi nhà chung SmashTeam. Tham gia ngay để tỏa sáng, nâng hạng ELO và rèn luyện thể lực hàng tuần!";
   const campaignLocation = campaign?.location || "Sân Cầu Lông Lan Anh";
   const campaignAudience = campaign?.target_audience || "Mọi cấp độ tay vợt";
-  const slots = campaign?.slots || [];
-  
-  // Calculate total capacity and registered
-  let totalCapacity = campaign?.target_capacity ? Number(campaign.target_capacity) : 60;
-  let totalRegistered = 0;
-  if (slots.length > 0) {
-    const slotsCap = slots.reduce((acc, s) => acc + (Number(s.max_capacity) || 0), 0);
-    if (slotsCap > 0 && !campaign?.target_capacity) totalCapacity = slotsCap;
-    totalRegistered = slots.reduce((acc, s) => acc + (Number(s.registered_count) || 0), 0);
-  }
-  if (campaign?.total_registered !== undefined) {
-    totalRegistered = Number(campaign.total_registered);
-  }
-
-  const fillPercent = totalCapacity > 0 ? Math.min(Math.round((totalRegistered / totalCapacity) * 100), 100) : 0;
-  const remainingSlots = Math.max(0, totalCapacity - totalRegistered);
 
   // Format dates
   const startDateStr = campaign?.start_date ? format(new Date(campaign.start_date), "dd/MM/yyyy") : "01/03/2026";
@@ -176,34 +159,6 @@ export default function EventRecruitmentCard({
                   <p className="text-slate-400 text-[10px] uppercase font-bold">Đối tượng</p>
                   <p className="font-bold text-white truncate max-w-[140px]" title={campaignAudience}>{campaignAudience}</p>
                 </div>
-              </div>
-            </div>
-
-            {/* Progress Bar (Slot Capacity) */}
-            <div className="space-y-2 p-4 rounded-2xl bg-white/5 border border-white/10">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                  <Flame className="w-3.5 h-3.5 text-orange-400" />
-                  Tiến độ nhận hồ sơ:
-                </span>
-                <span className="font-mono font-bold text-white">
-                  Đã nhận <span className="text-primary-hover font-black">{totalRegistered}</span>/{totalCapacity} đơn ({fillPercent}%)
-                </span>
-              </div>
-              
-              <div className="w-full h-3 bg-slate-900/80 rounded-full overflow-hidden p-0.5 border border-white/10">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  whileInView={{ width: `${fillPercent}%` }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.8, ease: "easeOut" }}
-                  className="h-full bg-gradient-to-r from-primary via-purple-400 to-cyan-400 rounded-full"
-                />
-              </div>
-
-              <div className="flex justify-between items-center text-[11px] text-slate-400">
-                <span>Chỉ tiêu có hạn: Còn lại <strong className="text-emerald-400">{remainingSlots}</strong> chỗ trống</span>
-                <span className="text-purple-300 font-semibold">Ưu tiên hồ sơ nộp sớm</span>
               </div>
             </div>
 
