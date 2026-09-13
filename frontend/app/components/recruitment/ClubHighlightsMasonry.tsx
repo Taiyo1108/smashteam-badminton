@@ -26,6 +26,8 @@ interface ClubHighlightsMasonryProps {
     type: string;
     url: string;
   }>;
+  // Ẩn header riêng khi component đã nằm trong 1 section có tiêu đề (VD: tab Hoạt động)
+  hideHeader?: boolean;
 }
 
 const defaultHighlights: HighlightItem[] = [
@@ -91,7 +93,7 @@ const defaultHighlights: HighlightItem[] = [
   }
 ];
 
-export default function ClubHighlightsMasonry({ mediaFeed }: ClubHighlightsMasonryProps) {
+export default function ClubHighlightsMasonry({ mediaFeed, hideHeader = false }: ClubHighlightsMasonryProps) {
   const [selectedCategory, setSelectedCategory] = useState<"all" | "tournaments" | "training" | "social">("all");
   const [activeMedia, setActiveMedia] = useState<HighlightItem | null>(null);
 
@@ -123,9 +125,34 @@ export default function ClubHighlightsMasonry({ mediaFeed }: ClubHighlightsMason
     { id: "social", label: "Teambuilding & Gắn kết", icon: Heart },
   ] as const;
 
+  // Cụm nút lọc danh mục (dùng chung cho cả 2 chế độ header)
+  const filterChips = (
+    <div className="flex flex-wrap gap-2">
+      {categories.map((cat) => {
+        const Icon = cat.icon;
+        const isActive = selectedCategory === cat.id;
+        return (
+          <button
+            key={cat.id}
+            onClick={() => setSelectedCategory(cat.id)}
+            className={`min-h-[40px] px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer focus-ring ${
+              isActive
+                ? "bg-secondary text-white shadow-md scale-[1.02]"
+                : "bg-white text-slate-600 hover:text-secondary hover:bg-slate-100 border border-slate-200"
+            }`}
+          >
+            <Icon className={`w-3.5 h-3.5 ${isActive ? "text-purple-400" : "text-slate-400"}`} aria-hidden="true" />
+            <span>{cat.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <section aria-labelledby="highlights-title" className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
+    <section aria-labelledby="highlights-title" className={hideHeader ? "w-full" : "w-full max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24"}>
       {/* Section Header */}
+      {!hideHeader ? (
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 sm:mb-12">
         <div className="space-y-2.5 max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-black uppercase tracking-wider">
@@ -141,27 +168,13 @@ export default function ClubHighlightsMasonry({ mediaFeed }: ClubHighlightsMason
         </div>
 
         {/* Filter Chips */}
-        <div className="flex flex-wrap gap-2">
-          {categories.map((cat) => {
-            const Icon = cat.icon;
-            const isActive = selectedCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`min-h-[40px] px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer focus-ring ${
-                  isActive
-                    ? "bg-secondary text-white shadow-md scale-[1.02]"
-                    : "bg-white text-slate-600 hover:text-secondary hover:bg-slate-100 border border-slate-200"
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? "text-purple-400" : "text-slate-400"}`} aria-hidden="true" />
-                <span>{cat.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {filterChips}
       </div>
+      ) : (
+      <div className="mb-6 sm:mb-8">
+        {filterChips}
+      </div>
+      )}
 
       {/* Masonry-Style Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">

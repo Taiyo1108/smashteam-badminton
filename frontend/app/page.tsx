@@ -8,7 +8,7 @@ import {
   ChevronRight, Trophy, Play, Image as ImageIcon, Calendar,
   MapPin, Clock, Check, X, User, Sparkles, Shield,
   QrCode, Search, History, Users, Activity, CheckCircle2,
-  Info, Award, Flame, ArrowUpRight, Crown, ArrowRight, Phone
+  Info, Award, Flame, ArrowUpRight, Crown, ArrowRight, Phone, LogOut
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { API_URL } from "@/app/config";
@@ -122,6 +122,18 @@ export default function Home() {
   const showToast = (msg: string) => {
     setRsvpToast(msg);
     setTimeout(() => setRsvpToast(null), 3500);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("admin_token");
+    localStorage.removeItem("user_role");
+    localStorage.removeItem("user");
+    setIsLoggedIn(false);
+    setUserRole("");
+    setCurrentUser(null);
+    setActiveTab("intro");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    showToast("Đã đăng xuất tài khoản thành công.");
   };
 
   // Load initial user state and profile
@@ -382,17 +394,6 @@ export default function Home() {
           <div className="flex gap-2 sm:gap-3 items-center">
             {isLoggedIn ? (
               <div className="flex items-center gap-2 sm:gap-3">
-                {/* Lối tắt Điểm danh QR */}
-                <Link href="/check-in" className="hidden sm:inline-flex">
-                  <button 
-                    id="nav-quick-checkin"
-                    className="min-h-[40px] px-3.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-primary border border-primary/30 hover:border-primary rounded-full font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer focus-ring shadow-sm"
-                  >
-                    <QrCode className="w-4 h-4 text-primary" aria-hidden="true" />
-                    <span>Điểm danh QR</span>
-                  </button>
-                </Link>
-
                 {/* Nút Quản trị cho Admin */}
                 {userRole === "admin" && (
                   <Link href="/admin">
@@ -456,6 +457,18 @@ export default function Home() {
                     </span>
                     <span className="text-[10px] text-slate-400 leading-tight">Trang cá nhân</span>
                   </div>
+                </button>
+
+                {/* Nút Đăng xuất */}
+                <button
+                  id="nav-logout-btn"
+                  onClick={handleLogout}
+                  title="Đăng xuất khỏi tài khoản"
+                  aria-label="Đăng xuất khỏi tài khoản"
+                  className="min-h-[40px] min-w-[40px] sm:min-w-0 sm:px-4 py-1.5 rounded-full border border-slate-200 hover:border-rose-300 hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer focus-ring"
+                >
+                  <LogOut className="w-4 h-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">Đăng xuất</span>
                 </button>
               </div>
             ) : (
@@ -1138,7 +1151,7 @@ export default function Home() {
               <ul className="text-xs text-slate-600 space-y-2 pl-4 list-disc leading-relaxed">
                 <li>Vui lòng mang theo <strong>giày cầu lông chuyên dụng</strong> (đế cao su gum) để bảo vệ mặt thảm sân và tránh chấn thương.</li>
                 <li>Có mặt trước giờ tập <strong>10 - 15 phút</strong> để khởi động kỹ các khớp và nhận sân thi đấu.</li>
-                <li>Quét mã QR tại bàn tiếp tân sân hoặc bấm <strong>Điểm danh QR</strong> để nhận thưởng <strong>+25 XP</strong> và <strong>+10 Smash Coins</strong>.</li>
+                <li>Mở trang <strong>Điểm danh</strong> và quét mã QR tại bàn tiếp tân sân để nhận thưởng <strong>+25 XP</strong> và <strong>+10 Smash Coins</strong>.</li>
               </ul>
             </div>
           </motion.div>
@@ -1167,7 +1180,7 @@ export default function Home() {
             </div>
 
             {/* Gallery ảnh & video (dữ liệu từ Quản lý nội dung) */}
-            <ClubHighlightsMasonry mediaFeed={mediaFeed} />
+            <ClubHighlightsMasonry mediaFeed={mediaFeed} hideHeader />
           </motion.div>
         )}
 
