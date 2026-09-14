@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { toVietnamIso } = require('../utils/date');
 
 // Protect all admin routes
 router.use(authenticateToken);
@@ -195,7 +196,7 @@ router.post('/sessions', async (req, res) => {
     const result = await db.query(
       `INSERT INTO sessions (title, date_time, location, qr_code, qr_created_at, checkin_code) 
        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *`,
-      [title, date_time, location, newQrCode, newCheckinCode]
+      [title, toVietnamIso(date_time), location, newQrCode, newCheckinCode]
     );
 
     res.status(201).json({ success: true, session: result.rows[0] });

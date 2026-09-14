@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, ArrowLeft, CheckCircle2, QrCode, Loader2, MapPin, Calendar, AlertCircle } from "lucide-react";
 import confetti from "canvas-confetti";
 import Link from "next/link";
-import { format } from "date-fns";
+import { formatVietnamDate } from "@/app/utils/date";
 import { API_URL } from "@/app/config";
 
 const levels = [
@@ -330,10 +330,10 @@ export default function RegisterPage() {
                             >
                               <div className="font-bold text-secondary mb-2 flex justify-between items-center">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-lg">{format(new Date(slot.casting_time), "HH:mm")}</span>
+                                  <span className="text-lg">{formatVietnamDate(slot.casting_time, "time")}</span>
                                   {!slot.is_active && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold uppercase">Đã đóng</span>}
                                 </div>
-                                <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">{format(new Date(slot.casting_time), "dd/MM/yyyy")}</span>
+                                <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">{formatVietnamDate(slot.casting_time, "date")}</span>
                               </div>
                               <div className="text-sm text-slate-600 flex items-center gap-1">
                                 <MapPin className="w-4 h-4 text-primary/70" /> {slot.location}

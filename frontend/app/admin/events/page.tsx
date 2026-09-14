@@ -6,22 +6,8 @@ import {
   AlertCircle, Loader2, Sparkles, ExternalLink, RefreshCw, Flame, Users, 
   ShieldCheck, Eye, EyeOff, Star, Award, Check, Save, ChevronRight, X
 } from "lucide-react";
-import { format } from "date-fns";
 import { API_URL } from "@/app/config";
-
-// Chuyển đổi an toàn từ Date/ISO string sang định dạng YYYY-MM-DDTHH:mm theo giờ local của trình duyệt
-function toLocalDatetimeInput(dateInput?: string | Date | null): string {
-  if (!dateInput) return "";
-  const d = new Date(dateInput);
-  if (isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const year = d.getFullYear();
-  const month = pad(d.getMonth() + 1);
-  const day = pad(d.getDate());
-  const hours = pad(d.getHours());
-  const minutes = pad(d.getMinutes());
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
+import { formatVietnamDate, toVietnamDatetimeInput, vietnamInputToIso } from "@/app/utils/date";
 
 export default function AdminEventsPage() {
   const [activeMainTab, setActiveMainTab] = useState<"featured" | "recruitment">("featured");
@@ -115,7 +101,7 @@ export default function AdminEventsPage() {
             id: featured.id,
             title: featured.title,
             subtitle: featured.subtitle || "",
-            date: featured.event_date ? toLocalDatetimeInput(featured.event_date) : "2026-09-20T08:30",
+            date: featured.event_date ? toVietnamDatetimeInput(featured.event_date) : "2026-09-20T08:30",
             location: featured.location || "",
             badge: featured.badge || "GIẢI ĐẤU NỔI BẬT",
             actionText: featured.action_text || "Đăng ký tham gia ngay",
@@ -142,8 +128,8 @@ export default function AdminEventsPage() {
             id: activeCamp.id,
             name: activeCamp.name,
             badge_text: activeCamp.badge_text || "Mùa Tuyển Quân 2026",
-            start_date: activeCamp.start_date ? toLocalDatetimeInput(activeCamp.start_date) : "2026-03-01T00:00",
-            end_date: activeCamp.end_date ? toLocalDatetimeInput(activeCamp.end_date) : "2026-03-30T23:59",
+            start_date: activeCamp.start_date ? toVietnamDatetimeInput(activeCamp.start_date) : "2026-03-01T00:00",
+            end_date: activeCamp.end_date ? toVietnamDatetimeInput(activeCamp.end_date) : "2026-03-30T23:59",
             location: activeCamp.location || "Sân Bình Thắng, Đông Hòa, HCM",
             target_audience: activeCamp.target_audience || "Mọi cấp độ tay vợt",
             target_capacity: activeCamp.target_capacity || 60,
@@ -197,8 +183,8 @@ export default function AdminEventsPage() {
       id: "",
       title: "",
       subtitle: "",
-      date: toLocalDatetimeInput(futureDate),
-      location: "Cụm Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM",
+      date: toVietnamDatetimeInput(futureDate),
+      location: "Sân Bình Thắng, Đông Hòa, HCM",
       badge: "GIẢI ĐẤU NỔI BẬT",
       actionText: "Đăng ký tham gia ngay",
       actionLink: "/schedule",
@@ -262,7 +248,7 @@ export default function AdminEventsPage() {
       const payload = {
         title: featuredForm.title.trim(),
         subtitle: featuredForm.subtitle.trim(),
-        event_date: featuredForm.date,
+        event_date: vietnamInputToIso(featuredForm.date),
         location: featuredForm.location.trim(),
         badge: featuredForm.badge.trim() || "GIẢI ĐẤU NỔI BẬT",
         action_text: featuredForm.actionText.trim() || "Đăng ký tham gia ngay",
@@ -384,7 +370,7 @@ export default function AdminEventsPage() {
       const payload = {
         title: formData.get("title"),
         subtitle: formData.get("subtitle"),
-        event_date: formData.get("event_date"),
+        event_date: vietnamInputToIso(formData.get("event_date") as string),
         location: formData.get("location"),
         event_type: formData.get("event_type") || "tournament",
         badge: formData.get("badge") || "GIẢI ĐẤU NỔI BẬT",
@@ -445,7 +431,11 @@ export default function AdminEventsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(campaignForm)
+        body: JSON.stringify({
+          ...campaignForm,
+          start_date: vietnamInputToIso(campaignForm.start_date),
+          end_date: vietnamInputToIso(campaignForm.end_date)
+        })
       });
 
       if (res.ok) {
@@ -491,7 +481,10 @@ export default function AdminEventsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(slotForm)
+        body: JSON.stringify({
+          ...slotForm,
+          casting_time: vietnamInputToIso(slotForm.casting_time)
+        })
       });
 
       if (res.ok) {
@@ -895,7 +888,7 @@ export default function AdminEventsPage() {
                       <div className="flex items-center gap-1.5 text-[11px]">
                         <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
                         <span className="font-semibold text-white">
-                          {featuredForm.date ? format(new Date(featuredForm.date), "dd/MM/yyyy HH:mm") : "20/09/2026 08:30"}
+                          {featuredForm.date ? formatVietnamDate(featuredForm.date) : "20/09/2026 08:30"}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 text-[11px] truncate">
@@ -994,7 +987,7 @@ export default function AdminEventsPage() {
                         <div className="space-y-1 text-xs text-slate-600 pt-1">
                           <div className="flex items-center gap-1.5">
                             <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-                            <span>{format(new Date(evt.event_date), "dd/MM/yyyy HH:mm")}</span>
+                            <span>{formatVietnamDate(evt.event_date)}</span>
                           </div>
                           <div className="flex items-center gap-1.5 truncate">
                             <MapPin className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
@@ -1314,7 +1307,7 @@ export default function AdminEventsPage() {
                         <div className="space-y-1 text-xs">
                           <div className="flex items-center gap-1.5 font-bold text-secondary">
                             <Clock className="w-3.5 h-3.5 text-primary" />
-                            <span>{format(new Date(slot.casting_time), "dd/MM/yyyy HH:mm")}</span>
+                            <span>{formatVietnamDate(slot.casting_time)}</span>
                           </div>
                           <div className="flex items-center gap-1.5 text-slate-500 truncate">
                             <MapPin className="w-3.5 h-3.5 text-cyan-600" />
@@ -1366,7 +1359,7 @@ export default function AdminEventsPage() {
                             <span className="text-[10px] text-slate-400 font-normal">{c.badge_text || "Tuyển quân"}</span>
                           </td>
                           <td className="p-3 font-medium text-slate-600">
-                            {format(new Date(c.start_date), "dd/MM/yyyy")} - {format(new Date(c.end_date), "dd/MM/yyyy")}
+                            {formatVietnamDate(c.start_date, "date")} - {formatVietnamDate(c.end_date, "date")}
                           </td>
                           <td className="p-3">
                             <span className="font-extrabold text-primary">{c.total_registered || 0}</span>
@@ -1473,7 +1466,7 @@ export default function AdminEventsPage() {
                     name="event_date"
                     type="datetime-local"
                     required
-                    defaultValue={editingEvent?.event_date ? toLocalDatetimeInput(editingEvent.event_date) : "2026-09-20T08:30"}
+                    defaultValue={editingEvent?.event_date ? toVietnamDatetimeInput(editingEvent.event_date) : "2026-09-20T08:30"}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs font-bold"
                   />
                 </div>

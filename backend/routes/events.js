@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { toVietnamIso } = require('../utils/date');
 
 // Helper đồng bộ sự kiện nổi bật vào site_settings để trang chủ nhận ngay tức thì
 async function syncToSiteSettings(event) {
@@ -9,7 +10,7 @@ async function syncToSiteSettings(event) {
   const updates = [
     ['featured_event_title', event.title || ''],
     ['featured_event_subtitle', event.subtitle || ''],
-    ['featured_event_date', event.event_date ? new Date(event.event_date).toISOString() : ''],
+    ['featured_event_date', event.event_date ? toVietnamIso(event.event_date) : ''],
     ['featured_event_location', event.location || ''],
     ['featured_event_badge', event.badge || 'GIẢI ĐẤU NỔI BẬT'],
     ['featured_event_action_text', event.action_text || 'Đăng ký tham gia ngay'],
@@ -87,6 +88,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const featured = is_featured === true || is_featured === 'true' || is_featured === 'on';
     const parsedMax = parseInt(max_participants, 10) || 50;
     const type = event_type || 'tournament';
+    const normalizedDate = toVietnamIso(event_date);
 
     // Nếu đặt làm nổi bật, gỡ nổi bật các sự kiện khác
     if (featured) {
@@ -102,7 +104,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       [
         title,
         subtitle || '',
-        event_date,
+        normalizedDate,
         location,
         badge || (type === 'recruitment' ? 'TUYỂN THÀNH VIÊN' : 'GIẢI ĐẤU NỔI BẬT'),
         action_text || (type === 'recruitment' ? 'Gia nhập ngay' : 'Đăng ký tham gia ngay'),
@@ -141,6 +143,7 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
     } = req.body;
 
     const featured = is_featured === true || is_featured === 'true' || is_featured === 'on';
+    const normalizedDate = event_date !== undefined ? toVietnamIso(event_date) : undefined;
 
     if (featured) {
       await db.query(`UPDATE club_events SET is_featured = false WHERE id != $1`, [id]);
@@ -166,7 +169,7 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
        WHERE id = $15
        RETURNING *`,
       [
-        title, subtitle, event_date, location, badge, action_text, action_link,
+        title, subtitle, normalizedDate, location, badge, action_text, action_link,
         featured, status, participants_count, max_participants ? parseInt(max_participants, 10) : undefined,
         description, results_summary, event_type,
         id

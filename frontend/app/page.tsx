@@ -20,6 +20,7 @@ import ClubBenefitsBento from "@/app/components/recruitment/ClubBenefitsBento";
 import ClubHighlightsMasonry from "@/app/components/recruitment/ClubHighlightsMasonry";
 import EventRecruitmentCard from "@/app/components/recruitment/EventRecruitmentCard";
 import RegistrationModal from "@/app/components/recruitment/RegistrationModal";
+import { formatVietnamDate } from "@/app/utils/date";
 import { format } from "date-fns";
 
 // ===== Giới thiệu & Liên hệ động từ site_settings (admin chỉnh ở Quản lý nội dung) =====
@@ -303,13 +304,7 @@ export default function Home() {
   };
 
   const formatDateTime = (dateStr: string) => {
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return format(d, "dd/MM/yyyy HH:mm");
-    } catch {
-      return dateStr;
-    }
+    return formatVietnamDate(dateStr) || dateStr;
   };
 
   const shortSessionId = (id: unknown) => {
@@ -600,8 +595,8 @@ export default function Home() {
                   transition={{ duration: 0.5, delay: 0.1 }}
                   className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight leading-[1.08]"
                 >
-                  BỨT PHÁ <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent">GIỚI HẠN</span>
-                  <br className="hidden sm:inline" /> CHINH PHỤC ĐỈNH CAO
+                  ĐAM MÊ DẪN LỐI <br className="hidden sm:inline" />
+                  <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent">ĐẬP TAN GIỚI HẠN</span>
                 </motion.h1>
                 
                 {/* Value Proposition Subtitle */}
@@ -611,7 +606,7 @@ export default function Home() {
                   transition={{ duration: 0.5, delay: 0.2 }}
                   className="text-base sm:text-lg md:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-normal"
                 >
-                  Môi trường thể thao chuyên nghiệp và tràn đầy năng lượng dành cho mọi cấp độ vợt thủ. Tỏa sáng trên sân đấu, nâng tầm thứ hạng ELO và kết nối đam mê bền chặt cùng SmashTeam.
+                  Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!
                 </motion.p>
 
                 {/* 2 Prominent Action CTA Buttons */}

@@ -6,8 +6,8 @@ import {
   Phone, Clock, Star, Copy, Check, Plus, Calendar, MapPin, Edit, Trash2, Power,
   PowerOff, Save, Download, QrCode, Upload, ExternalLink
 } from "lucide-react";
-import { format } from "date-fns";
 import { API_URL } from "@/app/config";
+import { formatVietnamDate } from "@/app/utils/date";
 import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
 import RecruitmentKPIs from "@/app/components/recruitment/RecruitmentKPIs";
 import ApplicantTable from "@/app/components/recruitment/ApplicantTable";
@@ -1257,7 +1257,7 @@ export default function PersonnelPage() {
                               <div>
                                 <p className="text-xs font-bold text-secondary line-clamp-1">{item.title}</p>
                                 <p className="text-[10px] text-slate-400 mt-0.5">
-                                  {format(new Date(item.date_time), "dd/MM/yyyy HH:mm")}
+                                  {formatVietnamDate(item.date_time)}
                                 </p>
                               </div>
                               <div>
