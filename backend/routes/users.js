@@ -3,11 +3,12 @@ const router = express.Router();
 const db = require('../db');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
 const { sendWelcomeEmail } = require('../utils/emailService');
+const { getRankName } = require('../utils/elo');
 
 // POST /api/users/register - Đăng ký candidate mới
 router.post('/register', async (req, res) => {
   try {
-    const { full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, casting_slot_id, gender } = req.body;
+    const { full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, casting_slot_id, gender, extra_answers } = req.body;
     
     if (!full_name || !phone_zalo || !academic_info || !badminton_level) {
       return res.status(400).json({ error: 'Vui lòng điền đầy đủ các thông tin bắt buộc.' });
@@ -34,12 +35,52 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    const result = await db.query(
-      `INSERT INTO users (full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender)
-       VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $8) RETURNING id, full_name, role`,
-      [full_name, phone_zalo, email || null, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id, gender]
+    // Bắt buộc chọn ca casting ngay lúc đăng ký (ID ca là UUID, không ép kiểu số)
+    if (!casting_slot_id) {
+      return res.status(400).json({ error: 'Vui lòng chọn ca casting trước khi gửi đơn!' });
+    }
+    const slotCheck = await db.query(
+      'SELECT id, max_capacity, is_active FROM casting_slots WHERE id = $1',
+      [casting_slot_id]
     );
-    
+    if (slotCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'Ca casting bạn chọn không tồn tại. Vui lòng chọn lại!' });
+    }
+    if (slotCheck.rows[0].is_active === false) {
+      return res.status(400).json({ error: 'Ca casting này đã đóng nhận đăng ký. Vui lòng chọn ca khác!' });
+    }
+    const slotCountRes = await db.query(
+      "SELECT COUNT(*) FROM users WHERE casting_slot_id = $1 AND role = 'candidate'",
+      [casting_slot_id]
+    );
+    if (parseInt(slotCountRes.rows[0].count, 10) >= (slotCheck.rows[0].max_capacity || 0)) {
+      return res.status(400).json({ error: 'Ca casting này đã đủ người. Vui lòng chọn ca khác!' });
+    }
+
+    const extraAnswersJson = extra_answers
+      ? (typeof extra_answers === 'string' ? extra_answers : JSON.stringify(extra_answers))
+      : null;
+
+    let result;
+    try {
+      result = await db.query(
+        `INSERT INTO users (full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender, extra_answers)
+         VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $8, $9) RETURNING id, full_name, role`,
+        [full_name, phone_zalo, email || null, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id, gender, extraAnswersJson]
+      );
+    } catch (e) {
+      // Fallback cho DB chưa chạy migration 19 (thiếu cột extra_answers)
+      if (e && e.code === '42703') {
+        result = await db.query(
+          `INSERT INTO users (full_name, phone_zalo, email, academic_info, badminton_level, soft_skills, role, casting_slot_id, gender)
+           VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $8) RETURNING id, full_name, role`,
+          [full_name, phone_zalo, email || null, academic_info, badminton_level, JSON.stringify(soft_skills), casting_slot_id, gender]
+        );
+      } else {
+        throw e;
+      }
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error(error);
@@ -67,16 +108,6 @@ router.get('/leaderboard', async (req, res) => {
        ORDER BY ${elo_col} DESC`
     );
     
-    // Gán nhãn Rank dựa trên Elo score
-    const getRankName = (elo) => {
-      if (elo >= 1800) return 'Challenger';
-      if (elo >= 1600) return 'Diamond';
-      if (elo >= 1400) return 'Platinum';
-      if (elo >= 1200) return 'Gold';
-      if (elo >= 1100) return 'Silver';
-      return 'Bronze';
-    };
-
     const rankedPlayers = result.rows.map(player => ({
       ...player,
       rank_name: getRankName(player.elo_score)
@@ -92,11 +123,11 @@ router.get('/leaderboard', async (req, res) => {
 // GET /api/users/candidates - Lấy danh sách ứng viên (Requires Admin)
 router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { search, level, slot_id } = req.query;
+    const { search, level, slot_id, campaign_id } = req.query;
     
     let query = `
-      SELECT u.id, u.full_name, u.gender, u.phone_zalo, u.email, u.academic_info, u.badminton_level, u.soft_skills, u.created_at, 
-             u.casting_slot_id, c.casting_time, c.location 
+      SELECT u.id, u.full_name, u.gender, u.phone_zalo, COALESCE(u.email, '') as email, u.academic_info, u.badminton_level, u.soft_skills, u.created_at,
+             u.casting_slot_id, c.casting_time, c.location
       FROM users u
       LEFT JOIN casting_slots c ON u.casting_slot_id = c.id
       WHERE u.role = 'candidate'
@@ -122,9 +153,25 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
       paramIndex++;
     }
 
+    if (campaign_id && campaign_id !== 'all') {
+      query += ` AND c.campaign_id = $${paramIndex}`;
+      params.push(campaign_id);
+      paramIndex++;
+    }
+
     query += ` ORDER BY u.created_at DESC`;
 
-    const result = await db.query(query, params);
+    // Ưu tiên kèm câu trả lời tùy chỉnh; rớt về query cũ nếu DB chưa có cột extra_answers
+    let result;
+    try {
+      result = await db.query(query.replace('u.casting_slot_id,', 'u.casting_slot_id, u.extra_answers,'), params);
+    } catch (e) {
+      if (e && e.code === '42703') {
+        result = await db.query(query, params);
+      } else {
+        throw e;
+      }
+    }
     res.json(result.rows);
   } catch (error) {
     console.error(error);
@@ -133,10 +180,21 @@ router.get('/candidates', authenticateToken, isAdmin, async (req, res) => {
 });
 
 // GET /api/users/members - Lấy danh sách thành viên (Requires Admin)
+// Hỗ trợ ?campaign_id= để chỉ lấy thành viên được duyệt từ đợt casting đó
+// (member giữ nguyên casting_slot_id sau khi duyệt, join qua casting_slots.campaign_id)
 router.get('/members', authenticateToken, isAdmin, async (req, res) => {
   try {
+    const { campaign_id } = req.query;
+    let join = '';
+    let extraWhere = '';
+    const params = [];
+    if (campaign_id && campaign_id !== 'all') {
+      join = 'LEFT JOIN casting_slots c ON users.casting_slot_id = c.id';
+      extraWhere = ' AND c.campaign_id = $1';
+      params.push(campaign_id);
+    }
     const result = await db.query(
-      `SELECT id, full_name, phone_zalo, badminton_level, status, is_blocked, 
+      `SELECT id, casting_slot_id, full_name, phone_zalo, badminton_level, status, is_blocked, 
               hand_preference, play_style, joined_at, soft_skills, role,
               elo_singles, elo_doubles, 
               matches_singles, matches_doubles, 
@@ -145,10 +203,24 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
               win_singles, win_doubles, 
               loss_singles, loss_doubles
        FROM users 
-       WHERE role IN ('member', 'admin') 
-       ORDER BY full_name ASC`
+       ${join}
+       WHERE role IN ('member', 'admin') AND full_name != 'Super Admin' AND phone_zalo != '0999999999'${extraWhere}
+       ORDER BY full_name ASC`,
+      params
     );
-    res.json(result.rows);
+    const rankedMembers = result.rows.map(m => {
+      const eloSingles = m.elo_singles ?? 1000;
+      const eloDoubles = m.elo_doubles ?? 1000;
+      return {
+        ...m,
+        elo_singles: eloSingles,
+        elo_doubles: eloDoubles,
+        rank_singles: getRankName(eloSingles),
+        rank_doubles: getRankName(eloDoubles),
+        rank_name: getRankName(Math.max(eloSingles, eloDoubles))
+      };
+    });
+    res.json(rankedMembers);
   } catch (error) {
     console.error('Error fetching members:', error);
     res.status(500).json({ error: 'Internal server error' });

@@ -4,20 +4,7 @@ const bcrypt = require('bcrypt');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const multer = require('multer');
-const { cloudinary } = require('../utils/cloudinary');
-
-// Cấu hình lưu trữ Cloudinary riêng biệt cho Avatar người chơi
-const avatarStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'avatars',
-    allowedFormats: ['jpg', 'png', 'jpeg', 'webp'],
-    transformation: [{ width: 300, height: 300, crop: 'fill', gravity: 'face' }]
-  }
-});
-const uploadAvatar = multer({ storage: avatarStorage });
+const { cloudinary, uploadAvatar } = require('../utils/cloudinary');
 
 // Helper trích xuất public_id của Cloudinary để xóa ảnh cũ
 function getPublicIdFromUrl(url) {

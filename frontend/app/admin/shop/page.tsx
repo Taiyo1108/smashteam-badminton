@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useDeferredValue } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { 
   ShoppingBag, Plus, Edit, Trash2, Loader2, CheckCircle, 
   AlertTriangle, Search, ArrowLeft, History, Sparkles, Package,
   Award, Eye, EyeOff, Check, Gift, Calendar
 } from "lucide-react";
 import { API_URL } from "@/app/config";
+import { Modal, PillButton } from "@/app/components/ui";
 import confetti from "canvas-confetti";
+import { format } from "date-fns";
 
 export default function AdminShopPage() {
   const router = useRouter();
@@ -47,8 +50,11 @@ export default function AdminShopPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [deliveringId, setDeliveringId] = useState<number | null>(null);
 
+  const [pendingCoupon, setPendingCoupon] = useState<string | null>(null);
+
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const fetchData = async () => {
@@ -93,51 +99,37 @@ export default function AdminShopPage() {
     }
   };
 
-  // URL parameters parser on load (tab & coupon_code)
+  // Parse ?tab=&coupon_code= 1 lần khi mount — dùng chung fetchData, không fetch riêng lần 2
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabQuery = params.get("tab");
       const couponQuery = params.get("coupon_code");
 
-      if (tabQuery === "redemptions") {
+      if (couponQuery) {
+        setPendingCoupon(couponQuery.replace(/[\[\]]/g, "").trim());
         setActiveTab("redemptions");
-        // Clear param immediately
+      } else if (tabQuery === "redemptions") {
+        setActiveTab("redemptions");
         router.replace("/admin/shop");
-      } else if (couponQuery) {
-        const cleanCoupon = couponQuery.replace(/[\[\]]/g, "").trim();
-        setActiveTab("redemptions");
-        
-        // Tải danh sách redemptions và tìm coupon khớp
-        const autoCheck = async () => {
-          setIsLoading(true);
-          try {
-            const token = localStorage.getItem("admin_token");
-            const res = await fetch(`${API_URL}/api/shop/redemptions`, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-              const list = await res.json();
-              setPendingRedemptions(list);
-              const matched = list.find((r: any) => r.coupon_code === cleanCoupon);
-              if (matched) {
-                setSelectedRedemption(matched);
-              } else {
-                setErrorMessage(`Không tìm thấy coupon chưa sử dụng hoặc đã được trao: ${cleanCoupon}`);
-              }
-            }
-          } catch (e) {
-            console.error(e);
-          } finally {
-            setIsLoading(false);
-            // Xóa tham số khỏi thanh địa chỉ tránh reload lặp lại
-            router.replace("/admin/shop");
-          }
-        };
-        autoCheck();
       }
     }
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Khi danh sách redemptions tải xong và có coupon chờ → tự mở modal xác nhận
+  useEffect(() => {
+    if (!pendingCoupon || activeTab !== "redemptions" || isLoading) return;
+    const matched = pendingRedemptions.find((r: any) => r.coupon_code === pendingCoupon);
+    if (matched) {
+      setSelectedRedemption(matched);
+    } else {
+      setErrorMessage(`Không tìm thấy coupon chưa sử dụng hoặc đã được trao: ${pendingCoupon}`);
+    }
+    setPendingCoupon(null);
+    // Xóa tham số khỏi thanh địa chỉ tránh reload lặp lại
+    router.replace("/admin/shop");
+  }, [pendingCoupon, pendingRedemptions, activeTab, isLoading, router]);
 
   // Mở modal thêm sản phẩm
   const handleOpenAdd = () => {
@@ -279,17 +271,18 @@ export default function AdminShopPage() {
     }
   };
 
-  // Xóa sản phẩm an toàn
-  const handleDeleteItem = async (itemId: number, itemName: string) => {
-    if (!confirm(`Xác nhận xóa hoàn toàn sản phẩm "${itemName}"? Thao tác này không thể hoàn tác.`)) {
-      return;
-    }
+  // Xóa sản phẩm an toàn (xác nhận qua modal, không dùng confirm())
+  const [deletingItem, setDeletingItem] = useState<any | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
+  const handleDeleteItem = async () => {
+    if (!deletingItem) return;
 
+    setIsDeletingItem(true);
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/shop/admin/shop-items/${itemId}`, {
+      const res = await fetch(`${API_URL}/api/shop/admin/shop-items/${deletingItem.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -297,13 +290,18 @@ export default function AdminShopPage() {
       const data = await res.json();
       if (res.ok) {
         setSuccessMessage(data.message || "Xóa sản phẩm thành công!");
-        setItems(prev => prev.filter(item => item.id !== itemId));
+        setItems(prev => prev.filter(item => item.id !== deletingItem.id));
+        setDeletingItem(null);
         setTimeout(() => setSuccessMessage(null), 3000);
       } else {
         setErrorMessage(data.error || "Không thể xóa sản phẩm.");
+        setDeletingItem(null);
       }
     } catch (err) {
       setErrorMessage("Lỗi kết nối.");
+      setDeletingItem(null);
+    } finally {
+      setIsDeletingItem(false);
     }
   };
 
@@ -326,7 +324,8 @@ export default function AdminShopPage() {
       if (res.ok) {
         setSuccessMessage(data.message || "Đã xác nhận trao quà thành công!");
         
-        // Confetti màu xanh lá ăn mừng
+        // Confetti màu xanh lá ăn mừng (lazy-load để nhẹ trang)
+        const { default: confetti } = await import("canvas-confetti");
         confetti({
           particleCount: 150,
           spread: 80,
@@ -347,9 +346,10 @@ export default function AdminShopPage() {
     }
   };
 
-  // Lọc tìm kiếm
+  // Lọc tìm kiếm (deferred để không filter mỗi phím gõ)
+  const deferredQuery = useDeferredValue(searchQuery);
   const filteredItems = items.filter(item => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = deferredQuery.toLowerCase().trim();
     if (!q) return true;
     return (
       item.name.toLowerCase().includes(q) ||
@@ -358,7 +358,7 @@ export default function AdminShopPage() {
   });
 
   const filteredRedemptions = pendingRedemptions.filter(r => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = deferredQuery.toLowerCase().trim();
     if (!q) return true;
     return (
       r.member_name.toLowerCase().includes(q) ||
@@ -368,7 +368,7 @@ export default function AdminShopPage() {
   });
 
   const filteredHistory = history.filter(h => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = deferredQuery.toLowerCase().trim();
     if (!q) return true;
     return (
       h.member_name.toLowerCase().includes(q) ||
@@ -385,7 +385,7 @@ export default function AdminShopPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200/60 pb-5">
         <div>
           <h1 className="text-3xl font-black text-secondary tracking-tight flex items-center gap-2">
-            <ShoppingBag className="w-8 h-8 text-primary" />
+            <ShoppingBag className="w-8 h-8 text-black" />
             Quản Lý Gian Hàng & Đổi Quà
           </h1>
           <p className="text-slate-500 text-sm mt-1">Cấu hình sản phẩm, duyệt trao quà vật lý cho học viên và xem lịch sử đối soát hàng hóa.</p>
@@ -404,7 +404,7 @@ export default function AdminShopPage() {
             }}
             className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
               activeTab === "items"
-                ? "bg-primary text-secondary shadow-sm font-extrabold"
+                ? "bg-black text-white shadow-sm font-extrabold"
                 : "text-slate-600 hover:text-slate-800"
             }`}
           >
@@ -418,7 +418,7 @@ export default function AdminShopPage() {
             }}
             className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
               activeTab === "redemptions"
-                ? "bg-primary text-secondary shadow-sm font-extrabold"
+                ? "bg-black text-white shadow-sm font-extrabold"
                 : "text-slate-600 hover:text-slate-800"
             }`}
           >
@@ -437,7 +437,7 @@ export default function AdminShopPage() {
             }}
             className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
               activeTab === "history"
-                ? "bg-primary text-secondary shadow-sm font-extrabold"
+                ? "bg-black text-white shadow-sm font-extrabold"
                 : "text-slate-600 hover:text-slate-800"
             }`}
           >
@@ -455,7 +455,7 @@ export default function AdminShopPage() {
               placeholder="Tìm kiếm..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-slate-800 placeholder-slate-400 font-medium"
+              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all text-slate-800 placeholder-slate-400 font-medium"
             />
           </div>
 
@@ -463,7 +463,7 @@ export default function AdminShopPage() {
           {activeTab === "items" && (
             <button
               onClick={handleOpenAdd}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-primary hover:bg-primary-hover text-secondary text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer shrink-0"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-black hover:bg-black/85 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer shrink-0"
             >
               <Plus className="w-4 h-4" /> Thêm sản phẩm
             </button>
@@ -486,7 +486,7 @@ export default function AdminShopPage() {
       {/* Content Area */}
       {isLoading ? (
         <div className="flex justify-center py-20">
-          <Loader2 className="w-10 h-10 animate-spin text-primary" />
+          <Loader2 className="w-10 h-10 animate-spin text-black" />
         </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
@@ -534,9 +534,9 @@ export default function AdminShopPage() {
                           {/* Thumbnail & Tên */}
                           <td className="p-4 pl-6">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 flex items-center justify-center">
+                              <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 flex items-center justify-center relative">
                                 {item.image_url ? (
-                                  <img src={item.image_url} alt={item.name} className="object-cover w-full h-full" />
+                                  <Image src={item.image_url} alt={item.name} fill sizes="40px" loading="lazy" unoptimized className="object-cover" />
                                 ) : (
                                   <Award className="w-5 h-5 text-slate-400" />
                                 )}
@@ -551,7 +551,7 @@ export default function AdminShopPage() {
                           {/* Coins & Game Config */}
                           <td className="p-4">
                             <div className="space-y-0.5">
-                              <div className="text-xs font-black text-amber-500 font-mono">+{item.coin_price} Xu</div>
+                              <div className="text-xs font-black text-amber-500 tabular-nums">+{item.coin_price} Xu</div>
                               <div className="text-[10px] text-slate-500">Yêu cầu Cấp: <strong className="text-slate-700">{item.level_required}</strong></div>
                               <span className={`inline-block text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border mt-0.5 ${rarityBadge}`}>
                                 {item.rarity}
@@ -570,7 +570,7 @@ export default function AdminShopPage() {
                                 >
                                   -
                                 </button>
-                                <span className="flex-1 text-center text-xs font-mono font-bold text-slate-700">{item.stock}</span>
+                                <span className="flex-1 text-center text-xs tabular-nums font-bold text-slate-700">{item.stock}</span>
                                 <button
                                   type="button"
                                   onClick={() => handleFastStockUpdate(item.id, item.stock, 1)}
@@ -618,7 +618,7 @@ export default function AdminShopPage() {
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => handleDeleteItem(item.id, item.name)}
+                                onClick={() => setDeletingItem(item)}
                                 className="p-1.5 rounded-lg bg-rose-50 border border-rose-100 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer"
                                 title="Xóa"
                               >
@@ -665,26 +665,20 @@ export default function AdminShopPage() {
                           <span className="font-bold text-slate-700">{row.item_name}</span>
                         </td>
                         <td className="p-4">
-                          <span className="font-mono text-xs font-black text-primary-hover bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded tracking-wider">
+                          <span className="tabular-nums text-xs font-black text-black bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded tracking-wider">
                             {row.coupon_code}
                           </span>
                         </td>
                         <td className="p-4">
                           <div className="text-xs text-slate-500 flex items-center gap-1">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            {new Date(row.acquired_at).toLocaleDateString("vi-VN", {
-                              day: "numeric",
-                              month: "numeric",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit"
-                            })}
+                            {format(new Date(row.acquired_at), "dd/MM/yyyy HH:mm")}
                           </div>
                         </td>
                         <td className="p-4 pr-6 text-right">
                           <button
                             onClick={() => setSelectedRedemption(row)}
-                            className="px-4 py-1.5 bg-primary text-secondary hover:bg-primary-hover text-xs font-bold rounded-lg shadow-sm active:scale-95 transition-all cursor-pointer"
+                            className="px-4 py-1.5 bg-black text-white hover:bg-black/85 text-xs font-bold rounded-lg shadow-sm active:scale-95 transition-all cursor-pointer"
                           >
                             Xác nhận trao quà
                           </button>
@@ -745,7 +739,7 @@ export default function AdminShopPage() {
                           {/* Coupon Code */}
                           <td className="p-4">
                             {row.coupon_code ? (
-                              <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              <span className="tabular-nums text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                                 {row.coupon_code}
                               </span>
                             ) : (
@@ -755,19 +749,13 @@ export default function AdminShopPage() {
 
                           {/* Giá Coin */}
                           <td className="p-4">
-                            <span className="font-bold text-amber-500 font-mono">{row.purchase_price || 0} Xu</span>
+                            <span className="font-bold text-amber-500 tabular-nums">{row.purchase_price || 0} Xu</span>
                           </td>
 
                           {/* Ngày đổi */}
                           <td className="p-4">
                             <div className="text-xs text-slate-500">
-                              {new Date(row.purchased_at || row.acquired_at).toLocaleDateString("vi-VN", {
-                                day: "numeric",
-                                month: "numeric",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit"
-                              })}
+                              {format(new Date(row.purchased_at || row.acquired_at), "dd/MM/yyyy HH:mm")}
                             </div>
                           </td>
 
@@ -775,13 +763,7 @@ export default function AdminShopPage() {
                           <td className="p-4">
                             {row.redeemed_at ? (
                               <div className="text-xs text-emerald-600 font-medium">
-                                {new Date(row.redeemed_at).toLocaleDateString("vi-VN", {
-                                  day: "numeric",
-                                  month: "numeric",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit"
-                                })}
+                                {format(new Date(row.redeemed_at), "dd/MM/yyyy HH:mm")}
                               </div>
                             ) : (
                               <span className="text-slate-400">—</span>
@@ -827,7 +809,7 @@ export default function AdminShopPage() {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-black"
                   placeholder="Ví dụ: Cuốn cán vợt Yonex AC102EX"
                 />
               </div>
@@ -839,7 +821,7 @@ export default function AdminShopPage() {
                   <select
                     value={itemType}
                     onChange={(e) => setItemType(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-black"
                   >
                     <option value="physical">Quà vật lý (Nhận tại sân)</option>
                     <option value="virtual">Vật phẩm ảo (Khung viền, danh hiệu...)</option>
@@ -854,7 +836,7 @@ export default function AdminShopPage() {
                     required
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-black"
                     placeholder="Ví dụ: Grip, Drink, Voucher..."
                   />
                 </div>
@@ -870,7 +852,7 @@ export default function AdminShopPage() {
                     min="0"
                     value={coinPrice}
                     onChange={(e) => setCoinPrice(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-primary font-mono"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-black tabular-nums"
                   />
                 </div>
 
@@ -886,7 +868,7 @@ export default function AdminShopPage() {
                     disabled={itemType !== "physical"}
                     value={itemType === "physical" ? stock : "999"}
                     onChange={(e) => setStock(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-primary font-mono disabled:opacity-50"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-black tabular-nums disabled:opacity-50"
                   />
                 </div>
 
@@ -899,7 +881,7 @@ export default function AdminShopPage() {
                     min="1"
                     value={levelRequired}
                     onChange={(e) => setLevelRequired(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-primary font-mono"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-black tabular-nums"
                   />
                 </div>
               </div>
@@ -911,7 +893,7 @@ export default function AdminShopPage() {
                   <select
                     value={rarity}
                     onChange={(e) => setRarity(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-black"
                   >
                     <option value="common">Common (Thường - Xám)</option>
                     <option value="rare">Rare (Hiếm - Xanh)</option>
@@ -929,7 +911,7 @@ export default function AdminShopPage() {
                         type="checkbox"
                         checked={isActive}
                         onChange={(e) => setIsActive(e.target.checked)}
-                        className="w-4 h-4 rounded text-primary bg-slate-50 border-slate-200 focus:ring-1 focus:ring-primary outline-none cursor-pointer"
+                        className="w-4 h-4 rounded text-black bg-slate-50 border-slate-200 focus:ring-1 focus:ring-black outline-none cursor-pointer"
                       />
                       <span className="text-xs text-slate-600 font-bold">Kích hoạt bán ngay lập tức</span>
                     </label>
@@ -943,7 +925,7 @@ export default function AdminShopPage() {
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-primary h-20 resize-none"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-black h-20 resize-none"
                   placeholder="Nhập thông tin giới thiệu, các kích cỡ hoặc quy định nhận quà..."
                 />
               </div>
@@ -990,7 +972,7 @@ export default function AdminShopPage() {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="flex-1 py-2 text-xs font-bold text-secondary bg-primary hover:bg-primary-hover rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+                  className="flex-1 py-2 text-xs font-bold text-white bg-black hover:bg-black/85 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
                 >
                   {isSaving ? (
                     <>
@@ -1007,20 +989,24 @@ export default function AdminShopPage() {
       )}
 
       {/* Pop-up Modal xác thực trao quà (Deliver Confirm Modal) */}
-      {selectedRedemption && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="p-6 rounded-3xl bg-white border border-slate-200 max-w-sm w-full relative shadow-xl text-slate-800">
+      <Modal
+        open={!!selectedRedemption}
+        onClose={() => setSelectedRedemption(null)}
+        title="Xác Nhận Trao Quà"
+        maxWidth="max-w-sm"
+      >
+        {selectedRedemption && (
+          <>
             <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto mb-4 border border-emerald-100">
               <Gift className="w-6 h-6" />
             </div>
 
-            <h3 className="text-base font-black text-secondary text-center tracking-tight">Xác Nhận Trao Quà</h3>
             <p className="text-xs text-slate-500 text-center mt-1">Vui lòng đối chiếu sản phẩm trước khi phát quà.</p>
 
             <div className="my-5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-400 font-bold">Hội viên:</span>
-                <span className="font-bold text-secondary text-right">{selectedRedemption.member_name}</span>
+                <span className="font-bold text-right">{selectedRedemption.member_name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400 font-bold">Quà tặng:</span>
@@ -1028,37 +1014,47 @@ export default function AdminShopPage() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 font-bold">Mã Coupon:</span>
-                <span className="font-mono font-black text-primary-hover bg-white px-2 py-0.5 rounded border border-slate-200">{selectedRedemption.coupon_code}</span>
+                <span className="tabular-nums font-black bg-white px-2 py-0.5 rounded border border-slate-200">{selectedRedemption.coupon_code}</span>
               </div>
             </div>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => setSelectedRedemption(null)}
-                className="flex-1 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer transition-colors"
-              >
+              <PillButton variant="ghost" onClick={() => setSelectedRedemption(null)} className="flex-1">
                 Hủy bỏ
-              </button>
-              
-              <button
+              </PillButton>
+
+              <PillButton
+                variant="black"
                 onClick={handleDeliver}
-                disabled={deliveringId === selectedRedemption.id}
-                className="flex-1 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700/50 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                loading={deliveringId === selectedRedemption.id}
+                className="flex-1"
               >
-                {deliveringId === selectedRedemption.id ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang lưu...
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-3.5 h-3.5" /> Đồng ý trao
-                  </>
-                )}
-              </button>
+                <Check className="w-3.5 h-3.5" /> Đồng ý trao
+              </PillButton>
             </div>
-          </div>
+          </>
+        )}
+      </Modal>
+
+      {/* DELETE ITEM CONFIRM MODAL */}
+      <Modal
+        open={!!deletingItem}
+        onClose={() => setDeletingItem(null)}
+        title="Xóa sản phẩm?"
+        maxWidth="max-w-sm"
+      >
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Xác nhận xóa hoàn toàn sản phẩm <strong>“{deletingItem?.name}”</strong>? Thao tác này không thể hoàn tác.
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <PillButton variant="ghost" onClick={() => setDeletingItem(null)}>
+            Hủy
+          </PillButton>
+          <PillButton variant="danger" loading={isDeletingItem} onClick={handleDeleteItem}>
+            Xóa sản phẩm
+          </PillButton>
         </div>
-      )}
+      </Modal>
 
     </div>
   );

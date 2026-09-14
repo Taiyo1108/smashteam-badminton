@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { upload, cloudinary } = require('../utils/cloudinary');
+const fs = require('fs');
+const path = require('path');
+const { upload, cloudinary, uploadsDir } = require('../utils/cloudinary');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
 
 // GET /api/media - Lấy danh sách media posts
@@ -43,7 +45,7 @@ router.post('/', authenticateToken, isAdmin, upload.single('image'), async (req,
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: error?.message || 'Internal server error' });
   }
 });
 
@@ -71,6 +73,49 @@ function getPublicIdFromUrl(url) {
   }
 }
 
+// PUT /api/media/:id - Sửa tiêu đề / nổi bật / link video của post (Admin)
+// (Đổi ảnh: xóa post cũ và đăng lại — giữ đơn giản, tránh rác file Cloudinary)
+router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, is_featured, video_url } = req.body;
+
+    const curr = await db.query(`SELECT * FROM media_posts WHERE id = $1`, [id]);
+    if (curr.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy bài viết.' });
+    }
+    const post = curr.rows[0];
+    const isVideo = (post.content_url || '').includes('youtube.com') ||
+                    (post.content_url || '').includes('youtu.be') ||
+                    (post.content_url || '').includes('embed');
+
+    // Chỉ cho đổi content_url với post dạng video (đổi link YouTube)
+    let contentUrl = post.content_url;
+    if (isVideo && typeof video_url === 'string' && video_url.trim()) {
+      contentUrl = video_url.trim();
+    }
+
+    const result = await db.query(
+      `UPDATE media_posts
+        SET title = COALESCE($1, title),
+            content_url = $2,
+            is_featured = COALESCE($3, is_featured)
+        WHERE id = $4 RETURNING *`,
+      [
+        typeof title === 'string' && title.trim() ? title.trim() : null,
+        contentUrl,
+        is_featured === undefined ? null : (is_featured === true || is_featured === 'true'),
+        id
+      ]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating media post:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // DELETE /api/media/:id - Xóa post
 router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
@@ -90,6 +135,17 @@ router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
       if (publicId) {
         console.log(`Deleting image from Cloudinary: ${publicId}`);
         await cloudinary.uploader.destroy(publicId);
+      }
+    } else if (contentUrl && contentUrl.includes('/uploads/')) {
+      // Local disk file deletion
+      const filename = contentUrl.split('/uploads/')[1];
+      if (filename) {
+        const localPath = path.join(uploadsDir, filename);
+        if (fs.existsSync(localPath)) {
+          fs.unlink(localPath, (err) => {
+            if (err) console.error('Error deleting local file:', err);
+          });
+        }
       }
     }
     

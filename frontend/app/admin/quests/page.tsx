@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { 
-  Sparkles, Plus, Loader2, X, Trash2, Eye, EyeOff, 
-  Coins, Trophy, ChevronRight, CheckCircle2, Edit 
+import {
+  Plus, Trash2, Eye, EyeOff, Edit
 } from "lucide-react";
 import { API_URL } from "@/app/config";
+import { PageHeader, Modal, EmptyState, CardSkeleton, PillButton, FormField } from "@/app/components/ui";
 
 export default function AdminQuestsPage() {
   const [quests, setQuests] = useState<any[]>([]);
@@ -14,6 +14,9 @@ export default function AdminQuestsPage() {
   const [editingQuest, setEditingQuest] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [deletingQuest, setDeletingQuest] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form states
   const [title, setTitle] = useState("");
@@ -96,24 +99,30 @@ export default function AdminQuestsPage() {
     }
   };
 
-  const handleDeleteQuest = async (id: number) => {
-    if (!confirm("Xác nhận xóa hoàn toàn nhiệm vụ này? Hành động này sẽ xóa toàn bộ tiến trình liên quan của các hội viên.")) return;
-
+  const handleDeleteQuest = async () => {
+    if (!deletingQuest) return;
+    setIsDeleting(true);
     try {
       const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API_URL}/api/admin/quests/${id}`, {
+      const res = await fetch(`${API_URL}/api/admin/quests/${deletingQuest.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        alert(data.message || "Xóa nhiệm vụ thành công!");
+        setDeletingQuest(null);
+        setNotice(data.message || "Xóa nhiệm vụ thành công!");
         fetchQuests();
       } else {
-        alert(data.error || "Không thể xóa nhiệm vụ.");
+        setNotice(null);
+        setError(data.error || "Không thể xóa nhiệm vụ.");
+        setDeletingQuest(null);
       }
     } catch (e) {
-      alert("Lỗi kết nối.");
+      setError("Lỗi kết nối.");
+      setDeletingQuest(null);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -161,28 +170,35 @@ export default function AdminQuestsPage() {
   };
 
   return (
-    <div className="space-y-6 text-slate-800">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-black text-secondary tracking-tight">Cấu hình Nhiệm vụ Gamification</h1>
-          <p className="text-slate-500 text-sm mt-1">Tạo nhiệm vụ và thiết lập lịch reset lặp lại định kỳ (Hàng ngày, Hàng tuần, Hàng tháng).</p>
-        </div>
-        <button
-          onClick={handleOpenCreateQuest}
-          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-secondary hover:bg-primary-hover font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
-        >
-          <Plus className="w-4 h-4" /> Tạo Nhiệm Vụ
-        </button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Nhiệm vụ Gamification"
+        desc="Tạo nhiệm vụ và thiết lập lịch reset lặp lại định kỳ (Hàng ngày, Hàng tuần, Hàng tháng)."
+        actions={
+          <PillButton onClick={handleOpenCreateQuest}>
+            <Plus className="w-4 h-4" /> Tạo Nhiệm Vụ
+          </PillButton>
+        }
+      />
+
+      {notice && (
+        <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 px-4 py-3 rounded-2xl font-medium">
+          {notice}
+        </p>
+      )}
 
       {isLoading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        </div>
+        <CardSkeleton rows={5} />
       ) : quests.length === 0 ? (
-        <div className="p-16 border-2 border-dashed border-slate-200 rounded-3xl text-center text-slate-400">
-          Chưa có nhiệm vụ nào được cấu hình trong hệ thống.
-        </div>
+        <EmptyState
+          title="Chưa có nhiệm vụ nào"
+          desc="Tạo nhiệm vụ đầu tiên để hội viên bắt đầu tích điểm."
+          action={
+            <PillButton onClick={handleOpenCreateQuest}>
+              <Plus className="w-4 h-4" /> Tạo Nhiệm Vụ
+            </PillButton>
+          }
+        />
       ) : (
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
@@ -216,7 +232,7 @@ export default function AdminQuestsPage() {
                       </span>
                     </td>
                     <td className="p-4 font-medium text-slate-600">{q.action_type}</td>
-                    <td className="p-4 font-mono font-bold text-slate-700">{q.target_count} lần</td>
+                    <td className="p-4 tabular-nums font-bold text-slate-700">{q.target_count} lần</td>
                     <td className="p-4">
                       <div className="flex flex-col gap-0.5 text-xs">
                         <span className="text-emerald-500 font-bold">+{q.xp_reward} XP</span>
@@ -253,7 +269,7 @@ export default function AdminQuestsPage() {
                           {q.is_active ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                         <button
-                          onClick={() => handleDeleteQuest(q.id)}
+                          onClick={() => setDeletingQuest(q)}
                           className="p-2 rounded-xl border border-rose-100 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-all cursor-pointer active:scale-95"
                           title="Xóa nhiệm vụ"
                         >
@@ -269,126 +285,118 @@ export default function AdminQuestsPage() {
         </div>
       )}
 
-      {/* CREATE QUEST MODAL */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl relative">
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* CREATE / EDIT QUEST MODAL */}
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingQuest ? "Chỉnh sửa nhiệm vụ" : "Thiết lập nhiệm vụ mới"}
+      >
+        <form onSubmit={handleSaveQuest} className="space-y-4">
+          <FormField label="Tiêu đề nhiệm vụ">
+            <input
+              type="text"
+              required
+              placeholder="Ví dụ: Chiến thắng 5 trận đấu đôi"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-black text-sm bg-slate-50"
+            />
+          </FormField>
 
-            <h3 className="text-lg font-black text-secondary mb-5 tracking-tight flex items-center gap-1.5">
-              <Sparkles className="w-5 h-5 text-primary" /> {editingQuest ? "Chỉnh sửa nhiệm vụ" : "Thiết lập nhiệm vụ mới"}
-            </h3>
-
-            <form onSubmit={handleSaveQuest} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Tiêu đề nhiệm vụ</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Chiến thắng 5 trận đấu đôi"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Chu kỳ lặp lại</label>
-                  <select
-                    value={questType}
-                    onChange={(e) => setQuestType(e.target.value as any)}
-                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50"
-                  >
-                    <option value="daily">Hàng ngày</option>
-                    <option value="weekly">Hàng tuần</option>
-                    <option value="monthly">Hàng tháng</option>
-                    <option value="seasonal">Mùa giải</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Hành động</label>
-                  <select
-                    value={actionType}
-                    onChange={(e) => setActionType(e.target.value as any)}
-                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50"
-                  >
-                    <option value="play_matches">Chơi trận đấu</option>
-                    <option value="win_matches">Thắng trận đấu</option>
-                    <option value="check_in">Điểm danh sân</option>
-                    <option value="custom">Nghiệp vụ khác</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Số lần yêu cầu hoàn thành</label>
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  value={targetCount}
-                  onChange={(e) => setTargetCount(Number(e.target.value))}
-                  className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50 font-mono"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Phần thưởng XP</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    value={xpReward}
-                    onChange={(e) => setXpReward(Number(e.target.value))}
-                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50 font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Phần thưởng Xu</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    value={coinReward}
-                    onChange={(e) => setCoinReward(Number(e.target.value))}
-                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm bg-slate-50 font-mono"
-                  />
-                </div>
-              </div>
-
-              {error && (
-                <div className="p-3 text-xs bg-rose-50 text-rose-500 rounded-xl border border-rose-100 font-medium">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-3 bg-primary hover:bg-primary-hover disabled:opacity-50 text-secondary font-bold text-sm rounded-xl shadow-md cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Chu kỳ lặp lại">
+              <select
+                value={questType}
+                onChange={(e) => setQuestType(e.target.value as any)}
+                className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-black text-sm bg-slate-50"
               >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Đang lưu...
-                  </>
-                ) : (
-                  editingQuest ? "Lưu Nhiệm Vụ" : "Tạo Nhiệm Vụ"
-                )}
-              </button>
-            </form>
+                <option value="daily">Hàng ngày</option>
+                <option value="weekly">Hàng tuần</option>
+                <option value="monthly">Hàng tháng</option>
+                <option value="seasonal">Mùa giải</option>
+              </select>
+            </FormField>
+
+            <FormField label="Hành động">
+              <select
+                value={actionType}
+                onChange={(e) => setActionType(e.target.value as any)}
+                className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-black text-sm bg-slate-50"
+              >
+                <option value="play_matches">Chơi trận đấu</option>
+                <option value="win_matches">Thắng trận đấu</option>
+                <option value="check_in">Điểm danh sân</option>
+                <option value="custom">Nghiệp vụ khác</option>
+              </select>
+            </FormField>
           </div>
+
+          <FormField label="Số lần yêu cầu hoàn thành">
+            <input
+              type="number"
+              required
+              min={1}
+              value={targetCount}
+              onChange={(e) => setTargetCount(Number(e.target.value))}
+              className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-black text-sm bg-slate-50 tabular-nums"
+            />
+          </FormField>
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Phần thưởng XP">
+              <input
+                type="number"
+                required
+                min={0}
+                value={xpReward}
+                onChange={(e) => setXpReward(Number(e.target.value))}
+                className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-black text-sm bg-slate-50 tabular-nums"
+              />
+            </FormField>
+
+            <FormField label="Phần thưởng Xu">
+              <input
+                type="number"
+                required
+                min={0}
+                value={coinReward}
+                onChange={(e) => setCoinReward(Number(e.target.value))}
+                className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-black text-sm bg-slate-50 tabular-nums"
+              />
+            </FormField>
+          </div>
+
+          {error && (
+            <div className="p-3 text-xs bg-rose-50 text-rose-500 rounded-xl border border-rose-100 font-medium">
+              {error}
+            </div>
+          )}
+
+          <PillButton type="submit" loading={isSubmitting} className="w-full">
+            {editingQuest ? "Lưu Nhiệm Vụ" : "Tạo Nhiệm Vụ"}
+          </PillButton>
+        </form>
+      </Modal>
+
+      {/* DELETE CONFIRM MODAL */}
+      <Modal
+        open={!!deletingQuest}
+        onClose={() => setDeletingQuest(null)}
+        title="Xóa nhiệm vụ?"
+      >
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Xác nhận xóa hoàn toàn nhiệm vụ <strong>“{deletingQuest?.title}”</strong>? Hành động này sẽ xóa
+          toàn bộ tiến trình liên quan của các hội viên.
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <PillButton variant="ghost" onClick={() => setDeletingQuest(null)}>
+            Hủy
+          </PillButton>
+          <PillButton variant="danger" loading={isDeleting} onClick={handleDeleteQuest}>
+            Xóa nhiệm vụ
+          </PillButton>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

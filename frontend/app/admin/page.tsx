@@ -38,27 +38,22 @@ export default function AdminDashboard() {
       const token = localStorage.getItem("admin_token");
       if (!token) return;
 
-      // 1. Fetch Stats
-      const statsRes = await fetch(`${API_URL}/api/users/stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const stats = statsRes.ok ? await statsRes.json() : null;
+      const authHeaders = { Authorization: `Bearer ${token}` };
 
-      // 2. Fetch Matches
-      const matchesRes = await fetch(`${API_URL}/api/matches`);
-      const matches = matchesRes.ok ? await matchesRes.json() : [];
+      // Chạy song song thay vì nối tiếp để giảm ~4x RTT
+      const [statsRes, matchesRes, candidatesRes, redemptionsRes] = await Promise.all([
+        fetch(`${API_URL}/api/users/stats`, { headers: authHeaders }),
+        fetch(`${API_URL}/api/matches`),
+        fetch(`${API_URL}/api/users/candidates`, { headers: authHeaders }),
+        fetch(`${API_URL}/api/shop/redemptions`, { headers: authHeaders }),
+      ]);
 
-      // 3. Fetch Candidates
-      const candidatesRes = await fetch(`${API_URL}/api/users/candidates`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const candidates = candidatesRes.ok ? await candidatesRes.json() : [];
-
-      // 4. Fetch Pending Redemptions
-      const redemptionsRes = await fetch(`${API_URL}/api/shop/redemptions`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const redemptions = redemptionsRes.ok ? await redemptionsRes.json() : [];
+      const [stats, matches, candidates, redemptions] = await Promise.all([
+        statsRes.ok ? statsRes.json() : null,
+        matchesRes.ok ? matchesRes.json() : [],
+        candidatesRes.ok ? candidatesRes.json() : [],
+        redemptionsRes.ok ? redemptionsRes.json() : [],
+      ]);
 
       if (stats) {
         setStatsData(stats);
@@ -115,9 +110,9 @@ export default function AdminDashboard() {
             </div>
           </div>
           <Link href="/admin/shop?tab=redemptions" className="shrink-0 w-full sm:w-auto">
-            <button className="w-full sm:w-auto px-4 py-2 bg-primary hover:bg-primary-hover text-secondary text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer">
-              Duyệt ngay
-            </button>
+              <button className="w-full sm:w-auto px-5 h-10 bg-black hover:bg-black/85 text-white text-xs font-bold rounded-full shadow-sm transition-all cursor-pointer">
+                Duyệt ngay
+              </button>
           </Link>
         </div>
       )}
