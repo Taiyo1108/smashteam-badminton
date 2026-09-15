@@ -15,6 +15,7 @@ const gamificationRoutes = require('./routes/gamification');
 const shopRoutes = require('./routes/shop');
 const statsRoutes = require('./routes/stats');
 const eventRoutes = require('./routes/events');
+const emailRoutes = require('./routes/emails');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -85,6 +86,7 @@ app.use('/api/gamification', gamificationRoutes);
 app.use('/api/shop', shopRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/admin/emails', emailRoutes);
 
 // Base route
 app.get('/', (req, res) => {
