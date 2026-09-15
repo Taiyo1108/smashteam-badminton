@@ -7,7 +7,7 @@ import {
   PowerOff, Save, Download, QrCode, Upload, ExternalLink
 } from "lucide-react";
 import { API_URL } from "@/app/config";
-import { formatVietnamDate } from "@/app/utils/date";
+import { formatVietnamDate, toVietnamDatetimeInput, vietnamInputToIso } from "@/app/utils/date";
 import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
 import RecruitmentKPIs from "@/app/components/recruitment/RecruitmentKPIs";
 import ApplicantTable from "@/app/components/recruitment/ApplicantTable";
@@ -82,15 +82,6 @@ export default function PersonnelPage() {
   const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
 
-  // Helper định dạng giờ cho input datetime-local theo giờ địa phương Việt Nam
-  const toLocalDatetimeInput = (dateStr?: string | Date) => {
-    if (!dateStr) return "";
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return "";
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
   // States cho Campaigns
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
@@ -158,8 +149,8 @@ export default function PersonnelPage() {
       fetchCampaignStats(selectedCampaign.id);
       setCForm({
         name: selectedCampaign.name,
-        start: toLocalDatetimeInput(selectedCampaign.start_date),
-        end: toLocalDatetimeInput(selectedCampaign.end_date),
+        start: toVietnamDatetimeInput(selectedCampaign.start_date),
+        end: toVietnamDatetimeInput(selectedCampaign.end_date),
         active: selectedCampaign.is_active,
         zalo_qr_url: selectedCampaign.zalo_qr_url || "",
         zalo_group_link: selectedCampaign.zalo_group_link || ""
@@ -191,8 +182,8 @@ export default function PersonnelPage() {
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           name: cForm.name,
-          start_date: new Date(cForm.start).toISOString(),
-          end_date: new Date(cForm.end).toISOString(),
+          start_date: vietnamInputToIso(cForm.start),
+          end_date: vietnamInputToIso(cForm.end),
           is_active: cForm.active,
           custom_questions: cleanedQuestions,
           zalo_qr_url: cForm.zalo_qr_url || null,
@@ -247,7 +238,7 @@ export default function PersonnelPage() {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          casting_time: new Date(sForm.time).toISOString(),
+          casting_time: vietnamInputToIso(sForm.time),
           location: sForm.location,
           max_capacity: parseInt(sForm.max)
         })
@@ -1468,8 +1459,8 @@ export default function PersonnelPage() {
                         <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${c.is_active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-slate-300'}`}></div>
                       </div>
                       <div className="text-[11px] text-slate-500 flex flex-col gap-1 font-medium">
-                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Mở: {format(new Date(c.start_date), "dd/MM/yyyy HH:mm")}</span>
-                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Đóng: {format(new Date(c.end_date), "dd/MM/yyyy HH:mm")}</span>
+                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Mở: {formatVietnamDate(c.start_date)}</span>
+                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Đóng: {formatVietnamDate(c.end_date)}</span>
                       </div>
                       {c.is_active ? (
                         <div className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
@@ -1677,7 +1668,7 @@ export default function PersonnelPage() {
                               <div key={slot.id} className={`p-4 border rounded-2xl flex items-center justify-between transition-colors ${!slot.is_active ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}>
                                 <div className="flex-1 pr-4">
                                   <div className="flex items-center gap-2 mb-1.5">
-                                    <h4 className="font-bold text-secondary text-sm">{format(new Date(slot.casting_time), "dd/MM/yyyy HH:mm")}</h4>
+                                    <h4 className="font-bold text-secondary text-sm">{formatVietnamDate(slot.casting_time)}</h4>
                                     <span className="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-bold text-slate-600">{slot.location}</span>
                                     {!slot.is_active && <span className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-black uppercase">Đã đóng</span>}
                                   </div>
