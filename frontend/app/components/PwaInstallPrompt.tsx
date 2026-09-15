@@ -86,8 +86,11 @@ export default function PwaInstallPrompt() {
 
   return (
     <>
-      {/* BANNER THÔNG BÁO Ở CHÂN MÀN HÌNH */}
-      <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50 animate-in fade-in slide-in-from-bottom-5 duration-300">
+      {/* BANNER THÔNG BÁO Ở CHÂN MÀN HÌNH (iOS Home Indicator Safe Area) */}
+      <div 
+        className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50 animate-in fade-in slide-in-from-bottom-5 duration-300"
+        style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+      >
         <div className="bg-slate-900/95 backdrop-blur-xl border border-primary/40 rounded-2xl p-4 shadow-2xl shadow-primary/20 text-white flex items-center justify-between gap-3.5">
           {/* Logo */}
           <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-primary/20 border border-primary/30 flex-shrink-0 flex items-center justify-center p-1.5 shadow-md">

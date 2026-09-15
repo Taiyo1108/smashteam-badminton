@@ -332,8 +332,11 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* TOP NAVBAR (Glassmorphism + Purple Brand) */}
-      <header className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md border-b border-purple-100 shadow-sm transition-all">
+      {/* TOP NAVBAR (Glassmorphism + Purple Brand + iOS Safe Area Notch Support) */}
+      <header 
+        className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-purple-100 shadow-sm transition-all pt-safe"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-18 flex items-center justify-between gap-3">
           
           {/* LOGO LINK */}
@@ -526,7 +529,7 @@ export default function Home() {
       </header>
 
       {/* BODY CONTENT AREA */}
-      <div className="pt-28 md:pt-22 flex-1 flex flex-col">
+      <div className="pt-[calc(7.25rem+env(safe-area-inset-top,0px))] md:pt-[calc(5.5rem+env(safe-area-inset-top,0px))] flex-1 flex flex-col">
 
         {/* ========================================================================= */}
         {/* TAB 1: GIỚI THIỆU & TUYỂN QUÂN (REDESIGNED SPORTY LANDING)                */}

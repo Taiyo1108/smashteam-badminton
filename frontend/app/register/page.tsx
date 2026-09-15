@@ -146,8 +146,11 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col relative overflow-hidden">
-      {/* Navbar Minimal */}
-      <nav className="absolute top-0 w-full z-50 p-6">
+      {/* Navbar Minimal (iOS Safe Area Notch Support) */}
+      <nav 
+        className="absolute top-0 w-full z-50 px-6 py-4 pt-safe"
+        style={{ paddingTop: "calc(1rem + env(safe-area-inset-top, 0px))" }}
+      >
         <Link href="/" className="flex items-center gap-2 font-bold text-xl text-secondary">
           <ArrowLeft className="w-5 h-5" /> Trở về
         </Link>
@@ -156,7 +159,7 @@ export default function RegisterPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col justify-center items-center p-4 z-10 relative">
         {!isSuccess ? (
-          <div className="w-full max-w-2xl bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 md:p-12 border border-slate-100 mt-16">
+          <div className="w-full max-w-2xl bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 md:p-12 border border-slate-100 mt-[calc(4rem+env(safe-area-inset-top,0px))]">
             {/* Progress Bar */}
             <div className="mb-12">
               <div className="flex justify-between mb-2">
