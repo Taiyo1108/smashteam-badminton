@@ -16,6 +16,7 @@ const shopRoutes = require('./routes/shop');
 const statsRoutes = require('./routes/stats');
 const eventRoutes = require('./routes/events');
 const emailRoutes = require('./routes/emails');
+const rankingRoutes = require('./routes/ranking');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -87,6 +88,7 @@ app.use('/api/shop', shopRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/admin/emails', emailRoutes);
+app.use('/api/ranking', rankingRoutes);
 
 // Base route
 app.get('/', (req, res) => {
