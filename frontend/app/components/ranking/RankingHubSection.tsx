@@ -12,7 +12,7 @@ import PlayerDetailModal from "./PlayerDetailModal";
 import EloExplainModal from "./EloExplainModal";
 
 export default function RankingHubSection() {
-  const [mode, setMode] = useState<'singles' | 'doubles'>('singles');
+  const [mode, setMode] = useState<'singles' | 'doubles'>('doubles');
   const [filter, setFilter] = useState<'all' | 'official' | 'provisional'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [hubData, setHubData] = useState<RankingHubResponse | null>(null);

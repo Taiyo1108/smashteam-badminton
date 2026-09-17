@@ -13,7 +13,7 @@ type Props = {
 type BoardType = "singles" | "doubles";
 
 function LeaderboardSection({ initialSingles, initialDoubles }: Props) {
-  const [type, setType] = useState<BoardType>("singles");
+  const [type, setType] = useState<BoardType>("doubles");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [cache, setCache] = useState<Record<BoardType, LeaderboardPlayer[]>>({

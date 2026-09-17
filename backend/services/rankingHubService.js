@@ -19,8 +19,8 @@ const MIN_MATCHES_FOR_ESTABLISHED_RANK = 3;
  * @param {string|null} [params.currentUserId=null]
  * @returns {Promise<object>}
  */
-async function getRankingHubData({ mode = 'singles', filter = 'all', currentUserId = null }) {
-  const currentMode = mode === 'doubles' ? 'doubles' : 'singles';
+async function getRankingHubData({ mode = 'doubles', filter = 'all', currentUserId = null }) {
+  const currentMode = mode === 'singles' ? 'singles' : 'doubles';
   const currentFilter = ['all', 'official', 'provisional'].includes(filter) ? filter : 'all';
 
   // 1. Fetch current active Season

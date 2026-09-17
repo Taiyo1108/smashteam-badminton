@@ -144,7 +144,7 @@ function SearchablePlayerSelect({
 
 export default function MatchesPage() {
   const [members, setMembers] = useState<any[]>([]);
-  const [isDoubles, setIsDoubles] = useState(false);
+  const [isDoubles, setIsDoubles] = useState(true);
   
   // Player selection states
   const [player1, setPlayer1] = useState("");

@@ -112,7 +112,7 @@ export default function Home() {
     { id: "6", full_name: "Hoàng Văn F", elo_score: 1050, win_rate: 40.0, rank_name: getRankName(1050), total_matches: 4 },
   ]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [leaderboardType, setLeaderboardType] = useState<"singles" | "doubles">("singles");
+  const [leaderboardType, setLeaderboardType] = useState<"singles" | "doubles">("doubles");
 
   // Sessions / Schedule data
   const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);

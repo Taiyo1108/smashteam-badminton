@@ -67,8 +67,8 @@ async function getPlayerProfileStats(userId) {
   const singlesProgression = getNextTierInfo(eloSingles);
   const doublesProgression = getNextTierInfo(eloDoubles);
 
-  // Determine dominant competitive mode based on match count & Elo
-  const preferredMode = matchesDoubles > matchesSingles ? 'doubles' : 'singles';
+  // Determine dominant competitive mode (defaulting to doubles as requested by club)
+  const preferredMode = matchesSingles > matchesDoubles ? 'singles' : 'doubles';
   const dominantProgression = preferredMode === 'doubles' ? doublesProgression : singlesProgression;
   const dominantElo = preferredMode === 'doubles' ? eloDoubles : eloSingles;
 

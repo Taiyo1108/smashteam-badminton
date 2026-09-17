@@ -145,9 +145,8 @@ export default function CompetitivePlayerCard({
   onOpenSettings,
   onOpenShareModal
 }: CompetitiveCardProps) {
-  // Mode selection: default to mode with more matches or doubles
-  const defaultMode = (doubles?.matches || 0) >= (singles?.matches || 0) ? "doubles" : "singles";
-  const [activeMode, setActiveMode] = useState<"singles" | "doubles">(defaultMode);
+  // Mode selection: default to doubles
+  const [activeMode, setActiveMode] = useState<"singles" | "doubles">("doubles");
 
   // Active mode stats
   const currentModeStats = activeMode === "doubles" ? doubles : singles;

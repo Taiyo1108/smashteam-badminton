@@ -31,7 +31,7 @@ function optionalAuth(req, res, next) {
  */
 router.get('/hub', optionalAuth, async (req, res) => {
   try {
-    const mode = req.query.mode || 'singles';
+    const mode = req.query.mode || 'doubles';
     const filter = req.query.filter || 'all';
     const currentUserId = req.user?.id || req.query.userId || null;
 

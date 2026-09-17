@@ -42,9 +42,7 @@ export default function SharePlayerCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [mode, setMode] = useState<"doubles" | "singles">(
-    (doubles?.matches || 0) >= (singles?.matches || 0) ? "doubles" : "singles"
-  );
+  const [mode, setMode] = useState<"doubles" | "singles">("doubles");
 
   if (!isOpen) return null;
 
