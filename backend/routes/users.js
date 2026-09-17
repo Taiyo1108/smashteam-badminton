@@ -194,18 +194,19 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
       params.push(campaign_id);
     }
     const result = await db.query(
-      `SELECT id, casting_slot_id, full_name, phone_zalo, badminton_level, status, is_blocked, 
-              hand_preference, play_style, joined_at, soft_skills, role,
-              elo_singles, elo_doubles, 
-              matches_singles, matches_doubles, 
-              streak_singles, max_streak_singles, 
-              streak_doubles, max_streak_doubles,
-              win_singles, win_doubles, 
-              loss_singles, loss_doubles
+      `SELECT users.id, users.casting_slot_id, users.full_name, users.phone_zalo, users.email, users.badminton_level, users.status, users.is_blocked, 
+              users.hand_preference, users.play_style, users.joined_at, users.soft_skills, users.role,
+              users.elo_singles, users.elo_doubles, 
+              users.matches_singles, users.matches_doubles, 
+              users.streak_singles, users.max_streak_singles, 
+              users.streak_doubles, users.max_streak_doubles, 
+              users.win_singles, users.win_doubles, 
+              users.loss_singles, users.loss_doubles,
+              (users.password_hash IS NOT NULL) AS is_activated
        FROM users 
        ${join}
-       WHERE role IN ('member', 'admin') AND full_name != 'Super Admin' AND phone_zalo != '0999999999'${extraWhere}
-       ORDER BY full_name ASC`,
+       WHERE users.role IN ('member', 'admin') AND users.full_name != 'Super Admin' AND users.phone_zalo != '0999999999'${extraWhere}
+       ORDER BY users.full_name ASC`,
       params
     );
     const rankedMembers = result.rows.map(m => {
@@ -213,6 +214,7 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
       const eloDoubles = m.elo_doubles ?? 1000;
       return {
         ...m,
+        is_activated: Boolean(m.is_activated),
         elo_singles: eloSingles,
         elo_doubles: eloDoubles,
         rank_singles: getRankName(eloSingles),
