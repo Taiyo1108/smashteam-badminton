@@ -13,6 +13,8 @@ import {
 import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
+import CompetitivePlayerCard from "@/app/components/CompetitivePlayerCard";
+import SharePlayerCard from "@/app/components/SharePlayerCard";
 import { formatVietnamDate } from "@/app/utils/date";
 
 export default function ProfilePage() {
@@ -21,6 +23,7 @@ export default function ProfilePage() {
   const [playerData, setPlayerData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatingRsvp, setUpdatingRsvp] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Gamification states
   const [gamProfile, setGamProfile] = useState<any>(null);
@@ -642,14 +645,6 @@ export default function ProfilePage() {
   }
 
   const { player, upcomingSession, attendanceHistory } = playerData;
-  const maxElo = Math.max(player.elo_singles, player.elo_doubles);
-  const rank = getRankConfig(maxElo);
-
-  // Tính % tiến trình lên rank
-  const progressPercent = Math.min(
-    100,
-    Math.max(0, ((maxElo - rank.prevElo) / (rank.nextElo - rank.prevElo)) * 100)
-  );
 
   // Phân tích kỹ năng đóng góp
   let softSkills: string[] = [];
@@ -744,125 +739,25 @@ export default function ProfilePage() {
         {/* LEFT COLUMN: Player Card & Badges */}
         <div className="lg:col-span-1 space-y-8">
           
-          {/* PLAYER CARD */}
-          <div className={`relative overflow-hidden rounded-2xl bg-white border border-slate-200 p-6 ${rank.glowClass} flex flex-col`}>
-            {/* Background glowing gradient overlay */}
-            <div className="absolute top-0 right-0 w-36 h-36 bg-slate-100 rounded-bl-full -z-0 pointer-events-none"></div>
-            
-            {/* Settings Button */}
-            <button
-              onClick={() => setIsSettingsModalOpen(true)}
-              className="absolute top-4 right-4 p-2 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-black hover:border-black/30 hover:scale-115 active:scale-95 transition-all z-20 cursor-pointer shadow-sm"
-              title="Thiết lập tài khoản"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-
-            {/* Rank badge top header */}
-            <div className="flex justify-between items-start relative z-10 mb-6">
-              <span className={`text-[10px] uppercase font-black tracking-widest px-3 py-1 rounded-full ${rank.badgeClass}`}>
-                RANK {rank.name}
-              </span>
-              
-              {/* Streak Badge if >= 3 */}
-              {Math.max(player.streak_singles, player.streak_doubles) >= 3 && (
-                <div className="flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full text-xs font-black animate-pulse">
-                  <Flame className="w-4 h-4 fill-amber-400" />
-                  <span>+{Math.max(player.streak_singles, player.streak_doubles)} STREAK</span>
-                </div>
-              )}
-            </div>
-
-            {/* Avatar & Player Name */}
-            <div className="flex flex-col items-center text-center relative z-10 mb-6">
-              <AvatarWithFrame 
-                avatarUrl={player.avatar_url} 
-                frameStyle={gamProfile?.selected_avatar_frame || player.selected_avatar_frame} 
-                sizeClass="w-24 h-24 mb-4" 
-                alt={player.full_name}
-              />
-              
-              <h2 className="text-2xl font-black text-slate-900 tracking-wide">{player.full_name}</h2>
-              {(player.selected_title || gamProfile?.selected_title) && (
-                <div className="text-[10px] font-black text-amber-400 mt-1 uppercase tracking-widest bg-amber-400/10 px-2.5 py-0.5 rounded border border-amber-400/20">
-                  👑 {player.selected_title || gamProfile?.selected_title}
-                </div>
-              )}
-              
-              <div className="flex items-center gap-1.5 mt-2 text-slate-500">
-                <span className="text-sm font-medium italic">
-                  {player.nickname ? `"${player.nickname}"` : "Chưa đặt biệt danh"}
-                </span>
-              </div>
-
-              {/* Stats badges inside card */}
-              <div className="flex items-center gap-3.5 mt-3.5 bg-slate-50 px-4 py-2 rounded-full border border-slate-200 text-xs">
-                <div className="flex items-center gap-1 font-bold text-amber-500">
-                  <Coins className="w-4 h-4 text-amber-500" /> {gamProfile?.smash_coins ?? 0} xu
-                </div>
-                <div className="w-px h-3.5 bg-slate-200" />
-                <div className="flex items-center gap-1 font-bold text-orange-500">
-                  <Flame className="w-4 h-4 text-orange-500 animate-pulse" /> {gamProfile?.current_streak ?? 0} ngày
-                </div>
-                <div className="w-px h-3.5 bg-slate-200" />
-                <div className="flex items-center gap-1 font-bold text-indigo-400">
-                  <Shield className="w-4 h-4 text-indigo-400" /> {gamProfile?.streak_shields ?? 0} khiên
-                </div>
-              </div>
-            </div>
-
-            {/* Elo Scores Table */}
-            <div className="grid grid-cols-2 gap-4 relative z-10 border-t border-slate-200 pt-6 mb-6">
-              <div className="text-center p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Đấu Đơn</span>
-                <p className="text-2xl font-black text-black mt-1">{player.elo_singles}</p>
-                <p className="text-[9px] text-slate-500 mt-1">Win rate: {parseFloat(player.win_rate_singles).toFixed(1)}%</p>
-                <p className="text-[9px] text-slate-600">Trận: {player.matches_singles} ({player.win_singles}T - {player.loss_singles}B)</p>
-              </div>
-
-              <div className="text-center p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Đấu Đôi</span>
-                <p className="text-2xl font-black text-black mt-1">{player.elo_doubles}</p>
-                <p className="text-[9px] text-slate-500 mt-1">Win rate: {parseFloat(player.win_rate_doubles).toFixed(1)}%</p>
-                <p className="text-[9px] text-slate-600">Trận: {player.matches_doubles} ({player.win_doubles}T - {player.loss_doubles}B)</p>
-              </div>
-            </div>
-
-            {/* Level & Rank Progress */}
-            <div className="relative z-10 space-y-4">
-              {/* Level XP Bar */}
-              <div>
-                <div className="flex justify-between text-[10px] text-slate-500 font-bold mb-1.5 uppercase">
-                  <span>Cấp độ {gamProfile?.level ?? 1}</span>
-                  <span>{gamProfile?.xp ?? 0} / {gamProfile?.xp_needed ?? 80} XP</span>
-                </div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
-                  <div 
-                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-                    style={{ width: `${gamProfile ? Math.min(100, (gamProfile.xp / gamProfile.xp_needed) * 100) : 0}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Rank ELO Bar */}
-              <div>
-                <div className="flex justify-between text-[10px] text-slate-500 font-bold mb-1.5 uppercase">
-                  <span>Rank ELO {maxElo}</span>
-                  <span>Mục tiêu {rank.nextElo}</span>
-                </div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
-                  <div 
-                    className="h-full bg-black rounded-full transition-all duration-1000"
-                    style={{ width: `${progressPercent}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between mt-1.5 text-[9px] text-slate-500">
-                  <span>Học vấn: {player.academic_info || "Chưa đặt"}</span>
-                  <span>Cần thêm {Math.max(0, rank.nextElo - maxElo)} ELO</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* COMPETITIVE PLAYER CARD */}
+          <CompetitivePlayerCard
+            player={playerData.player}
+            singles={playerData.singles}
+            doubles={playerData.doubles}
+            overall={playerData.overall}
+            progression={playerData.progression}
+            achievements={playerData.achievements}
+            streak={playerData.streak}
+            title={playerData.title}
+            meta={playerData.meta || {
+              level: gamProfile?.level ?? 1,
+              xp: gamProfile?.xp ?? 0,
+              smashCoins: gamProfile?.smash_coins ?? 0,
+              dailyStreak: gamProfile?.current_streak ?? 0
+            }}
+            onOpenSettings={() => setIsSettingsModalOpen(true)}
+            onOpenShareModal={() => setIsShareModalOpen(true)}
+          />
 
           {/* BADGES WIDGET */}
           <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
@@ -1835,6 +1730,18 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* SHARE PLAYER CARD MODAL */}
+      <SharePlayerCard
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        player={playerData.player}
+        singles={playerData.singles}
+        doubles={playerData.doubles}
+        achievements={playerData.achievements}
+        streak={playerData.streak}
+        title={playerData.title}
+      />
 
       <footer className="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-xs">
         <p>© {new Date().getFullYear()} SmashTeam Badminton Club. All rights reserved.</p>

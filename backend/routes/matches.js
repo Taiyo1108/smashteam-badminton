@@ -125,6 +125,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       // Xác định tên cột dựa trên thể thức
       const matches_col = isDoubles ? 'matches_doubles' : 'matches_singles';
       const elo_col = isDoubles ? 'elo_doubles' : 'elo_singles';
+      const peak_col = isDoubles ? 'peak_elo_doubles' : 'peak_elo_singles';
       const win_col = isDoubles ? 'win_doubles' : 'win_singles';
       const loss_col = isDoubles ? 'loss_doubles' : 'loss_singles';
       const win_rate_col = isDoubles ? 'win_rate_doubles' : 'win_rate_singles';
@@ -153,6 +154,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       await db.query(
         `UPDATE users 
          SET ${elo_col} = $1, 
+             ${peak_col} = GREATEST(COALESCE(${peak_col}, 1000), $1),
              ${matches_col} = $2,
              ${win_col} = $3,
              ${loss_col} = $4,
@@ -186,12 +188,16 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const matchResult = await db.query(
       `INSERT INTO matches (
         player1_id, player2_id, player1_partner_id, player2_partner_id, winner_id, 
-        score_p1, score_p2, p1_elo_before, p2_elo_before, p1_elo_after, p2_elo_after, elo_exchanged
+        score_p1, score_p2, p1_elo_before, p2_elo_before, p1_elo_after, p2_elo_after, 
+        p1_partner_elo_before, p2_partner_elo_before, p1_partner_elo_after, p2_partner_elo_after,
+        elo_exchanged
       ) 
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
       [
         player1_id, player2_id, player1_partner_id || null, player2_partner_id || null, winner_id,
-        score_p1, score_p2, elo1, elo2, elo1New, elo2New, eloExchanged
+        score_p1, score_p2, elo1, elo2, elo1New, elo2New,
+        elo1_p, elo2_p, elo1_partnerNew, elo2_partnerNew,
+        eloExchanged
       ]
     );
 

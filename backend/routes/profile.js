@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
+const { getPlayerProfileStats } = require('../services/playerStatsService');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const { cloudinary } = require('../utils/cloudinary');
@@ -165,8 +166,22 @@ router.get('/me', authenticateToken, async (req, res) => {
     );
     const attendanceHistory = attendanceHistoryRes.rows;
 
+    // 5. Fetch comprehensive competitive stats & achievements from playerStatsService
+    const stats = await getPlayerProfileStats(userId);
+
     res.json({
-      player,
+      player: {
+        ...player,
+        ...(stats?.player || {})
+      },
+      singles: stats?.singles || null,
+      doubles: stats?.doubles || null,
+      overall: stats?.overall || null,
+      progression: stats?.progression || null,
+      achievements: stats?.achievements || [],
+      streak: stats?.streak || null,
+      title: stats?.title || null,
+      meta: stats?.meta || null,
       matches: formattedMatches,
       upcomingSession,
       attendanceHistory
