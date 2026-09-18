@@ -203,26 +203,52 @@ async function getRankingHubData({ mode = 'doubles', filter = 'all', currentUser
   // 9. Extract My Position if user is authenticated
   let myPosition = null;
   if (currentUserId) {
-    const myIndex = allRankedPlayers.findIndex(p => p.user.id === currentUserId);
+    const myIndex = allRankedPlayers.findIndex(p => String(p.user?.id) === String(currentUserId));
     if (myIndex !== -1) {
       const myItem = allRankedPlayers[myIndex];
       myPosition = {
-        rank: myItem.rank,
-        movement: myItem.movement,
-        rankChange: myItem.rankChange,
-        elo: myItem.elo,
-        peakElo: myItem.peakElo,
-        tier: myItem.tier,
-        matches: myItem.matches,
-        wins: myItem.wins,
-        losses: myItem.losses,
-        winRate: myItem.winRate,
-        isProvisional: myItem.isProvisional,
-        isTopOne: myItem.isTopOne,
-        gapToNext: myItem.gapToNext,
-        targetPlayer: myItem.targetPlayer,
-        gapCopy: myItem.gapCopy
+        ...myItem
       };
+    } else {
+      // User is authenticated but not in the active ranked list (e.g. newly created or special account)
+      try {
+        const userRes = await db.query(
+          "SELECT id, full_name, nickname, avatar_url, selected_avatar_frame, selected_title, badminton_level, role, academic_info FROM users WHERE id = $1",
+          [currentUserId]
+        );
+        if (userRes.rows.length > 0) {
+          const u = userRes.rows[0];
+          const tier = getTierByElo(1000);
+          myPosition = {
+            rank: allRankedPlayers.length + 1,
+            movement: 'NEW',
+            rankChange: 0,
+            previousRank: null,
+            user: u,
+            elo: 1000,
+            peakElo: 1000,
+            tier: tier.name,
+            tierLabel: tier.label,
+            badgeClass: tier.badgeClass,
+            glowClass: tier.glowClass,
+            borderClass: tier.borderClass,
+            matches: 0,
+            wins: 0,
+            losses: 0,
+            winRate: 0,
+            streak: 0,
+            maxStreak: 0,
+            isProvisional: true,
+            provisionalThreshold: MIN_MATCHES_FOR_ESTABLISHED_RANK,
+            isTopOne: false,
+            gapToNext: 0,
+            targetPlayer: null,
+            gapCopy: 'Chưa có trận đấu chính thức'
+          };
+        }
+      } catch (err) {
+        console.error('Error fetching fallback user for myPosition:', err);
+      }
     }
   }
 

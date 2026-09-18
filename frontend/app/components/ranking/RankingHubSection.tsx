@@ -23,13 +23,31 @@ export default function RankingHubSection() {
   const fetchRankingData = useCallback(async () => {
     setLoading(true);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const token = typeof window !== 'undefined' 
+        ? (localStorage.getItem('admin_token') || localStorage.getItem('token'))
+        : null;
+
+      const storedUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      let userId = null;
+      if (storedUser) {
+        try {
+          const parsed = JSON.parse(storedUser);
+          userId = parsed.id || null;
+        } catch (e) {}
+      }
+
       const headers: Record<string, string> = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const res = await fetch(`${API_URL}/api/ranking/hub?mode=${mode}&filter=${filter}`, {
+      const urlParams = new URLSearchParams({
+        mode,
+        filter,
+        ...(userId ? { userId } : {})
+      });
+
+      const res = await fetch(`${API_URL}/api/ranking/hub?${urlParams.toString()}`, {
         headers
       });
 

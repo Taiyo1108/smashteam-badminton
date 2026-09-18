@@ -30,6 +30,8 @@ export default function UnifiedLogin() {
         const data = await res.json();
         // Save token and role
         localStorage.setItem("admin_token", data.token); // using admin_token for compatibility with existing codebase
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
         localStorage.setItem("user_role", data.user.role);
         
         // Redirect based on role or redirect parameter
