@@ -113,6 +113,11 @@ router.post('/buy', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: `Yêu cầu Cấp độ ${item.level_required} trở lên để mua vật phẩm này (Cấp hiện tại của bạn: ${user.level}).` });
     }
 
+    // Chặn mua khung avatar (tính năng đã ngừng phát hành)
+    if (item.category === 'avatar_frame' || (item.name && item.name.toLowerCase().includes('khung'))) {
+      return res.status(400).json({ error: 'Vật phẩm khung viền đã ngừng phát hành.' });
+    }
+
     // 4. Kiểm tra giới hạn mua tối đa của mỗi người
     const ownedRes = await client.query(
       `SELECT COUNT(*)::int AS count FROM user_inventory 
@@ -154,14 +159,12 @@ router.post('/buy', authenticateToken, async (req, res) => {
     let couponCode = null;
 
     if (item.item_type === 'virtual') {
-      if (item.name.toLowerCase().includes('khung') || item.name.toLowerCase().includes('avatar')) {
-        invItemType = 'avatar_frame';
-        invItemValue = 'glory-neon';
-      } else if (item.name.toLowerCase().includes('danh hiệu') || item.name.toLowerCase().includes('title') || item.name.toLowerCase().includes('smash king')) {
+      if (item.name.toLowerCase().includes('danh hiệu') || item.name.toLowerCase().includes('title') || item.name.toLowerCase().includes('smash king')) {
         invItemType = 'title';
-        invItemValue = 'Smash King';
+        invItemValue = item.name.replace(/danh hiệu\s*:?/i, '').trim() || 'Smash King';
       } else {
         invItemType = 'virtual';
+        invItemValue = item.name;
       }
     } else {
       // Quà vật lý -> Sinh mã Coupon thông minh dựa theo category
@@ -310,7 +313,7 @@ router.put('/redemptions/:id/deliver', authenticateToken, isAdmin, async (req, r
   }
 });
 
-// POST /api/shop/mystery-box - Mở hộp quà bí ẩn hàng ngày (Daily Box, Cooldown 24h)
+// POST /api/shop/mystery-box - Mở hộp quà bí ẩn hàng tuần (Weekly Box, Cooldown 168h = 7 ngày)
 router.post('/mystery-box', authenticateToken, async (req, res) => {
   const userId = req.user.id;
 
@@ -318,7 +321,7 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Kiểm tra Cooldown 24h
+    // 1. Kiểm tra Cooldown 168h (7 ngày = 1 tuần)
     const lastClaimRes = await client.query(
       `SELECT purchased_at FROM user_inventory
        WHERE user_id = $1 AND item_type = 'mystery_box_claim'
@@ -332,26 +335,34 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
       const diffMs = now.getTime() - lastClaim.getTime();
       const diffHours = diffMs / (1000 * 60 * 60);
 
-      if (diffHours < 24) {
-        const remainingHours = Math.ceil(24 - diffHours);
+      if (diffHours < 168) {
+        const remainingHoursTotal = Math.ceil(168 - diffHours);
+        const remDays = Math.floor(remainingHoursTotal / 24);
+        const remHours = remainingHoursTotal % 24;
+        const timeStr = remDays > 0 
+          ? (remHours > 0 ? `${remDays} ngày ${remHours} giờ` : `${remDays} ngày`)
+          : `${remainingHoursTotal} giờ`;
+
         return res.status(400).json({ 
-          error: `Hộp quà đang trong thời gian chờ. Vui lòng quay lại sau ${remainingHours} giờ!` 
+          error: `Hộp quà bí ẩn đang trong thời gian chờ (mở 1 lần mỗi tuần). Vui lòng quay lại sau ${timeStr}!`,
+          remainingHours: remainingHoursTotal,
+          remainingMs: (168 * 3600 * 1000) - diffMs
         });
       }
     }
 
-    // 2. Quay thưởng ngẫu nhiên
-    // 70% -> Smash Coins (10-30), 20% -> Streak Shield (1-2), 10% -> Khung Avatar Vinh Quang (7 Ngày)
+    // 2. Quay thưởng ngẫu nhiên (Đã loại bỏ vật phẩm khung)
+    // 75% -> Smash Coins (20-50 xu), 25% -> Streak Shield (1-2 khiên)
     const rand = Math.random() * 100;
     let rewardType = '';
     let rewardName = '';
     let rewardValue = '';
     let expiresAt = null;
 
-    if (rand < 70) {
-      // 70% -> Coins
+    if (rand < 75) {
+      // 75% -> Coins
       rewardType = 'coins';
-      const coinsAwarded = Math.floor(Math.random() * 21) + 10; // 10 to 30
+      const coinsAwarded = Math.floor(Math.random() * 31) + 20; // 20 to 50
       rewardName = `${coinsAwarded} Smash Coins`;
       rewardValue = coinsAwarded.toString();
       
@@ -359,8 +370,8 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
         `UPDATE users SET smash_coins = smash_coins + $1 WHERE id = $2`,
         [coinsAwarded, userId]
       );
-    } else if (rand < 90) {
-      // 20% -> Streak Shield
+    } else {
+      // 25% -> Streak Shield
       rewardType = 'streak_shield';
       const shieldsAwarded = Math.floor(Math.random() * 2) + 1; // 1 to 2
       rewardName = `${shieldsAwarded} Khiên bảo vệ chuỗi`;
@@ -370,29 +381,13 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
         `UPDATE users SET streak_shields = streak_shields + $1 WHERE id = $2`,
         [shieldsAwarded, userId]
       );
-    } else {
-      // 10% -> Khung Avatar Vinh Quang 7 ngày
-      rewardType = 'avatar_frame';
-      rewardName = 'Khung Avatar Vinh Quang (7 Ngày)';
-      rewardValue = 'glory-neon';
-      
-      // Có thời hạn 7 ngày
-      const sevenDays = new Date();
-      sevenDays.setDate(sevenDays.getDate() + 7);
-      expiresAt = sevenDays;
-
-      await client.query(
-        `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, is_equipped, expires_at)
-         VALUES ($1, $2, $3, $4, false, $5)`,
-        [userId, rewardType, rewardName, rewardValue, expiresAt]
-      );
     }
 
     // 3. Ghi nhận claim vào inventory để giữ cooldown
     await client.query(
       `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, purchased_at)
        VALUES ($1, 'mystery_box_claim', $2, $3, NOW())`,
-      [userId, `Hộp quà hàng ngày (${rewardType})`, rewardValue]
+      [userId, `Hộp quà hàng tuần (${rewardType})`, rewardValue]
     );
 
     await client.query('COMMIT');

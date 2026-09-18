@@ -304,11 +304,11 @@ router.get('/inventory', async (req, res) => {
       [userId]
     );
 
-    // Lọc bỏ các bản ghi legacy (tính năng SmashPass cũ đã gỡ) và các vật phẩm đã hết hạn
+    // Lọc bỏ các bản ghi legacy (tính năng SmashPass cũ đã gỡ), avatar_frame (đã gỡ bỏ) và các vật phẩm đã hết hạn
     const inventoryRes = await db.query(
       `SELECT id, item_type, item_name, item_value, is_equipped, acquired_at, coupon_code, status, redeemed_at, expires_at 
        FROM user_inventory 
-       WHERE user_id = $1 AND item_type != 'smash_pass_reward_level' AND (expires_at IS NULL OR expires_at > NOW())
+       WHERE user_id = $1 AND item_type != 'smash_pass_reward_level' AND item_type != 'avatar_frame' AND (expires_at IS NULL OR expires_at > NOW())
        ORDER BY acquired_at DESC`,
       [userId]
     );
@@ -320,7 +320,7 @@ router.get('/inventory', async (req, res) => {
   }
 });
 
-// POST /api/gamification/inventory/:id/equip - Trang bị vật phẩm (khung viền, danh hiệu)
+// POST /api/gamification/inventory/:id/equip - Trang bị danh hiệu
 router.post('/inventory/:id/equip', async (req, res) => {
   const userId = req.user.id;
   const itemId = req.params.id;
@@ -341,7 +341,11 @@ router.post('/inventory/:id/equip', async (req, res) => {
 
     const item = itemRes.rows[0];
 
-    if (!['avatar_frame', 'title'].includes(item.item_type)) {
+    if (item.item_type === 'avatar_frame') {
+      throw new Error('Vật phẩm khung viền đã ngừng hỗ trợ.');
+    }
+
+    if (item.item_type !== 'title') {
       throw new Error('Loại vật phẩm này không thể trang bị.');
     }
 
@@ -358,16 +362,15 @@ router.post('/inventory/:id/equip', async (req, res) => {
     );
 
     // 4. Đồng bộ vào bảng users
-    const userField = item.item_type === 'avatar_frame' ? 'selected_avatar_frame' : 'selected_title';
     await client.query(
-      `UPDATE users SET ${userField} = $1 WHERE id = $2`,
+      `UPDATE users SET selected_title = $1 WHERE id = $2`,
       [item.item_value, userId]
     );
 
     await client.query('COMMIT');
     res.json({
       success: true,
-      message: `Đã trang bị ${item.item_name} thành công.`,
+      message: `Đã trang bị danh hiệu "${item.item_name}" thành công.`,
       item_type: item.item_type,
       item_value: item.item_value
     });
@@ -379,7 +382,7 @@ router.post('/inventory/:id/equip', async (req, res) => {
   }
 });
 
-// POST /api/gamification/inventory/:id/unequip - Hủy trang bị vật phẩm
+// POST /api/gamification/inventory/:id/unequip - Hủy trang bị danh hiệu
 router.post('/inventory/:id/unequip', async (req, res) => {
   const userId = req.user.id;
   const itemId = req.params.id;
@@ -407,11 +410,12 @@ router.post('/inventory/:id/unequip', async (req, res) => {
     );
 
     // 3. Đồng bộ bảng users
-    const userField = item.item_type === 'avatar_frame' ? 'selected_avatar_frame' : 'selected_title';
-    await client.query(
-      `UPDATE users SET ${userField} = NULL WHERE id = $1`,
-      [userId]
-    );
+    if (item.item_type === 'title') {
+      await client.query(
+        `UPDATE users SET selected_title = NULL WHERE id = $1`,
+        [userId]
+      );
+    }
 
     await client.query('COMMIT');
     res.json({

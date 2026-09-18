@@ -262,10 +262,14 @@ export default function ProfilePage() {
       const data = await res.json();
       if (res.ok) {
         setMysteryBoxReward(data.reward);
+        setBoxCooldown(168 * 3600); // 7 ngày = 168 giờ
         showToast(data.message || "Mở hộp quà thành công!", "success");
         await fetchGamificationData();
         await fetchProfileData();
       } else {
+        if (data.remainingMs) {
+          setBoxCooldown(Math.ceil(data.remainingMs / 1000));
+        }
         showToast(data.error || "Lỗi khi mở hộp quà.", "error");
       }
     } catch (e) {
@@ -285,14 +289,14 @@ export default function ProfilePage() {
     return () => clearInterval(timer);
   }, [cooldownActive]);
 
-  // Tính cooldown từ inventory — chỉ nạp khi chưa có countdown đang chạy
+  // Tính cooldown từ inventory (168 giờ = 7 ngày = 1 tuần) — chỉ nạp khi chưa có countdown đang chạy
   useEffect(() => {
     if (boxCooldown !== null || inventory.length === 0) return;
     const claims = inventory.filter(i => i.item_type === 'mystery_box_claim');
     if (claims.length === 0) return;
     const diffHours = (Date.now() - new Date(claims[0].acquired_at).getTime()) / (1000 * 60 * 60);
-    if (diffHours < 24) {
-      setBoxCooldown(Math.ceil((24 - diffHours) * 60 * 60));
+    if (diffHours < 168) {
+      setBoxCooldown(Math.ceil((168 - diffHours) * 60 * 60));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory]);
@@ -946,6 +950,10 @@ export default function ProfilePage() {
             {activeGamTab === "inventory" && (() => {
               const filteredAndSortedInventory = inventory
                 .filter((item: any) => {
+                  // Bỏ mystery_box_claim (tracking) và avatar_frame (đã gỡ bỏ)
+                  if (item.item_type === "mystery_box_claim" || item.item_type === "avatar_frame") {
+                    return false;
+                  }
                   if (inventorySubTab === "physical") {
                     return item.item_type === "physical";
                   } else {
@@ -984,7 +992,7 @@ export default function ProfilePage() {
                           : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
-                      Trang bị (Danh hiệu, Khung...)
+                      Trang bị (Danh hiệu...)
                     </button>
                   </div>
 
@@ -997,7 +1005,7 @@ export default function ProfilePage() {
                       <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">
                         {inventorySubTab === "physical" 
                           ? "Hãy tích cực thi đấu, tích lũy xu để đổi những phần quà vật lý hấp dẫn tại Cửa hàng!"
-                          : "Hoàn thành nhiệm vụ và mở hộp quà mỗi ngày để sưu tầm thêm danh hiệu và khung viền độc quyền nhé!"}
+                          : "Hoàn thành nhiệm vụ và mở hộp quà mỗi tuần để sưu tầm thêm danh hiệu độc quyền nhé!"}
                       </p>
                     </div>
                   ) : (
@@ -1006,7 +1014,7 @@ export default function ProfilePage() {
                         const isEquipped = item.is_equipped;
                         const isPhysical = item.item_type === 'physical';
                         const isRedeemed = item.status === 'redeemed';
-                        const canEquip = ['avatar_frame', 'title'].includes(item.item_type);
+                        const canEquip = item.item_type === 'title';
                         
                         if (isPhysical) {
                           return (
@@ -1063,12 +1071,8 @@ export default function ProfilePage() {
                           }`}>
                             <div>
                               <div className="flex items-center justify-between mb-2">
-                                <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                                  item.item_type === 'avatar_frame'
-                                    ? "bg-black/5 text-black border border-slate-200"
-                                    : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                                }`}>
-                                  {item.item_type === 'avatar_frame' ? 'Khung Viền' : 'Danh hiệu'}
+                                <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                  Danh hiệu
                                 </span>
                                 {isEquipped && (
                                   <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
@@ -1152,7 +1156,7 @@ export default function ProfilePage() {
             {activeGamTab === "shop" && (
               <div className="space-y-6">
                 
-                {/* 1. Hộp quà bí ẩn hàng ngày (Daily Mystery Box) */}
+                {/* 1. Hộp quà bí ẩn hàng tuần (Weekly Mystery Box) */}
                 <div className="p-5 rounded-2xl bg-white border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-slate-100 rounded-full filter blur-2xl pointer-events-none"></div>
                   
@@ -1162,25 +1166,27 @@ export default function ProfilePage() {
                     </div>
                     <div>
                       <h4 className="text-base font-black text-slate-900 tracking-wide flex items-center justify-center sm:justify-start gap-1.5">
-                        Hộp Quà Bí Ẩn Hàng Ngày <span className="text-[10px] bg-amber-400/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-400/20 font-black uppercase">Free</span>
+                        Hộp Quà Bí Ẩn Hàng Tuần <span className="text-[10px] bg-amber-400/10 text-amber-500 px-1.5 py-0.5 rounded border border-amber-400/20 font-black uppercase">Mỗi 7 ngày</span>
                       </h4>
-                      <p className="text-xs text-slate-500 mt-1">Mỗi ngày mở 1 lần để có cơ hội nhận Xu, Khiên hoặc Khung avatar hiếm!</p>
+                      <p className="text-xs text-slate-500 mt-1">Mỗi tuần mở 1 lần để có cơ hội nhận lượng lớn Smash Coins hoặc Khiên bảo vệ chuỗi!</p>
                       
                       {/* Tỉ lệ mở hộp quà */}
                       <div className="flex gap-4 mt-2 text-[10px] text-slate-500 font-bold justify-center sm:justify-start">
-                        <span>💰 70% Xu (10-30)</span>
-                        <span>🛡️ 20% Khiên</span>
-                        <span>👑 10% Khung VIP</span>
+                        <span>💰 75% Xu (20-50)</span>
+                        <span>🛡️ 25% Khiên Bảo Vệ</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="shrink-0 w-full sm:w-auto text-center">
                     {boxCooldown !== null ? (() => {
-                      const h = Math.floor(boxCooldown / 3600);
+                      const d = Math.floor(boxCooldown / 86400);
+                      const h = Math.floor((boxCooldown % 86400) / 3600);
                       const m = Math.floor((boxCooldown % 3600) / 60);
                       const s = boxCooldown % 60;
-                      const timeStr = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+                      const timeStr = d > 0 
+                        ? `${d} ngày ${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+                        : `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
                       return (
                         <div className="flex flex-col items-center gap-1">
                           <span className="text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl">
@@ -1209,9 +1215,7 @@ export default function ProfilePage() {
                       <h4 className="text-lg font-black text-slate-900">Bạn Đã Nhận Được Quà!</h4>
                       <p className="text-base font-black text-amber-400 mt-2">{mysteryBoxReward.name}</p>
                       <p className="text-xs text-slate-500 mt-2">
-                        {mysteryBoxReward.type === 'avatar_frame' 
-                          ? 'Vật phẩm đã được thêm vào Kho đồ của bạn với thời hạn sử dụng 7 ngày.' 
-                          : 'Phần thưởng đã được cộng trực tiếp vào tài khoản.'}
+                        Phần thưởng đã được cộng trực tiếp vào tài khoản của bạn.
                       </p>
                       <button
                         onClick={() => setMysteryBoxReward(null)}
