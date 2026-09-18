@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Search, TrendingUp, TrendingDown, Minus, Sparkles, Target, Award, ShieldAlert } from "lucide-react";
+import Link from "next/link";
+import { Search, TrendingUp, TrendingDown, Minus, Sparkles, Target, Award, ShieldAlert, User } from "lucide-react";
 import AvatarWithFrame from "../AvatarWithFrame";
 import { RankedPlayer } from "./types";
 
@@ -12,6 +13,7 @@ interface RankingTableProps {
   onSelectPlayer: (player: RankedPlayer) => void;
   mode: 'singles' | 'doubles';
   filter: 'all' | 'official' | 'provisional';
+  myPosition?: RankedPlayer | null;
 }
 
 export default function RankingTable({
@@ -20,7 +22,8 @@ export default function RankingTable({
   onSearchChange,
   onSelectPlayer,
   mode,
-  filter
+  filter,
+  myPosition
 }: RankingTableProps) {
   const filteredRankings = rankings.filter(p => {
     const q = searchQuery.toLowerCase().trim();
@@ -199,6 +202,109 @@ export default function RankingTable({
           </div>
         )}
       </div>
+
+      {/* ================= Ô HẠNG CỦA BẠN (DƯỚI CÙNG BẢNG XẾP HẠNG) ================= */}
+      {myPosition ? (
+        <div className="pt-3 border-t-2 border-dashed border-purple-200">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-xs font-black uppercase tracking-wider text-purple-800 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+              <span>Hạng của bạn ({mode === 'doubles' ? 'Đôi' : 'Đơn'})</span>
+            </span>
+            <span className="text-[11px] text-purple-600 font-bold hidden sm:inline">
+              Chạm để xem chi tiết
+            </span>
+          </div>
+
+          <div
+            onClick={() => onSelectPlayer(myPosition)}
+            className="flex items-center justify-between p-3 sm:p-4 rounded-2xl bg-gradient-to-r from-purple-950 via-indigo-950 to-slate-900 text-white shadow-md border-2 border-purple-400/50 hover:border-amber-400/70 transition-all cursor-pointer group"
+          >
+            {/* Left: Rank + Avatar + Identity */}
+            <div className="flex items-center gap-2.5 sm:gap-4 min-w-0 flex-1 mr-2 sm:mr-4">
+              <div className="flex flex-col items-center justify-center shrink-0 w-10">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black tabular-nums bg-gradient-to-tr from-amber-400 to-yellow-300 text-amber-950 shadow-sm">
+                  #{myPosition.rank}
+                </div>
+                <div className="mt-1">
+                  {renderMovementBadge(myPosition)}
+                </div>
+              </div>
+
+              <div className="shrink-0">
+                <AvatarWithFrame
+                  avatarUrl={myPosition.user.avatar_url || ""}
+                  frameStyle={myPosition.user.selected_avatar_frame}
+                  sizeClass="w-11 h-11 sm:w-12 sm:h-12"
+                  alt={myPosition.user.full_name}
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="font-black text-white group-hover:text-amber-300 transition-colors text-sm sm:text-base truncate">
+                    {myPosition.user.full_name}
+                  </p>
+                  <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-400 text-amber-950 shrink-0">
+                    BẠN
+                  </span>
+                  <span className={`text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded shadow-xs shrink-0 ${myPosition.badgeClass}`}>
+                    {myPosition.tier}
+                  </span>
+                  {myPosition.isProvisional && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-300 border border-amber-400/30 shrink-0">
+                      Tạm thời ({myPosition.matches}/3)
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 mt-1 text-[11px] text-purple-200/80 flex-wrap">
+                  <span className="tabular-nums font-semibold text-amber-300">
+                    {myPosition.winRate.toFixed(1)}% Thắng
+                  </span>
+                  <span>•</span>
+                  <span className="tabular-nums">
+                    {myPosition.matches} trận ({myPosition.wins}T - {myPosition.losses}B)
+                  </span>
+                </div>
+
+                <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-300 font-bold truncate">
+                  <Target className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="truncate">{myPosition.gapCopy}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: ELO */}
+            <div className="text-right shrink-0">
+              <p className="font-black text-lg sm:text-2xl text-amber-400 group-hover:text-yellow-300 transition-colors tabular-nums">
+                {myPosition.elo}
+              </p>
+              <p className="text-[10px] uppercase font-bold text-purple-200 tracking-wider">
+                Điểm ELO
+              </p>
+              <p className="text-[9px] text-purple-300/80 font-medium tabular-nums hidden sm:block">
+                Đỉnh: {myPosition.peakElo}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="pt-3 border-t border-slate-100">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-purple-50/70 border border-purple-100/80 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-purple-950 font-medium">
+              <User className="w-4 h-4 text-purple-600 shrink-0" />
+              <span>Đăng nhập để xem thứ hạng và điểm ELO của bạn</span>
+            </div>
+            <Link
+              href="/login"
+              className="px-3.5 py-1.5 rounded-xl bg-primary text-white text-xs font-bold shrink-0 hover:bg-primary/90 transition-colors shadow-xs"
+            >
+              Đăng nhập
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -60,7 +60,7 @@ export default function RankingHubSection() {
   };
 
   return (
-    <div className="space-y-6 sm:space-y-8 animate-fade-in">
+    <div className="space-y-6 sm:space-y-8 animate-fade-in pb-20 sm:pb-8">
       {/* ================= HEADER & CONTROLS ================= */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-purple-100/80 pb-6">
         <div>
@@ -194,6 +194,7 @@ export default function RankingHubSection() {
             onSelectPlayer={(p) => setSelectedPlayer(p)}
             mode={mode}
             filter={filter}
+            myPosition={hubData.myPosition}
           />
 
           {/* 4. RANK TIERS LEGEND */}

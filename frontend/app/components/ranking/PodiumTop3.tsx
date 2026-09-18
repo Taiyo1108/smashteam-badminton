@@ -75,16 +75,16 @@ export default function PodiumTop3({
   };
 
   return (
-    <div className="bg-gradient-to-b from-purple-50/60 via-white to-white rounded-3xl p-5 sm:p-8 border border-purple-100/80 shadow-sm relative overflow-hidden">
+    <div className="bg-gradient-to-b from-purple-50/60 via-white to-white rounded-3xl p-3.5 sm:p-8 border border-purple-100/80 shadow-sm relative overflow-hidden">
       {/* Center Subtitle */}
-      <div className="text-center mb-6 sm:mb-8">
+      <div className="text-center mb-5 sm:mb-8">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100/70 border border-amber-300/80 text-amber-900 text-xs font-black uppercase tracking-wider">
           <Trophy className="w-3.5 h-3.5 text-amber-600" />
           <span>Bục Vinh Quang Top 3 • {mode === 'doubles' ? 'Đôi' : 'Đơn'}</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-6 items-end max-w-2xl mx-auto pt-4 pb-2">
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-6 items-end max-w-2xl mx-auto pt-2 sm:pt-4 pb-2">
         {/* ================= 2ND PLACE (SILVER) ================= */}
         {p2 ? (
           <div 
@@ -95,26 +95,29 @@ export default function PodiumTop3({
               <AvatarWithFrame
                 avatarUrl={p2.user.avatar_url || ""}
                 frameStyle={p2.user.selected_avatar_frame}
-                sizeClass="w-16 h-16 sm:w-20 sm:h-20"
+                sizeClass="w-14 h-14 sm:w-20 sm:h-20"
                 alt={p2.user.full_name}
               />
-              <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-slate-200 border border-slate-300 text-slate-700 text-[10px] font-black uppercase shadow-xs">
+              <span className="absolute -bottom-2 sm:-bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 sm:px-2 py-0.2 sm:py-0.5 rounded-full bg-slate-200 border border-slate-300 text-slate-700 text-[9px] sm:text-[10px] font-black uppercase shadow-xs">
                 #2
               </span>
             </div>
 
-            <div className="text-center mt-4 w-full px-1">
-              <p className="text-xs sm:text-sm font-bold text-slate-800 truncate group-hover:text-primary transition-colors">
+            <div className="text-center mt-3 sm:mt-4 w-full px-0.5 sm:px-1">
+              <p 
+                title={p2.user.full_name}
+                className="text-[11px] sm:text-sm font-bold text-slate-800 line-clamp-2 leading-tight group-hover:text-primary transition-colors break-words min-h-[2.1rem] sm:min-h-0 flex items-center justify-center text-center"
+              >
                 {p2.user.full_name}
               </p>
-              <div className="flex items-center justify-center gap-1.5 mt-0.5">
-                <p className="text-xs sm:text-sm font-black text-primary tabular-nums">
+              <div className="flex items-center justify-center gap-1 sm:gap-1.5 mt-0.5 flex-wrap">
+                <p className="text-[11px] sm:text-sm font-black text-primary tabular-nums">
                   {p2.elo} ELO
                 </p>
                 {renderMovement(p2)}
               </div>
-              <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
-                {p2.winRate.toFixed(0)}% Thắng ({p2.matches} trận)
+              <p className="text-[9px] sm:text-[10px] text-slate-400 mt-0.5 tabular-nums">
+                {p2.winRate.toFixed(0)}% Thắng ({p2.matches}T)
               </p>
             </div>
           </div>
@@ -124,40 +127,43 @@ export default function PodiumTop3({
         {p1 ? (
           <div 
             onClick={() => onSelectPlayer(p1)}
-            className="flex flex-col items-center transform -translate-y-3 sm:-translate-y-6 cursor-pointer group transition-transform hover:-translate-y-7"
+            className="flex flex-col items-center transform -translate-y-2 sm:-translate-y-6 cursor-pointer group transition-transform hover:-translate-y-7"
           >
             <div className="relative">
               {/* Bouncing Crown */}
-              <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-amber-500 fill-amber-500 animate-bounce z-20">
-                <Crown className="w-8 h-8 text-amber-500 fill-amber-400 drop-shadow-md" />
+              <div className="absolute -top-6 sm:-top-7 left-1/2 -translate-x-1/2 text-amber-500 fill-amber-500 animate-bounce z-20">
+                <Crown className="w-6 h-6 sm:w-8 sm:h-8 text-amber-500 fill-amber-400 drop-shadow-md" />
               </div>
 
               {/* Glowing Aura Ring */}
-              <div className="relative p-1 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 shadow-[0_0_30px_rgba(245,158,11,0.4)]">
+              <div className="relative p-0.5 sm:p-1 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.35)]">
                 <AvatarWithFrame
                   avatarUrl={p1.user.avatar_url || ""}
                   frameStyle={p1.user.selected_avatar_frame}
-                  sizeClass="w-20 h-20 sm:w-24 sm:h-24"
+                  sizeClass="w-18 h-18 sm:w-24 sm:h-24"
                   alt={p1.user.full_name}
                 />
               </div>
 
-              <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[10px] font-black uppercase tracking-wider shadow-sm z-20">
+              <span className="absolute -bottom-2 sm:-bottom-2.5 left-1/2 -translate-x-1/2 px-2 sm:px-2.5 py-0.2 sm:py-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[9px] sm:text-[10px] font-black uppercase tracking-wider shadow-sm z-20 whitespace-nowrap">
                 Quán Quân
               </span>
             </div>
 
-            <div className="text-center mt-5 w-full px-1">
-              <p className="text-sm sm:text-base font-black text-slate-900 truncate group-hover:text-primary transition-colors">
+            <div className="text-center mt-3 sm:mt-5 w-full px-0.5 sm:px-1">
+              <p 
+                title={p1.user.full_name}
+                className="text-xs sm:text-base font-black text-slate-900 line-clamp-2 leading-tight group-hover:text-primary transition-colors break-words min-h-[2.1rem] sm:min-h-0 flex items-center justify-center text-center"
+              >
                 {p1.user.full_name}
               </p>
-              <div className="flex items-center justify-center gap-1.5 mt-0.5">
-                <p className="text-sm sm:text-base font-black text-amber-600 tabular-nums">
+              <div className="flex items-center justify-center gap-1 sm:gap-1.5 mt-0.5 flex-wrap">
+                <p className="text-xs sm:text-base font-black text-amber-600 tabular-nums">
                   {p1.elo} ELO
                 </p>
                 {renderMovement(p1)}
               </div>
-              <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 font-bold tabular-nums">
+              <p className="text-[9px] sm:text-xs text-slate-500 mt-0.5 font-bold tabular-nums">
                 {p1.winRate.toFixed(0)}% Thắng ({p1.matches} trận)
               </p>
             </div>
@@ -174,26 +180,29 @@ export default function PodiumTop3({
               <AvatarWithFrame
                 avatarUrl={p3.user.avatar_url || ""}
                 frameStyle={p3.user.selected_avatar_frame}
-                sizeClass="w-16 h-16 sm:w-20 sm:h-20"
+                sizeClass="w-14 h-14 sm:w-20 sm:h-20"
                 alt={p3.user.full_name}
               />
-              <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-[10px] font-black uppercase shadow-xs">
+              <span className="absolute -bottom-2 sm:-bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 sm:px-2 py-0.2 sm:py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-[9px] sm:text-[10px] font-black uppercase shadow-xs">
                 #3
               </span>
             </div>
 
-            <div className="text-center mt-4 w-full px-1">
-              <p className="text-xs sm:text-sm font-bold text-slate-800 truncate group-hover:text-primary transition-colors">
+            <div className="text-center mt-3 sm:mt-4 w-full px-0.5 sm:px-1">
+              <p 
+                title={p3.user.full_name}
+                className="text-[11px] sm:text-sm font-bold text-slate-800 line-clamp-2 leading-tight group-hover:text-primary transition-colors break-words min-h-[2.1rem] sm:min-h-0 flex items-center justify-center text-center"
+              >
                 {p3.user.full_name}
               </p>
-              <div className="flex items-center justify-center gap-1.5 mt-0.5">
-                <p className="text-xs sm:text-sm font-black text-primary tabular-nums">
+              <div className="flex items-center justify-center gap-1 sm:gap-1.5 mt-0.5 flex-wrap">
+                <p className="text-[11px] sm:text-sm font-black text-primary tabular-nums">
                   {p3.elo} ELO
                 </p>
                 {renderMovement(p3)}
               </div>
-              <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
-                {p3.winRate.toFixed(0)}% Thắng ({p3.matches} trận)
+              <p className="text-[9px] sm:text-[10px] text-slate-400 mt-0.5 tabular-nums">
+                {p3.winRate.toFixed(0)}% Thắng ({p3.matches}T)
               </p>
             </div>
           </div>
