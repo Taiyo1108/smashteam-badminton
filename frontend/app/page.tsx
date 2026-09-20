@@ -23,6 +23,7 @@ import EventRecruitmentCard from "@/app/components/recruitment/EventRecruitmentC
 import RegistrationModal from "@/app/components/recruitment/RegistrationModal";
 import { formatVietnamDate } from "@/app/utils/date";
 import { format } from "date-fns";
+import SessionReservationWidget from "@/app/components/SessionReservationWidget";
 
 // ===== Giới thiệu & Liên hệ động từ site_settings (admin chỉnh ở Quản lý nội dung) =====
 const ADDRESS_FALLBACK = "304 ĐT743A, Đông Hòa, Hồ Chí Minh";
@@ -223,19 +224,27 @@ export default function Home() {
   }, []);
 
   const fetchSessions = () => {
-    fetch(`${API_URL}/api/sessions?t=${Date.now()}`)
+    const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    fetch(`${API_URL}/api/sessions?t=${Date.now()}`, { headers })
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         if (Array.isArray(data)) {
           setUpcomingSessions(data);
-          if (data.length > 0 && !upcomingSessionHighlight) {
-            setUpcomingSessionHighlight(data[0]);
+          if (data.length > 0) {
+            setUpcomingSessionHighlight((prev: any) => {
+              if (!prev) return data[0];
+              const match = data.find((s: any) => s.id === prev.id);
+              return match || data[0];
+            });
           }
         }
       })
       .catch(e => console.error("Error loading upcoming sessions:", e));
 
-    fetch(`${API_URL}/api/sessions?history=true&t=${Date.now()}`)
+    fetch(`${API_URL}/api/sessions?history=true&t=${Date.now()}`, { headers })
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         if (Array.isArray(data)) {
@@ -767,83 +776,43 @@ export default function Home() {
 
             {/* FEATURED NEXT MATCH CARD */}
             {scheduleViewMode === "upcoming" && upcomingSessionHighlight && (
-              <div className="bg-gradient-to-br from-secondary via-[#190e38] to-secondary rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl border border-primary/30">
+              <div className="bg-gradient-to-br from-secondary via-[#190e38] to-secondary rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl border border-primary/30 space-y-6">
                 {/* Purple decorative spotlight */}
                 <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
                 
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-                  <div className="space-y-3">
+                <div className="space-y-3 relative z-10">
+                  <div className="flex items-center justify-between gap-3">
                     <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase px-3 py-1 rounded-full bg-primary/30 text-purple-200 border border-primary/40">
                       <Sparkles className="w-3 h-3 text-purple-300" aria-hidden="true" />
-                      <span>Buổi tập gần nhất</span>
+                      <span>Buổi tập tâm điểm</span>
                     </span>
-                    <h3 className="text-2xl sm:text-3xl font-black tracking-tight">{upcomingSessionHighlight.title}</h3>
-                    
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs sm:text-sm text-slate-300">
-                      <span className="flex items-center gap-1.5">
-                        <Clock className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
-                        <span className="tabular-nums">{formatDateTime(upcomingSessionHighlight.date_time)}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <MapPin className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
-                        <span>{upcomingSessionHighlight.location}</span>
-                      </span>
-                    </div>
+                    <span className="font-mono text-[11px] text-slate-400 bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">
+                      #{shortSessionId(upcomingSessionHighlight.id)}
+                    </span>
                   </div>
-
-                  {/* Hành động RSVP & QR Check-in */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-                    {isLoggedIn ? (
-                      <>
-                        <button
-                          id="btn-rsvp-join"
-                          onClick={() => handleRsvp(upcomingSessionHighlight.id, "going")}
-                          disabled={updatingRsvp}
-                          className={`min-h-[44px] px-6 py-2.5 rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer focus-ring ${
-                            upcomingSessionHighlight.rsvp_status === "going"
-                              ? "bg-primary text-white shadow-[0_0_20px_rgba(122,34,224,0.7)] border border-purple-400/60"
-                              : "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                          }`}
-                        >
-                          <Check className="w-4 h-4" aria-hidden="true" /> 
-                          <span>{upcomingSessionHighlight.rsvp_status === "going" ? "Đã xác nhận Tham gia" : "Tham gia"}</span>
-                        </button>
-
-                        <button
-                          id="btn-rsvp-busy"
-                          onClick={() => handleRsvp(upcomingSessionHighlight.id, "absent")}
-                          disabled={updatingRsvp}
-                          className={`min-h-[44px] px-5 py-2.5 rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer focus-ring ${
-                            upcomingSessionHighlight.rsvp_status === "absent"
-                              ? "bg-slate-700 text-white border border-slate-600"
-                              : "bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700"
-                          }`}
-                        >
-                          <X className="w-4 h-4" aria-hidden="true" />
-                          <span>Bận</span>
-                        </button>
-
-                        <Link href="/check-in">
-                          <button 
-                            id="btn-rsvp-qr"
-                            className="min-h-[44px] px-5 py-2.5 rounded-full font-bold text-xs bg-white text-slate-900 hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer focus-ring"
-                          >
-                            <QrCode className="w-4 h-4 text-primary" aria-hidden="true" />
-                            <span>Quét QR sân</span>
-                          </button>
-                        </Link>
-                      </>
-                    ) : (
-                      <Link href="/login?redirect=/">
-                        <button 
-                          id="btn-rsvp-login"
-                          className="min-h-[44px] px-7 py-3 rounded-full font-bold text-xs bg-primary hover:bg-primary-hover text-white flex items-center justify-center gap-2 shadow-lg shadow-primary/30 transition-all cursor-pointer focus-ring"
-                        >
-                          Đăng nhập để RSVP
-                        </button>
-                      </Link>
-                    )}
+                  <h3 className="text-2xl sm:text-3xl font-black tracking-tight">{upcomingSessionHighlight.title}</h3>
+                  
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs sm:text-sm text-slate-300">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
+                      <span className="tabular-nums">{formatDateTime(upcomingSessionHighlight.date_time)}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
+                      <span>{upcomingSessionHighlight.location}</span>
+                    </span>
                   </div>
+                </div>
+
+                {/* Session Reservation & QR Widget */}
+                <div className="relative z-10 pt-2 border-t border-white/10">
+                  <SessionReservationWidget
+                    session={upcomingSessionHighlight}
+                    isLoggedIn={isLoggedIn}
+                    onActionSuccess={() => {
+                      fetchSessions();
+                    }}
+                  />
                 </div>
               </div>
             )}
@@ -895,17 +864,40 @@ export default function Home() {
                         </div>
 
                         <div className="pt-3 border-t border-dashed border-slate-200 flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                            Điểm danh trực tiếp
+                          <span className="inline-flex items-center gap-1.5 text-xs">
+                            {session.available_slots !== undefined ? (
+                              session.available_slots > 0 ? (
+                                <span className="text-emerald-600 font-bold flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  Còn {session.available_slots}/{session.capacity || 40} slot
+                                </span>
+                              ) : (
+                                <span className="text-rose-500 font-bold flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  Đã đủ {session.capacity || 40} slot
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-slate-500 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                                Điểm danh trực tiếp
+                              </span>
+                            )}
                           </span>
-                          <Link href="/check-in" className="shrink-0">
-                            <button className="min-h-[36px] pl-3 pr-2 py-1.5 rounded-full text-xs font-bold text-white bg-secondary hover:bg-primary flex items-center gap-1.5 shadow-sm hover:shadow-md hover:gap-2.5 transition-all cursor-pointer focus-ring">
-                              <QrCode className="w-3.5 h-3.5" aria-hidden="true" />
-                              <span className="whitespace-nowrap">Mở QR Check-in</span>
-                              <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-                            </button>
-                          </Link>
+                          <button
+                            onClick={() => {
+                              setUpcomingSessionHighlight(session);
+                              window.scrollTo({ top: 350, behavior: "smooth" });
+                            }}
+                            className={`min-h-[36px] px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                              upcomingSessionHighlight?.id === session.id
+                                ? "bg-primary text-white"
+                                : "bg-secondary text-white hover:bg-slate-800"
+                            }`}
+                          >
+                            <span>{upcomingSessionHighlight?.id === session.id ? "Đang chọn" : "Giữ chỗ / Chi tiết"}</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     ))}

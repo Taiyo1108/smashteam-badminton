@@ -146,14 +146,35 @@ router.get('/me', authenticateToken, async (req, res) => {
     // 3. Fetch buổi tập sắp tới gần nhất (date_time >= NOW() - 2 hours)
     const upcomingSessionRes = await db.query(
       `SELECT s.id, s.title, s.date_time, s.location,
-              a.status as rsvp_status
+              s.session_start, s.session_end, s.capacity, s.reservation_deadline,
+              s.checkin_open_at, s.checkin_close_at,
+              a.status as rsvp_status,
+              a.cancellation_request_pending,
+              a.cancellation_request_reason,
+              a.checked_in_at,
+              (SELECT COUNT(*) FROM attendances act WHERE act.session_id = s.id AND act.status IN ('RESERVED', 'CONFIRMED', 'CHECKED_IN')) AS active_reservations_count,
+              w.id as waitlist_id,
+              w.position as waitlist_position,
+              w.status as waitlist_status,
+              w.offer_expires_at as waitlist_offer_expires_at
        FROM sessions s
        LEFT JOIN attendances a ON s.id = a.session_id AND a.user_id = $1
-       WHERE s.date_time >= NOW() - INTERVAL '2 hours'
-       ORDER BY s.date_time ASC LIMIT 1`,
+       LEFT JOIN session_waitlist w ON s.id = w.session_id AND w.user_id = $1 AND w.status IN ('WAITING', 'OFFERED')
+       WHERE (s.session_end >= NOW() - INTERVAL '2 hours' OR (s.session_end IS NULL AND s.date_time >= NOW() - INTERVAL '2 hours'))
+       ORDER BY COALESCE(s.session_start, s.date_time) ASC LIMIT 1`,
       [userId]
     );
-    const upcomingSession = upcomingSessionRes.rows[0] || null;
+    const rawUpcoming = upcomingSessionRes.rows[0] || null;
+    let upcomingSession = null;
+    if (rawUpcoming) {
+      const cap = rawUpcoming.capacity || 40;
+      const act = parseInt(rawUpcoming.active_reservations_count || 0, 10);
+      upcomingSession = {
+        ...rawUpcoming,
+        available_slots: Math.max(0, cap - act),
+        is_full: act >= cap
+      };
+    }
 
     // 4. Fetch lịch sử điểm danh của người chơi
     const attendanceHistoryRes = await db.query(
@@ -192,7 +213,7 @@ router.get('/me', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/profile/rsvp - Điểm danh / RSVP buổi tập
+// POST /api/profile/rsvp - Điểm danh / RSVP buổi tập (Chuyển tiếp sang Reservation Service)
 router.post('/rsvp', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -202,37 +223,26 @@ router.post('/rsvp', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Vui lòng cung cấp session_id và status.' });
     }
 
-    if (!['going', 'absent'].includes(status)) {
-      return res.status(400).json({ error: 'Status không hợp lệ (chỉ chấp nhận đi hoặc vắng).' });
+    const { reserveSession, cancelReservation } = require('../services/sessionReservationService');
+
+    if (status === 'going') {
+      const result = await reserveSession(session_id, userId);
+      return res.json({ success: true, attendance: result.reservation, message: result.message });
+    } else if (status === 'absent') {
+      const result = await cancelReservation(session_id, userId, 'Thành viên báo vắng / Hủy RSVP');
+      return res.json({ success: true, message: result.message });
+    } else {
+      return res.status(400).json({ error: 'Status không hợp lệ (chỉ chấp nhận going hoặc absent).' });
     }
-
-    // Kiểm tra buổi tập tồn tại
-    const sessionRes = await db.query('SELECT id FROM sessions WHERE id = $1', [session_id]);
-    if (sessionRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Không tìm thấy buổi tập này.' });
-    }
-
-    // Kiểm tra trạng thái RSVP trước đó để tránh nhận thưởng trùng
-    const existingRes = await db.query(
-      'SELECT status FROM attendances WHERE session_id = $1 AND user_id = $2',
-      [session_id, userId]
-    );
-    const wasGoing = existingRes.rows.length > 0 && existingRes.rows[0].status === 'going';
-
-    // ON CONFLICT DO UPDATE đảm bảo cập nhật an toàn không trùng lặp
-    const result = await db.query(
-      `INSERT INTO attendances (session_id, user_id, status)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (session_id, user_id)
-       DO UPDATE SET status = EXCLUDED.status, created_at = CURRENT_TIMESTAMP
-       RETURNING *`,
-      [session_id, userId, status]
-    );
-
-    res.json({ success: true, attendance: result.rows[0] });
   } catch (error) {
+    if (error.code === 'SESSION_FULL') {
+      return res.status(409).json({ error: error.message, isFull: true });
+    }
+    if (error.code === 'LATE_CANCELLATION_DEADLINE_PASSED') {
+      return res.status(403).json({ error: error.message, deadlinePassed: true });
+    }
     console.error('Error handling RSVP:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(400).json({ error: error.message || 'Lỗi xử lý đặt chỗ.' });
   }
 });
 

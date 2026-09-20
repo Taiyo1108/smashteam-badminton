@@ -230,10 +230,10 @@ router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
           u.matches_singles, u.matches_doubles,
           u.win_rate_singles, u.win_rate_doubles,
           u.streak_singles, u.streak_doubles,
-          a.created_at AS checked_in_at
+          COALESCE(a.checked_in_at, a.created_at) AS checked_in_at
          FROM attendances a
          JOIN users u ON a.user_id = u.id
-         WHERE a.session_id = $1 AND a.status = 'going' 
+         WHERE a.session_id = $1 AND a.status IN ('going', 'CHECKED_IN') 
            AND u.status = 'active' AND (u.is_blocked IS FALSE OR u.is_blocked IS NULL)
          ORDER BY u.full_name ASC`,
         [session_id]
@@ -388,7 +388,7 @@ router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
                 u.win_rate_singles, u.win_rate_doubles, u.streak_singles, u.streak_doubles
          FROM attendances a
          JOIN users u ON a.user_id = u.id
-         WHERE a.session_id = $1 AND a.status = 'going' AND u.status = 'active'
+         WHERE a.session_id = $1 AND a.status IN ('going', 'CHECKED_IN') AND u.status = 'active'
          ORDER BY u.full_name ASC`,
         [session_id]
       );

@@ -102,6 +102,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
+const { startAutomationWorker } = require('./services/reservationAutomationService');
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT} (0.0.0.0)`);
+  // Bật worker tự động xử lý auto-confirmation, waitlist expiration, và no-show
+  startAutomationWorker(30000);
 });
+

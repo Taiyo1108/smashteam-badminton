@@ -16,6 +16,7 @@ import AvatarWithFrame from "@/app/components/AvatarWithFrame";
 import CompetitivePlayerCard from "@/app/components/CompetitivePlayerCard";
 import SharePlayerCard from "@/app/components/SharePlayerCard";
 import { formatVietnamDate } from "@/app/utils/date";
+import SessionReservationWidget from "@/app/components/SessionReservationWidget";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -798,59 +799,39 @@ export default function ProfilePage() {
         {/* RIGHT COLUMN: RSVP & Match History */}
         <div className="lg:col-span-2 space-y-8">
           
-          {/* RSVP WIDGET */}
-          {false && (
-          <div className="rounded-2xl bg-white border border-slate-200 p-6 relative overflow-hidden shadow-sm">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-slate-100 rounded-bl-full pointer-events-none"></div>
-            
-            <h3 className="font-extrabold text-slate-900 text-lg mb-4 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-black" /> Đăng ký Lịch tập (RSVP)
+          {/* RSVP & RESERVATION WIDGET */}
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 relative overflow-hidden shadow-sm space-y-4">
+            <h3 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary" /> Đăng ký Lịch tập & Giữ chỗ (Reservation)
             </h3>
             
             {upcomingSession ? (
-              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="space-y-2">
-                  <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-black/5 text-black border border-slate-200">
-                    Sắp diễn ra
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                    Buổi tập sắp tới
                   </span>
-                  <h4 className="text-lg font-bold text-slate-900 tracking-wide">{upcomingSession.title}</h4>
+                  <h4 className="text-lg font-bold text-slate-900 tracking-wide mt-1.5">{upcomingSession.title}</h4>
                   
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 mt-2">
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-smash-violet" />
+                      <Clock className="w-3.5 h-3.5 text-primary" />
                       {formatVietnamDate(upcomingSession.date_time)}
                     </span>
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-black" /> 
+                      <MapPin className="w-3.5 h-3.5 text-primary" /> 
                       {upcomingSession.location}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <button
-                    onClick={() => handleRsvp(upcomingSession.id, "going")}
-                    disabled={updatingRsvp}
-                    className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
-                      upcomingSession.rsvp_status === "going"
-                        ? "bg-black text-white border border-black"
-                        : "bg-white hover:bg-slate-100 text-slate-600 border border-slate-200"
-                    }`}
-                  >
-                    <Check className="w-3.5 h-3.5" /> Tham gia
-                  </button>
-                  <button
-                    onClick={() => handleRsvp(upcomingSession.id, "absent")}
-                    disabled={updatingRsvp}
-                    className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer ${
-                      upcomingSession.rsvp_status === "absent"
-                        ? "bg-black text-white"
-                        : "bg-white hover:bg-slate-100 text-slate-500 border border-slate-200"
-                    }`}
-                  >
-                    <X className="w-3.5 h-3.5" /> Bận
-                  </button>
-                </div>
+                <SessionReservationWidget
+                  session={upcomingSession}
+                  isLoggedIn={true}
+                  onActionSuccess={() => {
+                    fetchProfileData();
+                  }}
+                />
               </div>
             ) : (
               <div className="p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-slate-500 text-sm">
@@ -858,7 +839,6 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
-          )}
 
           {/* GAME PORTAL */}
           <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">

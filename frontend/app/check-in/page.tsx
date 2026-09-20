@@ -14,7 +14,7 @@ function CheckInContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get("session_id");
-  const urlCode = searchParams.get("code");
+  const urlCode = searchParams.get("code") || searchParams.get("token");
 
   // Mode: "auto" (khi có params), "manual" (nhập code 5 ký tự), "camera" (quét QR)
   const [activeTab, setActiveTab] = useState<"code" | "camera">("code");
@@ -109,7 +109,7 @@ function CheckInContent() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`
           },
-          body: JSON.stringify({ code: code || "" })
+          body: JSON.stringify({ code: code || "", token: code || "" })
         });
       } else {
         // Chỉ có code -> gọi code-check-in
@@ -249,7 +249,7 @@ function CheckInContent() {
       if (decodedText.includes("http://") || decodedText.includes("https://") || decodedText.includes("/check-in")) {
         const urlObj = new URL(decodedText, window.location.origin);
         sId = urlObj.searchParams.get("session_id");
-        const c = urlObj.searchParams.get("code");
+        const c = urlObj.searchParams.get("code") || urlObj.searchParams.get("token");
         if (c) code = c;
       }
     } catch (e) {
