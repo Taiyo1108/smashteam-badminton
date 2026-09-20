@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { 
   Swords, Trophy, Save, ArrowDownUp, AlertCircle, 
   TrendingUp, TrendingDown, Loader2, Sparkles, RefreshCw, 
   Users, CheckCircle2, RotateCcw, Trash2, Zap, Layers,
-  ChevronDown, Check, ArrowRightLeft
+  ChevronDown, Check, ArrowRightLeft, Calendar
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { API_URL } from "@/app/config";
@@ -176,6 +176,14 @@ export default function MatchDeskPage() {
   const [courtCount, setCourtCount] = useState<number>(4);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshingPlayers, setRefreshingPlayers] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const isInitializedRef = useRef<boolean>(false);
+
+  // Lấy token an toàn từ localStorage (hỗ trợ cả admin_token và token)
+  const getAdminToken = () => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("admin_token") || localStorage.getItem("token") || "";
+  };
 
   // Matchmaker Modal States
   const [matchmakerOpen, setMatchmakerOpen] = useState<boolean>(false);
@@ -224,27 +232,12 @@ export default function MatchDeskPage() {
     });
   };
 
-  // Nạp danh sách Sessions
-  const fetchSessions = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/sessions?history=true`);
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(data);
-        if (data.length > 0 && !selectedSessionId) {
-          setSelectedSessionId(data[0].id);
-        }
-      }
-    } catch (e) {
-      console.error("Error fetching sessions:", e);
-    }
-  };
-
-  // Nạp danh sách Tuyển thủ theo Session (hoặc toàn bộ CLB)
+  // Nạp danh sách Tuyển thủ theo Session (hoặc toàn bộ CLB) với fallback an toàn
   const fetchPlayers = async (sessionId?: string, all?: boolean) => {
     setRefreshingPlayers(true);
+    setErrorMessage("");
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = getAdminToken();
       const targetSession = sessionId !== undefined ? sessionId : selectedSessionId;
       const targetAll = all !== undefined ? all : useAllMembers;
       
@@ -252,29 +245,90 @@ export default function MatchDeskPage() {
       if (targetSession) query.append("session_id", targetSession);
       if (targetAll) query.append("use_all", "true");
 
-      const res = await fetch(`${API_URL}/api/matches/session-players?${query.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMembers(data);
+      let loaded = false;
+      try {
+        const res = await fetch(`${API_URL}/api/matches/session-players?${query.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setMembers(data);
+            loaded = true;
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch /api/matches/session-players, trying fallback:", err);
+      }
+
+      // Fallback: nếu session-players không có hoặc bị lỗi kết nối, nạp từ /api/users/members
+      if (!loaded) {
+        const fallbackRes = await fetch(`${API_URL}/api/users/members`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (fallbackRes.ok) {
+          const allMembers = await fallbackRes.json();
+          const activeMembers = allMembers.filter((m: any) => m.status === "active" && !m.is_blocked);
+          setMembers(activeMembers);
+          loaded = true;
+        }
+      }
+
+      if (!loaded) {
+        setErrorMessage("Không thể nạp danh sách tuyển thủ. Vui lòng kiểm tra quyền Admin hoặc bấm làm mới.");
       }
     } catch (e) {
       console.error("Error fetching session players:", e);
+      setErrorMessage("Lỗi kết nối máy chủ khi nạp danh sách tuyển thủ.");
     } finally {
       setRefreshingPlayers(false);
       setLoading(false);
     }
   };
 
+  // Khởi tạo ban đầu: nạp cả sessions và players một cách an toàn và dứt điểm
   useEffect(() => {
-    fetchSessions();
+    let isMounted = true;
+    const initData = async () => {
+      setLoading(true);
+      try {
+        let firstSessionId = "";
+        try {
+          const sRes = await fetch(`${API_URL}/api/sessions?history=true`);
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            if (isMounted) {
+              setSessions(sData);
+              if (Array.isArray(sData) && sData.length > 0) {
+                firstSessionId = sData[0].id;
+                setSelectedSessionId(firstSessionId);
+              }
+            }
+          }
+        } catch (sErr) {
+          console.error("Error fetching sessions on mount:", sErr);
+        }
+
+        // Tải tuyển thủ
+        await fetchPlayers(firstSessionId, false);
+      } catch (err) {
+        console.error("Error during Match Desk initialization:", err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+          isInitializedRef.current = true;
+        }
+      }
+    };
+
+    initData();
+    return () => { isMounted = false; };
   }, []);
 
+  // Khi admin chủ động đổi Session hoặc toggle Use All Members
   useEffect(() => {
-    if (selectedSessionId || useAllMembers) {
-      fetchPlayers(selectedSessionId, useAllMembers);
-    }
+    if (!isInitializedRef.current) return;
+    fetchPlayers(selectedSessionId, useAllMembers);
   }, [selectedSessionId, useAllMembers]);
 
   // Kiểm tra tuyển thủ đang được sử dụng ở đâu trong Match Desk
@@ -506,7 +560,7 @@ export default function MatchDeskPage() {
     setLoadingSuggestions(true);
 
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = getAdminToken();
       const team1Ids = [slot.player1Id];
       if (isDoubles && slot.player1PartnerId) team1Ids.push(slot.player1PartnerId);
 
@@ -584,7 +638,7 @@ export default function MatchDeskPage() {
     handleUpdateCourt(courtId, { status: "COMMITTING" });
 
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = getAdminToken();
       const res = await fetch(`${API_URL}/api/matches`, {
         method: "POST",
         headers: {
@@ -638,7 +692,7 @@ export default function MatchDeskPage() {
     setIsBatchSubmitting(true);
 
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = getAdminToken();
       const payloadMatches = readyCourts.map(slot => ({
         court_id: slot.courtName,
         player1_id: slot.player1Id,
@@ -856,6 +910,23 @@ export default function MatchDeskPage() {
           </div>
         </div>
       </div>
+
+      {/* Thông báo lỗi nếu nạp tuyển thủ thất bại */}
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-xs font-bold flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+          <button 
+            type="button"
+            onClick={() => fetchPlayers("", true)}
+            className="px-3 py-1 bg-red-600 text-white rounded-xl text-[11px] font-bold hover:bg-red-700 cursor-pointer transition-colors"
+          >
+            Nạp tất cả thành viên CLB
+          </button>
+        </div>
+      )}
 
       {/* 2. MULTI-COURT GRID */}
       <div className={`grid grid-cols-1 ${courtCount <= 3 ? 'lg:grid-cols-3' : 'md:grid-cols-2 xl:grid-cols-4'} gap-5`}>

@@ -342,8 +342,8 @@ export default function CompetitivePlayerCard({
         <div className="flex flex-col items-center text-center relative z-10 mb-5">
           <div className="relative mb-3">
             <AvatarWithFrame
-              avatarUrl={player.avatar_url}
-              frameStyle={player.selected_avatar_frame}
+              avatarUrl={player.avatar_url || ""}
+              frameStyle={player.selected_avatar_frame || null}
               sizeClass="w-24 h-24"
               alt={player.full_name}
             />

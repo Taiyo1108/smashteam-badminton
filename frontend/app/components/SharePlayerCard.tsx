@@ -184,8 +184,8 @@ export default function SharePlayerCard({
             {/* Center Player Identity */}
             <div className="relative z-10 flex flex-col items-center text-center my-auto">
               <AvatarWithFrame
-                avatarUrl={player.avatar_url}
-                frameStyle={player.selected_avatar_frame}
+                avatarUrl={player.avatar_url || ""}
+                frameStyle={player.selected_avatar_frame || null}
                 sizeClass="w-24 h-24 mb-3"
                 alt={player.full_name}
               />
