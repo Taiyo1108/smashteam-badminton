@@ -78,6 +78,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/matches', matchRoutes);
+app.use('/api/admin/matches', matchRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/profile', profileRoutes);

@@ -210,4 +210,474 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
+// GET /api/matches/session-players - Lấy danh sách tuyển thủ khả dụng theo Buổi tập (hoặc toàn bộ CLB)
+router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { session_id, use_all } = req.query;
+
+    let players = [];
+    if (session_id && use_all !== 'true') {
+      const attendeesRes = await db.query(
+        `SELECT 
+          u.id, u.full_name, u.nickname, u.phone_zalo, u.avatar_url, 
+          u.badminton_level, u.role,
+          u.elo_singles, u.elo_doubles,
+          u.matches_singles, u.matches_doubles,
+          u.win_rate_singles, u.win_rate_doubles,
+          u.streak_singles, u.streak_doubles,
+          a.created_at AS checked_in_at
+         FROM attendances a
+         JOIN users u ON a.user_id = u.id
+         WHERE a.session_id = $1 AND a.status = 'going' 
+           AND u.status = 'active' AND (u.is_blocked IS FALSE OR u.is_blocked IS NULL)
+         ORDER BY u.full_name ASC`,
+        [session_id]
+      );
+      players = attendeesRes.rows;
+    }
+
+    // Nếu không có session_id hoặc session chưa có ai check-in hoặc use_all=true, fallback lấy toàn bộ active members
+    if (players.length === 0) {
+      const allMembersRes = await db.query(
+        `SELECT 
+          id, full_name, nickname, phone_zalo, avatar_url, 
+          badminton_level, role,
+          elo_singles, elo_doubles,
+          matches_singles, matches_doubles,
+          win_rate_singles, win_rate_doubles,
+          streak_singles, streak_doubles,
+          NULL AS checked_in_at
+         FROM users
+         WHERE status = 'active' AND (is_blocked IS FALSE OR is_blocked IS NULL)
+         ORDER BY full_name ASC`
+      );
+      players = allMembersRes.rows;
+    }
+
+    res.json(players);
+  } catch (error) {
+    console.error('Error fetching session players:', error);
+    res.status(500).json({ error: 'Lỗi nạp danh sách tuyển thủ.' });
+  }
+});
+
+// POST /api/matches/preview - Mô phỏng tính toán ELO thời gian thực (Zero Mutation, Read-only)
+router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { mode = 'doubles', player1_id, player2_id, player1_partner_id, player2_partner_id, score_p1, score_p2, winner_id } = req.body;
+
+    if (!player1_id || !player2_id) {
+      return res.status(400).json({ error: 'Cần chọn ít nhất 2 tuyển thủ chính.' });
+    }
+
+    const isDoubles = mode === 'doubles' && !!(player1_partner_id && player2_partner_id);
+
+    const activeIds = [player1_id, player2_id];
+    if (isDoubles) {
+      activeIds.push(player1_partner_id, player2_partner_id);
+    }
+
+    if (new Set(activeIds).size !== activeIds.length) {
+      return res.status(400).json({ error: 'Các tuyển thủ trong trận không được trùng lặp.' });
+    }
+
+    const pRes = await db.query(
+      `SELECT id, full_name, elo_singles, elo_doubles, matches_singles, matches_doubles, streak_singles, streak_doubles
+       FROM users WHERE id = ANY($1::uuid[])`,
+      [activeIds]
+    );
+
+    const pMap = {};
+    pRes.rows.forEach(r => { pMap[r.id] = r; });
+
+    const p1 = pMap[player1_id];
+    const p2 = pMap[player2_id];
+    const p1_p = isDoubles ? pMap[player1_partner_id] : null;
+    const p2_p = isDoubles ? pMap[player2_partner_id] : null;
+
+    if (!p1 || !p2 || (isDoubles && (!p1_p || !p2_p))) {
+      return res.status(404).json({ error: 'Không tìm thấy một số tuyển thủ trong cơ sở dữ liệu.' });
+    }
+
+    const elo1 = isDoubles ? p1.elo_doubles : p1.elo_singles;
+    const elo2 = isDoubles ? p2.elo_doubles : p2.elo_singles;
+    const matches1 = isDoubles ? p1.matches_doubles : p1.matches_singles;
+    const matches2 = isDoubles ? p2.matches_doubles : p2.matches_singles;
+    const streak1 = isDoubles ? p1.streak_doubles : p1.streak_singles;
+    const streak2 = isDoubles ? p2.streak_doubles : p2.streak_singles;
+
+    const elo1_p = isDoubles ? p1_p.elo_doubles : null;
+    const elo2_p = isDoubles ? p2_p.elo_doubles : null;
+    const matches1_p = isDoubles ? p1_p.matches_doubles : 0;
+    const matches2_p = isDoubles ? p2_p.matches_doubles : 0;
+    const streak1_p = isDoubles ? p1_p.streak_doubles : 0;
+    const streak2_p = isDoubles ? p2_p.streak_doubles : 0;
+
+    const actualWinnerId = winner_id || player1_id;
+
+    const eloResult = calculateElo(
+      elo1, elo2, player1_id, player2_id, actualWinnerId,
+      streak1, streak2, matches1, matches2,
+      elo1_p, elo2_p,
+      streak1_p, streak2_p,
+      matches1_p, matches2_p,
+      player1_partner_id,
+      player2_partner_id
+    );
+
+    const team1Elo = elo1_p !== null ? Math.round((elo1 + elo1_p) / 2) : elo1;
+    const team2Elo = elo2_p !== null ? Math.round((elo2 + elo2_p) / 2) : elo2;
+    const exp1 = 1 / (1 + Math.pow(10, (team2Elo - team1Elo) / 400));
+    const exp2 = 1 - exp1;
+
+    res.json({
+      isValid: true,
+      mode: isDoubles ? 'doubles' : 'singles',
+      team1: {
+        elo: team1Elo,
+        winProb: Math.round(exp1 * 100)
+      },
+      team2: {
+        elo: team2Elo,
+        winProb: Math.round(exp2 * 100)
+      },
+      p1: { before: elo1, after: eloResult.elo1New, diff: eloResult.elo1New - elo1 },
+      p1_partner: isDoubles ? { before: elo1_p, after: eloResult.elo1_partnerNew, diff: eloResult.elo1_partnerNew - elo1_p } : null,
+      p2: { before: elo2, after: eloResult.elo2New, diff: eloResult.elo2New - elo2 },
+      p2_partner: isDoubles ? { before: elo2_p, after: eloResult.elo2_partnerNew, diff: eloResult.elo2_partnerNew - elo2_p } : null,
+      eloExchanged: eloResult.eloExchanged
+    });
+  } catch (error) {
+    console.error('Error previewing match ELO:', error);
+    res.status(500).json({ error: 'Lỗi tính toán mô phỏng ELO.' });
+  }
+});
+
+// POST /api/matches/suggestions - Gợi ý đối thủ cân bằng ELO cho Match Desk
+router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { session_id, mode = 'doubles', team1_player_ids = [], excluded_player_ids = [] } = req.body;
+
+    if (!Array.isArray(team1_player_ids) || team1_player_ids.length === 0) {
+      return res.status(400).json({ error: 'Vui lòng chọn ít nhất 1 tuyển thủ ở Đội A để nhận gợi ý đối thủ.' });
+    }
+
+    const t1Res = await db.query(
+      `SELECT id, full_name, nickname, avatar_url, elo_singles, elo_doubles, matches_singles, matches_doubles, win_rate_singles, win_rate_doubles, streak_singles, streak_doubles
+       FROM users WHERE id = ANY($1::uuid[])`,
+      [team1_player_ids]
+    );
+
+    if (t1Res.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy tuyển thủ Đội A.' });
+    }
+
+    const player1 = t1Res.rows.find(p => p.id === team1_player_ids[0]);
+    const partner1 = team1_player_ids[1] ? t1Res.rows.find(p => p.id === team1_player_ids[1]) : null;
+
+    let candidateRows = [];
+    if (session_id) {
+      const sessionAttRes = await db.query(
+        `SELECT u.id, u.full_name, u.nickname, u.avatar_url, u.badminton_level,
+                u.elo_singles, u.elo_doubles, u.matches_singles, u.matches_doubles,
+                u.win_rate_singles, u.win_rate_doubles, u.streak_singles, u.streak_doubles
+         FROM attendances a
+         JOIN users u ON a.user_id = u.id
+         WHERE a.session_id = $1 AND a.status = 'going' AND u.status = 'active'
+         ORDER BY u.full_name ASC`,
+        [session_id]
+      );
+      candidateRows = sessionAttRes.rows;
+    }
+
+    if (candidateRows.length === 0) {
+      const allActiveRes = await db.query(
+        `SELECT id, full_name, nickname, avatar_url, badminton_level,
+                elo_singles, elo_doubles, matches_singles, matches_doubles,
+                win_rate_singles, win_rate_doubles, streak_singles, streak_doubles
+         FROM users
+         WHERE status = 'active' AND (is_blocked IS FALSE OR is_blocked IS NULL)
+         ORDER BY full_name ASC`
+      );
+      candidateRows = allActiveRes.rows;
+    }
+
+    const allExcluded = new Set([...team1_player_ids, ...(excluded_player_ids || [])]);
+    const availablePool = candidateRows.filter(p => !allExcluded.has(p.id));
+
+    const { suggestSinglesOpponents, suggestDoublesOpponents, suggestDoublesPartners } = require('../services/matchmakerService');
+
+    let suggestions = [];
+    if (mode === 'singles') {
+      suggestions = suggestSinglesOpponents(player1, availablePool);
+    } else {
+      if (partner1) {
+        suggestions = suggestDoublesOpponents(player1, partner1, availablePool);
+      } else {
+        suggestions = suggestDoublesPartners(player1, availablePool);
+      }
+    }
+
+    res.json({
+      success: true,
+      mode,
+      team1: partner1 ? [player1, partner1] : [player1],
+      suggestions
+    });
+  } catch (error) {
+    console.error('Error in matchmaker suggestions:', error);
+    res.status(500).json({ error: 'Lỗi thuật toán ghép trận thông minh.' });
+  }
+});
+
+// POST /api/matches/batch - Ghi nhận đồng loạt nhiều trận đấu trong 1 Database Transaction nguyên tử (All-or-Nothing)
+router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
+  const { session_id, matches } = req.body;
+
+  if (!Array.isArray(matches) || matches.length === 0) {
+    return res.status(400).json({ error: 'Danh sách trận đấu trống.' });
+  }
+
+  if (matches.length > 10) {
+    return res.status(400).json({ error: 'Mỗi lượt batch tối đa 10 trận đấu.' });
+  }
+
+  // 1. Kiểm tra validation cấu trúc từng trận và Quy tắc bắt buộc: ONE PLAYER = ONE MATCH PER BATCH
+  const allBatchPlayerIds = [];
+  for (let idx = 0; idx < matches.length; idx++) {
+    const m = matches[idx];
+    const courtLabel = m.court_id || `Sân ${idx + 1}`;
+
+    if (!m.player1_id || !m.player2_id || m.score_p1 === undefined || m.score_p2 === undefined || !m.winner_id) {
+      return res.status(400).json({ 
+        error: `Trận đấu tại ${courtLabel} bị thiếu thông tin người chơi, điểm số hoặc đội thắng.` 
+      });
+    }
+
+    const s1 = Number(m.score_p1);
+    const s2 = Number(m.score_p2);
+    if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0 || (s1 === 0 && s2 === 0)) {
+      return res.status(400).json({ 
+        error: `Điểm số tại ${courtLabel} không hợp lệ (Điểm: ${m.score_p1} - ${m.score_p2}).` 
+      });
+    }
+
+    const isDoubles = !!(m.player1_partner_id && m.player2_partner_id);
+    const matchPlayers = [m.player1_id, m.player2_id];
+    if (m.player1_partner_id) matchPlayers.push(m.player1_partner_id);
+    if (m.player2_partner_id) matchPlayers.push(m.player2_partner_id);
+
+    // Không được self-match trong cùng 1 trận
+    if (new Set(matchPlayers).size !== matchPlayers.length) {
+      return res.status(400).json({ 
+        error: `Tại ${courtLabel}, có tuyển thủ bị chọn trùng lặp ở cả 2 bên.` 
+      });
+    }
+
+    // Đảm bảo winner_id là một trong các player tham gia
+    if (!matchPlayers.includes(m.winner_id)) {
+      return res.status(400).json({ 
+        error: `Tại ${courtLabel}, đội thắng không thuộc danh sách tuyển thủ thi đấu.` 
+      });
+    }
+
+    allBatchPlayerIds.push(...matchPlayers);
+  }
+
+  // Kiểm tra vi phạm: ONE PLAYER = ONE MATCH PER BATCH
+  const seenPlayerIds = new Set();
+  for (const pId of allBatchPlayerIds) {
+    if (seenPlayerIds.has(pId)) {
+      return res.status(400).json({
+        error: `Vi phạm nguyên tắc Batch: Một tuyển thủ không được thi đấu ở nhiều sân trong cùng một lượt commit! Hãy commit từng trận hoặc tách người chơi.`
+      });
+    }
+    seenPlayerIds.add(pId);
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 2. Pessimistic Row Locking: Khóa dòng toàn bộ tuyển thủ trong batch theo thứ tự ID (tránh deadlock)
+    const sortedUniqueIds = Array.from(seenPlayerIds).sort();
+    const lockedUsersRes = await client.query(
+      `SELECT id, full_name, elo_singles, elo_doubles, 
+              matches_singles, matches_doubles,
+              win_singles, loss_singles,
+              win_doubles, loss_doubles,
+              streak_singles, max_streak_singles,
+              streak_doubles, max_streak_doubles
+       FROM users WHERE id = ANY($1::uuid[]) FOR UPDATE`,
+      [sortedUniqueIds]
+    );
+
+    if (lockedUsersRes.rows.length !== sortedUniqueIds.length) {
+      throw new Error('Một số tuyển thủ trong batch không tồn tại trong hệ thống.');
+    }
+
+    const playersMap = {};
+    lockedUsersRes.rows.forEach(u => { playersMap[u.id] = u; });
+
+    // Helper cập nhật thống kê người chơi (sử dụng PostgreSQL client trong transaction)
+    const updateUserStats = async (id, currentStats, newElo, won, isDoubles) => {
+      const matches_col = isDoubles ? 'matches_doubles' : 'matches_singles';
+      const elo_col = isDoubles ? 'elo_doubles' : 'elo_singles';
+      const peak_col = isDoubles ? 'peak_elo_doubles' : 'peak_elo_singles';
+      const win_col = isDoubles ? 'win_doubles' : 'win_singles';
+      const loss_col = isDoubles ? 'loss_doubles' : 'loss_singles';
+      const win_rate_col = isDoubles ? 'win_rate_doubles' : 'win_rate_singles';
+      const streak_col = isDoubles ? 'streak_doubles' : 'streak_singles';
+      const max_streak_col = isDoubles ? 'max_streak_doubles' : 'max_streak_singles';
+
+      const prevMatches = isDoubles ? currentStats.matches_doubles : currentStats.matches_singles;
+      const prevWin = isDoubles ? currentStats.win_doubles : currentStats.win_singles;
+      const prevLoss = isDoubles ? currentStats.loss_doubles : currentStats.loss_singles;
+      const prevStreak = isDoubles ? currentStats.streak_doubles : currentStats.streak_singles;
+      const prevMaxStreak = isDoubles ? currentStats.max_streak_doubles : currentStats.max_streak_singles;
+
+      const newTotal = prevMatches + 1;
+      const newWin = won ? prevWin + 1 : prevWin;
+      const newLoss = !won ? prevLoss + 1 : prevLoss;
+      const newWinRate = (newWin / newTotal) * 100;
+
+      let newStreak = 0;
+      if (won) {
+        newStreak = prevStreak >= 0 ? prevStreak + 1 : 1;
+      } else {
+        newStreak = prevStreak <= 0 ? prevStreak - 1 : -1;
+      }
+      const newMaxStreak = newStreak > 0 ? Math.max(prevMaxStreak, newStreak) : prevMaxStreak;
+
+      await client.query(
+        `UPDATE users 
+         SET ${elo_col} = $1, 
+             ${peak_col} = GREATEST(COALESCE(${peak_col}, 1000), $1),
+             ${matches_col} = $2,
+             ${win_col} = $3,
+             ${loss_col} = $4,
+             ${win_rate_col} = $5,
+             ${streak_col} = $6,
+             ${max_streak_col} = $7
+         WHERE id = $8::uuid`,
+        [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id]
+      );
+
+      // Thưởng XP và Quest đồng bộ trong transaction
+      await addXpToUser(id, 15, client);
+      await updateQuestProgress(id, 'play_matches', 1, client);
+      if (won) {
+        await updateQuestProgress(id, 'win_matches', 1, client);
+      }
+    };
+
+    const committedMatches = [];
+    const updatedPlayers = [];
+
+    // 3. Xử lý tuần tự từng trận trong batch
+    for (let idx = 0; idx < matches.length; idx++) {
+      const m = matches[idx];
+      const isDoubles = !!(m.player1_partner_id && m.player2_partner_id);
+
+      const p1 = playersMap[m.player1_id];
+      const p2 = playersMap[m.player2_id];
+      const p1_p = isDoubles ? playersMap[m.player1_partner_id] : null;
+      const p2_p = isDoubles ? playersMap[m.player2_partner_id] : null;
+
+      const elo1 = isDoubles ? p1.elo_doubles : p1.elo_singles;
+      const elo2 = isDoubles ? p2.elo_doubles : p2.elo_singles;
+      const matches1 = isDoubles ? p1.matches_doubles : p1.matches_singles;
+      const matches2 = isDoubles ? p2.matches_doubles : p2.matches_singles;
+      const streak1 = isDoubles ? p1.streak_doubles : p1.streak_singles;
+      const streak2 = isDoubles ? p2.streak_doubles : p2.streak_singles;
+
+      const elo1_p = isDoubles && p1_p ? p1_p.elo_doubles : null;
+      const elo2_p = isDoubles && p2_p ? p2_p.elo_doubles : null;
+      const matches1_p = isDoubles && p1_p ? p1_p.matches_doubles : 0;
+      const matches2_p = isDoubles && p2_p ? p2_p.matches_doubles : 0;
+      const streak1_p = isDoubles && p1_p ? p1_p.streak_doubles : 0;
+      const streak2_p = isDoubles && p2_p ? p2_p.streak_doubles : 0;
+
+      const eloResult = calculateElo(
+        elo1, elo2, m.player1_id, m.player2_id, m.winner_id,
+        streak1, streak2, matches1, matches2,
+        elo1_p, elo2_p,
+        streak1_p, streak2_p,
+        matches1_p, matches2_p,
+        m.player1_partner_id,
+        m.player2_partner_id
+      );
+
+      const team1Won = m.winner_id === m.player1_id || (m.player1_partner_id && m.winner_id === m.player1_partner_id);
+      const team2Won = !team1Won;
+
+      await updateUserStats(m.player1_id, p1, eloResult.elo1New, team1Won, isDoubles);
+      await updateUserStats(m.player2_id, p2, eloResult.elo2New, team2Won, isDoubles);
+
+      updatedPlayers.push(
+        { id: m.player1_id, eloBefore: elo1, eloAfter: eloResult.elo1New, diff: eloResult.elo1New - elo1 },
+        { id: m.player2_id, eloBefore: elo2, eloAfter: eloResult.elo2New, diff: eloResult.elo2New - elo2 }
+      );
+
+      if (isDoubles && m.player1_partner_id && p1_p) {
+        await updateUserStats(m.player1_partner_id, p1_p, eloResult.elo1_partnerNew, team1Won, isDoubles);
+        updatedPlayers.push({ id: m.player1_partner_id, eloBefore: elo1_p, eloAfter: eloResult.elo1_partnerNew, diff: eloResult.elo1_partnerNew - elo1_p });
+      }
+      if (isDoubles && m.player2_partner_id && p2_p) {
+        await updateUserStats(m.player2_partner_id, p2_p, eloResult.elo2_partnerNew, team2Won, isDoubles);
+        updatedPlayers.push({ id: m.player2_partner_id, eloBefore: elo2_p, eloAfter: eloResult.elo2_partnerNew, diff: eloResult.elo2_partnerNew - elo2_p });
+      }
+
+      // INSERT vào matches
+      const insertMatchRes = await client.query(
+        `INSERT INTO matches (
+          player1_id, player2_id, player1_partner_id, player2_partner_id, winner_id, 
+          score_p1, score_p2, p1_elo_before, p2_elo_before, p1_elo_after, p2_elo_after, 
+          p1_partner_elo_before, p2_partner_elo_before, p1_partner_elo_after, p2_partner_elo_after,
+          elo_exchanged
+        ) 
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+        [
+          m.player1_id, m.player2_id, m.player1_partner_id || null, m.player2_partner_id || null, m.winner_id,
+          m.score_p1, m.score_p2, elo1, elo2, eloResult.elo1New, eloResult.elo2New,
+          elo1_p, elo2_p, eloResult.elo1_partnerNew, eloResult.elo2_partnerNew,
+          eloResult.eloExchanged
+        ]
+      );
+
+      committedMatches.push({
+        court_id: m.court_id || `Sân ${idx + 1}`,
+        match: insertMatchRes.rows[0]
+      });
+    }
+
+    await client.query('COMMIT');
+
+    const crypto = require('crypto');
+    const batchId = 'batch_' + crypto.randomBytes(6).toString('hex');
+
+    res.status(201).json({
+      success: true,
+      batchId,
+      committedMatches,
+      updatedPlayers,
+      summary: {
+        matchesCount: committedMatches.length,
+        playersCount: updatedPlayers.length
+      },
+      message: `Đã commit thành công ${committedMatches.length} trận đấu.`
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error in batch matches commit:', error);
+    res.status(400).json({ 
+      success: false,
+      error: `Batch thất bại: ${error.message || 'Lỗi xử lý transaction'}. Toàn bộ batch đã bị hủy, không có trận nào được ghi nhận.` 
+    });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;
+
