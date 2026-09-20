@@ -82,3 +82,102 @@ export interface MatchSuggestion {
   partnerElo?: number;
   combinedTeamElo?: number;
 }
+
+export interface MatchHistoryItem {
+  id: string;
+  created_at: string;
+  status: 'approved' | 'voided' | 'pending';
+  score_p1: number;
+  score_p2: number;
+  elo_exchanged: number;
+  player1_id: string;
+  player2_id: string;
+  player1_partner_id: string | null;
+  player2_partner_id: string | null;
+  winner_id: string;
+  player1_name: string;
+  player1_nickname?: string | null;
+  player1_avatar?: string | null;
+  player2_name: string;
+  player2_nickname?: string | null;
+  player2_avatar?: string | null;
+  player1_partner_name?: string | null;
+  player1_partner_nickname?: string | null;
+  player1_partner_avatar?: string | null;
+  player2_partner_name?: string | null;
+  player2_partner_nickname?: string | null;
+  player2_partner_avatar?: string | null;
+  winner_name: string;
+  p1_elo_before?: number;
+  p1_elo_after?: number;
+  p2_elo_before?: number;
+  p2_elo_after?: number;
+  p1_partner_elo_before?: number;
+  p1_partner_elo_after?: number;
+  p2_partner_elo_before?: number;
+  p2_partner_elo_after?: number;
+}
+
+export interface PlayerImpact {
+  id: string;
+  full_name: string;
+  currentElo: number;
+  newElo: number;
+  eloDiff: number;
+  currentMatches: number;
+  newMatches: number;
+  currentWins: number;
+  newWins: number;
+  currentLosses: number;
+  newLosses: number;
+  currentWinRate: string | number;
+  newWinRate: string | number;
+  currentStreak: number;
+  newStreak: number;
+  currentPeak: number;
+  newPeak: number;
+}
+
+export interface AffectedMatch {
+  id: string;
+  created_at: string;
+  player1_name: string;
+  player2_name: string;
+  player1_partner_name?: string;
+  player2_partner_name?: string;
+  score_p1: number;
+  score_p2: number;
+  p1_elo_after_old: number;
+  p1_elo_after_new: number;
+  p2_elo_after_old: number;
+  p2_elo_after_new: number;
+  elo_exchanged: number;
+}
+
+export interface MatchEditPreview {
+  mode: 'singles' | 'doubles';
+  before: any;
+  after: any;
+  isVoid: boolean;
+  affectedMatchesCount: number;
+  affectedMatches: AffectedMatch[];
+  playerImpacts: Record<string, PlayerImpact>;
+  checksum: string;
+  warning?: string;
+}
+
+export interface MatchAuditLog {
+  id: string;
+  match_id: string;
+  action?: string;
+  action_type?: 'edit' | 'void';
+  admin_user_id: string;
+  admin_name?: string;
+  reason: string;
+  affected_matches_count: number;
+  before_data: any;
+  after_data: any;
+  player_impacts: Record<string, any>;
+  created_at: string;
+}
+

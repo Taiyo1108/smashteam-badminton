@@ -5,11 +5,13 @@ import {
   Swords, Trophy, Save, ArrowDownUp, AlertCircle, 
   TrendingUp, TrendingDown, Loader2, Sparkles, RefreshCw, 
   Users, CheckCircle2, RotateCcw, Trash2, Zap, Layers,
-  ChevronDown, Check, ArrowRightLeft, Calendar
+  ChevronDown, Check, ArrowRightLeft, Calendar, History
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { API_URL } from "@/app/config";
 import { Player, CourtSlot, CourtStatus, SessionItem, MatchSuggestion, EloPreviewData } from "./types";
+import MatchHistoryView from "./components/MatchHistoryView";
+
 
 interface SearchablePlayerSelectProps {
   label: string;
@@ -168,6 +170,7 @@ function SearchablePlayerSelect({
 }
 
 export default function MatchDeskPage() {
+  const [activeTab, setActiveTab] = useState<"desk" | "history">("desk");
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [useAllMembers, setUseAllMembers] = useState<boolean>(false);
@@ -776,8 +779,44 @@ export default function MatchDeskPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
-      
-      {/* 1. TOP CONTROL BAR */}
+      {/* TOP NAVIGATION TABS */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-100/90 rounded-2xl w-fit border border-slate-200">
+        <button
+          type="button"
+          onClick={() => setActiveTab("desk")}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+            activeTab === "desk"
+              ? "bg-secondary text-white shadow-md"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+          }`}
+        >
+          <Swords className="w-4 h-4 text-primary" />
+          BÀN ĐIỀU PHỐI (MATCH DESK)
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("history")}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+            activeTab === "history"
+              ? "bg-secondary text-white shadow-md"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+          }`}
+        >
+          <History className="w-4 h-4 text-amber-400" />
+          LỊCH SỬ & HIỆU CHỈNH ELO
+        </button>
+      </div>
+
+      {activeTab === "history" ? (
+        <MatchHistoryView
+          members={members}
+          getAdminToken={getAdminToken}
+          onRefreshData={fetchPlayers}
+        />
+      ) : (
+        <>
+          {/* 1. TOP CONTROL BAR */}
       <div className="bg-white rounded-3xl p-5 md:p-6 border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
@@ -1385,7 +1424,10 @@ export default function MatchDeskPage() {
           </div>
         </div>
       )}
+        </>
+      )}
 
     </div>
   );
 }
+

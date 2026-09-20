@@ -4,6 +4,11 @@ const db = require('../db');
 const { calculateElo } = require('../utils/elo');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
 const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
+const {
+  simulateRecalculation,
+  applyRecalculation,
+  getMatchAuditLogs
+} = require('../services/matchRecalculationService');
 
 // GET /api/matches - Lấy lịch sử đấu (Đơn & Đôi)
 router.get('/', async (req, res) => {
@@ -676,6 +681,279 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
     });
   } finally {
     client.release();
+  }
+});
+
+// GET /api/matches/history - Lấy danh sách lịch sử trận đấu có phân trang, lọc theo thể thức và tìm kiếm
+router.get('/history', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 15));
+    const offset = (page - 1) * limit;
+    const { mode = 'all', status = 'all', search = '' } = req.query;
+
+    let whereClauses = [];
+    let params = [];
+    let paramIdx = 1;
+
+    // Lọc thể thức (Đơn / Đôi)
+    if (mode === 'doubles') {
+      whereClauses.push(`m.player1_partner_id IS NOT NULL AND m.player2_partner_id IS NOT NULL`);
+    } else if (mode === 'singles') {
+      whereClauses.push(`m.player1_partner_id IS NULL AND m.player2_partner_id IS NULL`);
+    }
+
+    // Lọc trạng thái (approved / voided)
+    if (status === 'approved') {
+      whereClauses.push(`m.status = 'approved'`);
+    } else if (status === 'voided') {
+      whereClauses.push(`m.status = 'voided'`);
+    }
+
+    // Tìm kiếm theo tên hoặc SĐT của người chơi
+    if (search && search.trim()) {
+      const q = `%${search.trim().toLowerCase()}%`;
+      params.push(q);
+      whereClauses.push(`(
+        LOWER(u1.full_name) LIKE $${paramIdx} OR LOWER(COALESCE(u1.nickname, '')) LIKE $${paramIdx} OR COALESCE(u1.phone_zalo, '') LIKE $${paramIdx} OR
+        LOWER(u2.full_name) LIKE $${paramIdx} OR LOWER(COALESCE(u2.nickname, '')) LIKE $${paramIdx} OR COALESCE(u2.phone_zalo, '') LIKE $${paramIdx} OR
+        LOWER(COALESCE(up1.full_name, '')) LIKE $${paramIdx} OR LOWER(COALESCE(up2.full_name, '')) LIKE $${paramIdx}
+      )`);
+      paramIdx++;
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    // Đếm tổng số trận thỏa mãn điều kiện
+    const countQuery = `
+      SELECT count(*) as total
+      FROM matches m
+      JOIN users u1 ON m.player1_id = u1.id
+      JOIN users u2 ON m.player2_id = u2.id
+      LEFT JOIN users up1 ON m.player1_partner_id = up1.id
+      LEFT JOIN users up2 ON m.player2_partner_id = up2.id
+      JOIN users w ON m.winner_id = w.id
+      ${whereStr};
+    `;
+    const countRes = await db.query(countQuery, params);
+    const total = parseInt(countRes.rows[0].total, 10);
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    // Lấy danh sách trận đấu trang hiện tại
+    params.push(limit, offset);
+    const dataQuery = `
+      SELECT m.id, m.score_p1, m.score_p2, m.elo_exchanged, m.created_at, m.status,
+             m.p1_elo_before, m.p2_elo_before, m.p1_elo_after, m.p2_elo_after,
+             m.p1_partner_elo_before, m.p2_partner_elo_before, m.p1_partner_elo_after, m.p2_partner_elo_after,
+             m.player1_id, m.player2_id, m.player1_partner_id, m.player2_partner_id, m.winner_id,
+             u1.full_name as player1_name, u1.nickname as player1_nickname, u1.avatar_url as player1_avatar,
+             u2.full_name as player2_name, u2.nickname as player2_nickname, u2.avatar_url as player2_avatar,
+             up1.full_name as player1_partner_name, up1.nickname as player1_partner_nickname, up1.avatar_url as player1_partner_avatar,
+             up2.full_name as player2_partner_name, up2.nickname as player2_partner_nickname, up2.avatar_url as player2_partner_avatar,
+             w.full_name as winner_name
+      FROM matches m
+      JOIN users u1 ON m.player1_id = u1.id
+      JOIN users u2 ON m.player2_id = u2.id
+      LEFT JOIN users up1 ON m.player1_partner_id = up1.id
+      LEFT JOIN users up2 ON m.player2_partner_id = up2.id
+      JOIN users w ON m.winner_id = w.id
+      ${whereStr}
+      ORDER BY m.created_at DESC, m.id DESC
+      LIMIT $${paramIdx} OFFSET $${paramIdx + 1};
+    `;
+    const dataRes = await db.query(dataQuery, params);
+
+    res.json({
+      matches: dataRes.rows,
+      total,
+      page,
+      limit,
+      totalPages
+    });
+  } catch (error) {
+    console.error('Error fetching matches history:', error);
+    res.status(500).json({ error: 'Lỗi nạp lịch sử trận đấu.' });
+  }
+});
+
+// GET /api/matches/:id - Lấy chi tiết 1 trận đấu kèm logs
+router.get('/:id', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const matchRes = await db.query(
+      `SELECT m.*, 
+              u1.full_name as player1_name, u1.nickname as player1_nickname,
+              u2.full_name as player2_name, u2.nickname as player2_nickname,
+              up1.full_name as player1_partner_name, up1.nickname as player1_partner_nickname,
+              up2.full_name as player2_partner_name, up2.nickname as player2_partner_nickname,
+              w.full_name as winner_name
+       FROM matches m
+       JOIN users u1 ON m.player1_id = u1.id
+       JOIN users u2 ON m.player2_id = u2.id
+       LEFT JOIN users up1 ON m.player1_partner_id = up1.id
+       LEFT JOIN users up2 ON m.player2_partner_id = up2.id
+       JOIN users w ON m.winner_id = w.id
+       WHERE m.id = $1::uuid;`,
+      [id]
+    );
+
+    if (matchRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy trận đấu này.' });
+    }
+
+    const auditLogs = await getMatchAuditLogs(id);
+
+    res.json({
+      match: matchRes.rows[0],
+      auditLogs
+    });
+  } catch (error) {
+    console.error('Error fetching match details:', error);
+    res.status(500).json({ error: 'Lỗi tải thông tin chi tiết trận đấu.' });
+  }
+});
+
+// POST /api/matches/:id/preview-edit - Xem trước tác động tính lại ELO (Zero Mutation, Read-Only)
+router.post('/:id/preview-edit', authenticateToken, isAdmin, async (req, res) => {
+  const client = await db.connect();
+  try {
+    const { id } = req.params;
+    const {
+      player1_id,
+      player2_id,
+      player1_partner_id,
+      player2_partner_id,
+      score_p1,
+      score_p2,
+      winner_id,
+      is_void = false
+    } = req.body;
+
+    const newMatchData = !is_void ? {
+      player1_id,
+      player2_id,
+      player1_partner_id: player1_partner_id || null,
+      player2_partner_id: player2_partner_id || null,
+      score_p1: parseInt(score_p1, 10),
+      score_p2: parseInt(score_p2, 10),
+      winner_id
+    } : null;
+
+    if (!is_void) {
+      if (!player1_id || !player2_id || isNaN(newMatchData.score_p1) || isNaN(newMatchData.score_p2) || !winner_id) {
+        return res.status(400).json({ error: 'Vui lòng điền đầy đủ tuyển thủ, tỉ số và đội thắng.' });
+      }
+    }
+
+    const preview = await simulateRecalculation(client, {
+      matchId: id,
+      newMatchData,
+      isVoid: is_void
+    });
+
+    // Tạo checksum token để phòng chống xung đột concurrency
+    const currentMatch = preview.targetMatch;
+    const checksum = `${currentMatch.p1_elo_after}_${currentMatch.score_p1}_${currentMatch.score_p2}_${currentMatch.status}`;
+
+    res.json({
+      ...preview,
+      checksum
+    });
+  } catch (error) {
+    console.error('Error simulating match edit:', error);
+    res.status(400).json({ error: error.message || 'Lỗi tính toán xem trước tác động.' });
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/matches/:id - Xác nhận cập nhật trận và tự động recalculate ELO
+router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      player1_id,
+      player2_id,
+      player1_partner_id,
+      player2_partner_id,
+      score_p1,
+      score_p2,
+      winner_id,
+      reason,
+      checksum
+    } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Vui lòng nhập lý do chỉnh sửa trận đấu.' });
+    }
+
+    const newMatchData = {
+      player1_id,
+      player2_id,
+      player1_partner_id: player1_partner_id || null,
+      player2_partner_id: player2_partner_id || null,
+      score_p1: parseInt(score_p1, 10),
+      score_p2: parseInt(score_p2, 10),
+      winner_id
+    };
+
+    const result = await applyRecalculation({
+      matchId: id,
+      newMatchData,
+      isVoid: false,
+      reason: reason.trim(),
+      adminUserId: req.user.id,
+      expectedChecksum: checksum
+    });
+
+    res.json(result);
+  } catch (error) {
+    if (error.code === 'CONCURRENCY_CONFLICT') {
+      return res.status(409).json({ error: error.message });
+    }
+    console.error('Error updating match:', error);
+    res.status(400).json({ error: error.message || 'Cập nhật trận đấu thất bại. Dữ liệu chưa bị thay đổi.' });
+  }
+});
+
+// POST /api/matches/:id/void - Xác nhận hủy trận (Void) và tự động recalculate ELO
+router.post('/:id/void', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, checksum } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Vui lòng nhập lý do hủy trận đấu.' });
+    }
+
+    const result = await applyRecalculation({
+      matchId: id,
+      newMatchData: null,
+      isVoid: true,
+      reason: reason.trim(),
+      adminUserId: req.user.id,
+      expectedChecksum: checksum
+    });
+
+    res.json(result);
+  } catch (error) {
+    if (error.code === 'CONCURRENCY_CONFLICT') {
+      return res.status(409).json({ error: error.message });
+    }
+    console.error('Error voiding match:', error);
+    res.status(400).json({ error: error.message || 'Hủy trận đấu thất bại. Dữ liệu chưa bị thay đổi.' });
+  }
+});
+
+// GET /api/matches/:id/audit-logs - Lấy lịch sử chỉnh sửa / hủy trận đấu
+router.get('/:id/audit-logs', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const logs = await getMatchAuditLogs(id);
+    res.json(logs);
+  } catch (error) {
+    console.error('Error fetching audit logs:', error);
+    res.status(500).json({ error: 'Lỗi tải nhật ký chỉnh sửa.' });
   }
 });
 
