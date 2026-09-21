@@ -260,6 +260,30 @@ export default function AdminSessionsPage() {
     setError(null);
   };
 
+  // Delete Session
+  const handleDeleteSession = async () => {
+    if (!selectedSession) return;
+    const confirmDelete = window.confirm(`Bạn có chắc chắn muốn xóa buổi tập "${selectedSession.title}" không?\nHành động này không thể hoàn tác!`);
+    if (!confirmDelete) return;
+    
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/sessions/${selectedSession.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setSelectedSession(null);
+        fetchSessions(viewMode === "history");
+      } else {
+        const data = await res.json();
+        alert(data.error || "Lỗi xóa buổi tập.");
+      }
+    } catch (error) {
+      alert("Đã xảy ra lỗi khi xóa buổi tập.");
+    }
+  };
+
   // Save Edited Session
   const handleUpdateSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -728,6 +752,13 @@ export default function AdminSessionsPage() {
                     title="Chỉnh sửa thông số buổi tập"
                   >
                     <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleDeleteSession}
+                    className="p-2 rounded-xl text-xs font-bold bg-red-50 hover:bg-red-100 text-red-600 transition-all cursor-pointer"
+                    title="Xóa buổi tập"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => fetchDashboard(selectedSession.id)}

@@ -252,6 +252,23 @@ router.post('/sessions', async (req, res) => {
   }
 });
 
+// DELETE /api/admin/sessions/:id - Xóa buổi tập
+router.delete('/sessions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query('DELETE FROM sessions WHERE id = $1 RETURNING id', [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy buổi tập.' });
+    }
+    
+    res.json({ success: true, message: 'Đã xóa buổi tập thành công.' });
+  } catch (error) {
+    console.error('Error deleting session:', error);
+    res.status(500).json({ error: error.message || 'Lỗi khi xóa buổi tập.' });
+  }
+});
+
 // PUT /api/admin/sessions/:id - Chỉnh sửa thông số buổi tập
 router.put('/sessions/:id', async (req, res) => {
   try {
