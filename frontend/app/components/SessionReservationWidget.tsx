@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   Calendar, Clock, MapPin, Users, Check, X, AlertCircle,
   Loader2, QrCode, ArrowRight, ShieldCheck, Hourglass, CheckCircle2,
-  AlertTriangle, Send
+  AlertTriangle, Send, LogOut
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { formatVietnamDate } from "@/app/utils/date";
@@ -23,6 +23,8 @@ interface SessionReservationWidgetProps {
     reservation_deadline?: string;
     checkin_open_at?: string;
     checkin_close_at?: string;
+    checkout_open_at?: string;
+    checkout_close_at?: string;
     available_slots?: number;
     active_reservations_count?: number;
     is_full?: boolean;
@@ -32,6 +34,9 @@ interface SessionReservationWidgetProps {
       cancellation_request_pending?: boolean;
       cancellation_request_reason?: string;
       checked_in_at?: string;
+      checked_out_at?: string;
+      checkout_status?: string;
+      duration_minutes?: number;
     } | null;
     user_waitlist?: {
       id?: string;
@@ -44,6 +49,9 @@ interface SessionReservationWidgetProps {
     cancellation_request_pending?: boolean;
     cancellation_request_reason?: string;
     checked_in_at?: string;
+    checked_out_at?: string;
+    checkout_status?: string;
+    duration_minutes?: number;
     waitlist_id?: string;
     waitlist_position?: number;
     waitlist_status?: string;
@@ -82,6 +90,9 @@ export default function SessionReservationWidget({
   const isLateCancelPending = !!(session.user_attendance?.cancellation_request_pending ?? session.cancellation_request_pending);
   const lateCancelReasonText = session.user_attendance?.cancellation_request_reason || session.cancellation_request_reason || "";
   const checkedInAt = session.user_attendance?.checked_in_at || session.checked_in_at || null;
+  const checkedOutAt = session.user_attendance?.checked_out_at || session.checked_out_at || null;
+  const checkoutStatus = session.user_attendance?.checkout_status || session.checkout_status || null;
+  const durationMinutes = session.user_attendance?.duration_minutes ?? session.duration_minutes ?? null;
 
   const wlStatus = session.user_waitlist?.status || session.waitlist_status || null;
   const wlPosition = session.user_waitlist?.position ?? session.waitlist_position ?? null;
@@ -307,12 +318,18 @@ export default function SessionReservationWidget({
 
   const isReserved = attStatus === "RESERVED" || attStatus === "CONFIRMED" || attStatus === "going";
   const isCheckedIn = attStatus === "CHECKED_IN";
+  const isCheckedOut = attStatus === "CHECKED_OUT";
+  const isMissingCheckout = attStatus === "MISSING_CHECKOUT";
   const isWaitlistWaiting = wlStatus === "WAITING";
   const isWaitlistOffered = wlStatus === "OFFERED";
 
   return (
     <div className={`rounded-2xl border transition-all ${
-      isCheckedIn 
+      isCheckedOut
+        ? "bg-teal-950/40 border-teal-500/40 shadow-teal-950/30"
+        : isMissingCheckout
+        ? "bg-amber-950/30 border-amber-600/40 shadow-amber-950/30"
+        : isCheckedIn 
         ? "bg-emerald-950/40 border-emerald-500/40 shadow-emerald-950/30" 
         : isWaitlistOffered
         ? "bg-amber-950/40 border-amber-500/50 shadow-amber-950/30 animate-pulse"
@@ -347,17 +364,27 @@ export default function SessionReservationWidget({
 
         {/* User Status Tag */}
         <div>
+          {isCheckedOut && (
+            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-teal-500 text-slate-950 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Đã Check-out (Hoàn thành)
+            </span>
+          )}
+          {isMissingCheckout && (
+            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-500/30 text-amber-300 border border-amber-400/50 flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5" /> Quên Check-out
+            </span>
+          )}
           {isCheckedIn && (
             <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500 text-slate-950 flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" /> Đã Check-in tại sân
             </span>
           )}
-          {attStatus === "CONFIRMED" && !isCheckedIn && (
+          {attStatus === "CONFIRMED" && !isCheckedIn && !isCheckedOut && !isMissingCheckout && (
             <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-500/30 text-blue-300 border border-blue-400/40 flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5" /> Đã Chốt Slot (CONFIRMED)
             </span>
           )}
-          {(attStatus === "RESERVED" || attStatus === "going") && !isCheckedIn && (
+          {(attStatus === "RESERVED" || attStatus === "going") && !isCheckedIn && !isCheckedOut && !isMissingCheckout && (
             <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-primary/30 text-primary-hover border border-primary/40 flex items-center gap-1">
               <Hourglass className="w-3.5 h-3.5" /> Đã Giữ Chỗ (RESERVED)
             </span>
@@ -457,14 +484,58 @@ export default function SessionReservationWidget({
             </button>
           </Link>
         ) : isCheckedIn ? (
-          <div className="w-full flex items-center justify-between p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
+          <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
             <span className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               Check-in lúc {checkedInAt ? formatVietnamDate(checkedInAt, "time") : "hôm nay"}. Sẵn sàng ra sân ghép trận!
             </span>
-            <Link href="/admin/matches">
-              <button className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 transition-all">
-                Xem Bàn Đấu
+            <div className="flex items-center gap-2 shrink-0">
+              <Link href={`/check-in?session_id=${session.id}&mode=checkout`}>
+                <button className="px-3.5 py-1.5 rounded-lg bg-emerald-400 text-slate-950 text-xs font-black hover:bg-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow">
+                  <LogOut className="w-3.5 h-3.5" />
+                  Quét QR Check-out
+                </button>
+              </Link>
+              <Link href="/admin/matches">
+                <button className="px-3 py-1.5 rounded-lg bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition-all">
+                  Xem Bàn Đấu
+                </button>
+              </Link>
+            </div>
+          </div>
+        ) : isCheckedOut ? (
+          <div className="w-full p-4 rounded-xl bg-teal-950/60 border border-teal-500/30 text-teal-200 text-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-5 h-5 text-teal-400 shrink-0" />
+              <div>
+                <p className="font-bold text-white text-sm">Buổi tập hoàn thành (Đã Check-out)</p>
+                <p className="text-[11px] text-teal-300/80 mt-0.5">
+                  {checkedInAt ? `Vào: ${formatVietnamDate(checkedInAt, "time")}` : ""} 
+                  {checkedOutAt ? ` • Ra: ${formatVietnamDate(checkedOutAt, "time")}` : ""} 
+                  {typeof durationMinutes === "number" && durationMinutes > 0 ? ` • Thời lượng: ${durationMinutes} phút` : ""}
+                </p>
+              </div>
+            </div>
+            <Link href="/profile">
+              <button className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow">
+                Xem Lịch Sử
+              </button>
+            </Link>
+          </div>
+        ) : isMissingCheckout ? (
+          <div className="w-full p-4 rounded-xl bg-amber-950/60 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <div>
+                <p className="font-bold text-amber-300 text-sm">Đã kết thúc buổi tập (Quên Check-out)</p>
+                <p className="text-[11px] text-amber-200/80 mt-0.5">
+                  Hệ thống tự động ghi nhận hoàn thành buổi tập{typeof durationMinutes === "number" && durationMinutes > 0 ? ` (~${durationMinutes} phút)` : ""}.
+                </p>
+              </div>
+            </div>
+            <Link href="/profile">
+              <button className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black transition-all cursor-pointer shadow">
+                Xem Lịch Sử
               </button>
             </Link>
           </div>

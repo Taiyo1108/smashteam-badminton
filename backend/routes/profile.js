@@ -148,11 +148,14 @@ router.get('/me', authenticateToken, async (req, res) => {
       `SELECT s.id, s.title, s.date_time, s.location,
               s.session_start, s.session_end, s.capacity, s.reservation_deadline,
               s.checkin_open_at, s.checkin_close_at,
+              s.checkout_open_at, s.checkout_close_at,
               a.status as rsvp_status,
               a.cancellation_request_pending,
               a.cancellation_request_reason,
               a.checked_in_at,
-              (SELECT COUNT(*) FROM attendances act WHERE act.session_id = s.id AND act.status IN ('RESERVED', 'CONFIRMED', 'CHECKED_IN')) AS active_reservations_count,
+              a.checked_out_at,
+              a.checkout_status,
+              a.duration_minutes,
               w.id as waitlist_id,
               w.position as waitlist_position,
               w.status as waitlist_status,
@@ -167,18 +170,22 @@ router.get('/me', authenticateToken, async (req, res) => {
     const rawUpcoming = upcomingSessionRes.rows[0] || null;
     let upcomingSession = null;
     if (rawUpcoming) {
-      const cap = rawUpcoming.capacity || 40;
-      const act = parseInt(rawUpcoming.active_reservations_count || 0, 10);
+      const { getSessionCapacity } = require('../services/sessionCapacityService');
+      const capInfo = await getSessionCapacity(rawUpcoming.id);
       upcomingSession = {
         ...rawUpcoming,
-        available_slots: Math.max(0, cap - act),
-        is_full: act >= cap
+        capacity: capInfo.capacity,
+        active_reservations_count: capInfo.occupiedSlots,
+        available_slots: capInfo.availableSlots,
+        waitlist_count: capInfo.waitlistCount,
+        is_full: capInfo.isFull
       };
     }
 
     // 4. Fetch lịch sử điểm danh của người chơi
     const attendanceHistoryRes = await db.query(
-      `SELECT a.status, s.title, s.date_time, s.location, a.created_at as rsvp_date
+      `SELECT a.status, s.title, s.date_time, s.location, a.created_at as rsvp_date,
+              a.checked_in_at, a.checked_out_at, a.duration_minutes
        FROM attendances a
        JOIN sessions s ON a.session_id = s.id
        WHERE a.user_id = $1

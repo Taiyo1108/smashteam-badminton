@@ -48,30 +48,52 @@ async function trackActivity(userId, actionType, count = 1, client = db) {
   try {
     // Tìm các nhiệm vụ đang kích hoạt (is_active = true) có action_type tương ứng
     const activeQuests = await client.query(
-      'SELECT id, target_count FROM quests WHERE action_type = $1 AND is_active = true',
+      'SELECT id, target_count, quest_type FROM quests WHERE action_type = $1 AND is_active = true',
       [actionType]
     );
 
     for (const quest of activeQuests.rows) {
       const questId = quest.id;
       const targetCount = quest.target_count;
+      const questType = quest.quest_type;
 
-      // Thực hiện UPSERT nguyên tử tránh tranh chấp luồng dữ liệu
+      // Thực hiện UPSERT nguyên tử tránh tranh chấp luồng dữ liệu, hỗ trợ auto-reset theo chu kỳ (Asia/Ho_Chi_Minh)
       await client.query(
-        `INSERT INTO user_quests (user_id, quest_id, current_count, is_completed, updated_at)
-         VALUES ($1, $2, LEAST($3, $4::int), LEAST($3, $4::int) >= $4, CURRENT_TIMESTAMP)
+        `INSERT INTO user_quests (user_id, quest_id, current_count, is_completed, is_claimed, updated_at)
+         VALUES ($1, $2, LEAST($3, $4::int), LEAST($3, $4::int) >= $4, false, CURRENT_TIMESTAMP)
          ON CONFLICT (user_id, quest_id)
          DO UPDATE SET 
            current_count = CASE 
+             WHEN $5 = 'daily' AND to_char(user_quests.updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') <> to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD')
+               THEN LEAST($3, $4)
+             WHEN $5 = 'weekly' AND to_char(user_quests.updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'IYYY-IW') <> to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'IYYY-IW')
+               THEN LEAST($3, $4)
+             WHEN $5 = 'monthly' AND to_char(user_quests.updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM') <> to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM')
+               THEN LEAST($3, $4)
              WHEN user_quests.is_completed THEN user_quests.current_count 
              ELSE LEAST(user_quests.current_count + $3, $4) 
            END,
            is_completed = CASE 
+             WHEN $5 = 'daily' AND to_char(user_quests.updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') <> to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD')
+               THEN ($3 >= $4)
+             WHEN $5 = 'weekly' AND to_char(user_quests.updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'IYYY-IW') <> to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'IYYY-IW')
+               THEN ($3 >= $4)
+             WHEN $5 = 'monthly' AND to_char(user_quests.updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM') <> to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM')
+               THEN ($3 >= $4)
              WHEN user_quests.is_completed THEN true 
              ELSE (user_quests.current_count + $3) >= $4 
            END,
+           is_claimed = CASE 
+             WHEN $5 = 'daily' AND to_char(user_quests.updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') <> to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD')
+               THEN false
+             WHEN $5 = 'weekly' AND to_char(user_quests.updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'IYYY-IW') <> to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'IYYY-IW')
+               THEN false
+             WHEN $5 = 'monthly' AND to_char(user_quests.updated_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM') <> to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM')
+               THEN false
+             ELSE user_quests.is_claimed 
+           END,
            updated_at = CURRENT_TIMESTAMP`,
-        [userId, questId, count, targetCount]
+        [userId, questId, count, targetCount, questType]
       );
     }
   } catch (error) {

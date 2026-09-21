@@ -7,30 +7,14 @@ const { addXpToUser } = require('../utils/gamification');
 // Protect all routes
 router.use(authenticateToken);
 
-// Helper functions for date comparison
-const getStartOfDay = (date) => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-};
+const {
+  getVietnamDateString,
+  isSameVietnamDay,
+  getVietnamWeekString,
+  getVietnamMonthString
+} = require('../utils/date');
 
-const getStartOfWeek = (date) => {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(d.setDate(diff));
-  monday.setHours(0, 0, 0, 0);
-  return monday.getTime();
-};
-
-const getStartOfMonth = (date) => {
-  const d = new Date(date);
-  d.setDate(1);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-};
-
-// Check and Update Streak on Profile load
+// Check and Update Streak on Profile load (Asia/Ho_Chi_Minh timezone)
 async function checkAndUpdateStreak(userId, client = db) {
   const userRes = await client.query(
     'SELECT last_active_date, current_streak, max_streak, streak_shields FROM users WHERE id = $1',
@@ -45,17 +29,23 @@ async function checkAndUpdateStreak(userId, client = db) {
   let streakShields = user.streak_shields || 0;
   let streakNotification = null;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayStr = getVietnamDateString();
+  if (!lastActiveDateStr) {
+    await client.query(
+      'UPDATE users SET current_streak = 1, max_streak = GREATEST(max_streak, 1), last_active_date = CURRENT_DATE WHERE id = $1',
+      [userId]
+    );
+    return { currentStreak: 1, streakShields, streakNotification: null };
+  }
 
-  const lastActive = new Date(lastActiveDateStr);
-  lastActive.setHours(0, 0, 0, 0);
-
-  const diffTime = today.getTime() - lastActive.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  const lastActiveStr = getVietnamDateString(lastActiveDateStr);
+  const todayDate = new Date(todayStr);
+  const lastDate = new Date(lastActiveStr);
+  const diffTime = todayDate.getTime() - lastDate.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
   if (diffDays === 0) {
-    // Already active today
+    // Already active today in Vietnam timezone
   } else if (diffDays === 1) {
     // Active yesterday, increment streak
     currentStreak += 1;
@@ -136,13 +126,13 @@ router.get('/profile', async (req, res) => {
   }
 });
 
-// GET /api/gamification/quests - Lấy danh sách nhiệm vụ với Quest Auto-Reset
+// GET /api/gamification/quests - Lấy danh sách nhiệm vụ (Read-Only query, derived in-memory)
 router.get('/quests', async (req, res) => {
   try {
     const userId = req.user.id;
     
     // 1. Lấy tất cả nhiệm vụ đang hoạt động
-    const questsRes = await db.query('SELECT * FROM quests WHERE is_active = true');
+    const questsRes = await db.query('SELECT * FROM quests WHERE is_active = true ORDER BY id ASC');
     const quests = questsRes.rows;
 
     // 2. Lấy thông tin tiến độ của người dùng
@@ -152,48 +142,76 @@ router.get('/quests', async (req, res) => {
     );
     const userQuests = userQuestsRes.rows;
 
+    // 3. NGUỒN CHÂN LÝ CHO QUEST ĐIỂM DANH: Kiểm tra user có attendance CHECKED_IN hoặc CHECKED_OUT hôm nay theo giờ Việt Nam
+    const checkInRes = await db.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM attendances
+         WHERE user_id = $1
+           AND status IN ('CHECKED_IN', 'CHECKED_OUT')
+           AND to_char(COALESCE(checked_in_at, created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') = to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD')
+       ) AS has_checked_in_today`,
+      [userId]
+    );
+    const hasCheckedInToday = Boolean(checkInRes.rows[0]?.has_checked_in_today);
+
     const now = new Date();
     const resultList = [];
 
     for (const q of quests) {
-      let progress = userQuests.find(uq => uq.quest_id === q.id);
-      
+      const progress = userQuests.find(uq => uq.quest_id === q.id);
+
+      if (q.action_type === 'check_in') {
+        // NGUỒN CHÂN LÝ: Bảng attendances
+        const isCompleted = hasCheckedInToday;
+        const currentCount = hasCheckedInToday ? Math.max(1, q.target_count || 1) : 0;
+        // Chỉ coi là đã nhận thưởng nếu hôm nay đã check-in VÀ bản ghi claim diễn ra trong ngày hôm nay (Asia/Ho_Chi_Minh)
+        const isClaimed = Boolean(
+          hasCheckedInToday &&
+          progress &&
+          progress.is_claimed &&
+          progress.updated_at &&
+          isSameVietnamDay(progress.updated_at, now)
+        );
+
+        resultList.push({
+          ...q,
+          current_count: currentCount,
+          is_completed: isCompleted,
+          is_claimed: isClaimed,
+          updated_at: progress ? progress.updated_at : null
+        });
+        continue;
+      }
+
+      // Các nhiệm vụ khác (play_matches, win_matches, volunteer, etc.)
       if (progress) {
         let currentCount = progress.current_count;
         let isCompleted = progress.is_completed;
         let isClaimed = progress.is_claimed;
-        let updatedAt = progress.updated_at;
-        let needReset = false;
+        const updatedAt = progress.updated_at;
+        let isCycleExpired = false;
 
-        const lastUpdated = new Date(updatedAt);
-
-        // Auto-Reset logic
-        if (q.quest_type === 'daily') {
-          if (getStartOfDay(lastUpdated) !== getStartOfDay(now)) {
-            needReset = true;
-          }
-        } else if (q.quest_type === 'weekly') {
-          if (getStartOfWeek(lastUpdated) !== getStartOfWeek(now)) {
-            needReset = true;
-          }
-        } else if (q.quest_type === 'monthly') {
-          if (getStartOfMonth(lastUpdated) !== getStartOfMonth(now)) {
-            needReset = true;
+        if (updatedAt) {
+          if (q.quest_type === 'daily') {
+            if (!isSameVietnamDay(updatedAt, now)) {
+              isCycleExpired = true;
+            }
+          } else if (q.quest_type === 'weekly') {
+            if (getVietnamWeekString(updatedAt) !== getVietnamWeekString(now)) {
+              isCycleExpired = true;
+            }
+          } else if (q.quest_type === 'monthly') {
+            if (getVietnamMonthString(updatedAt) !== getVietnamMonthString(now)) {
+              isCycleExpired = true;
+            }
           }
         }
 
-        if (needReset) {
+        // Tính toán động (in-memory) cho chu kỳ mới mà KHÔNG ghi đè DB trong hàm GET
+        if (isCycleExpired) {
           currentCount = 0;
           isCompleted = false;
           isClaimed = false;
-          updatedAt = now;
-          
-          await db.query(
-            `UPDATE user_quests 
-             SET current_count = 0, is_completed = false, is_claimed = false, updated_at = CURRENT_TIMESTAMP 
-             WHERE user_id = $1 AND quest_id = $2`,
-            [userId, q.id]
-          );
         }
 
         resultList.push({
@@ -204,7 +222,6 @@ router.get('/quests', async (req, res) => {
           updated_at: updatedAt
         });
       } else {
-        // Chưa có bản ghi tiến độ -> Trả về mặc định 0
         resultList.push({
           ...q,
           current_count: 0,
@@ -231,48 +248,138 @@ router.post('/quests/:id/claim', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Khóa bản ghi để tránh Race Condition (FOR UPDATE)
-    const userQuestRes = await client.query(
-      `SELECT uq.current_count, uq.is_completed, uq.is_claimed, q.xp_reward, q.coin_reward, q.title
-       FROM user_quests uq
-       JOIN quests q ON uq.quest_id = q.id
-       WHERE uq.user_id = $1 AND uq.quest_id = $2 FOR UPDATE`,
-      [userId, questId]
+    // 1. Lấy thông tin quest
+    const questRes = await client.query(
+      'SELECT id, title, quest_type, action_type, target_count, xp_reward, coin_reward, is_active FROM quests WHERE id = $1',
+      [questId]
     );
 
-    if (userQuestRes.rows.length === 0) {
-      throw new Error('Nhiệm vụ này chưa được bắt đầu hoặc không tồn tại tiến trình.');
+    if (questRes.rows.length === 0 || !questRes.rows[0].is_active) {
+      throw new Error('Nhiệm vụ không tồn tại hoặc đã ngừng hoạt động.');
     }
 
-    const uq = userQuestRes.rows[0];
+    const quest = questRes.rows[0];
+    const now = new Date();
 
-    if (!uq.is_completed) {
-      throw new Error('Nhiệm vụ chưa hoàn thành.');
+    // 2. Xử lý riêng cho nhiệm vụ check_in: BẢNG ATTENDANCES LÀ CHÂN LÝ
+    if (quest.action_type === 'check_in') {
+      const checkInRes = await client.query(
+        `SELECT EXISTS (
+           SELECT 1 FROM attendances
+           WHERE user_id = $1
+             AND status IN ('CHECKED_IN', 'CHECKED_OUT')
+             AND to_char(COALESCE(checked_in_at, created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') = to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD')
+         ) AS has_checked_in_today`,
+        [userId]
+      );
+      const hasCheckedInToday = Boolean(checkInRes.rows[0]?.has_checked_in_today);
+
+      if (!hasCheckedInToday) {
+        // Reset ngay bản ghi user_quests rác (nếu có) về false
+        await client.query(
+          `UPDATE user_quests 
+           SET current_count = 0, is_completed = false, is_claimed = false, updated_at = CURRENT_TIMESTAMP 
+           WHERE user_id = $1 AND quest_id = $2`,
+          [userId, questId]
+        );
+        await client.query('COMMIT');
+        return res.status(400).json({
+          error: 'Bạn chưa quét mã QR Check-in điểm danh tại sân hôm nay. Không thể nhận thưởng.'
+        });
+      }
+
+      // Khóa bản ghi user_quests để kiểm tra tranh chấp (FOR UPDATE)
+      const uqRes = await client.query(
+        'SELECT current_count, is_completed, is_claimed, updated_at FROM user_quests WHERE user_id = $1 AND quest_id = $2 FOR UPDATE',
+        [userId, questId]
+      );
+
+      if (uqRes.rows.length > 0) {
+        const uq = uqRes.rows[0];
+        if (uq.is_claimed && uq.updated_at && isSameVietnamDay(uq.updated_at, now)) {
+          throw new Error('Phần thưởng nhiệm vụ này đã được nhận trước đó.');
+        }
+
+        await client.query(
+          `UPDATE user_quests 
+           SET current_count = $3, is_completed = true, is_claimed = true, updated_at = CURRENT_TIMESTAMP 
+           WHERE user_id = $1 AND quest_id = $2`,
+          [userId, questId, quest.target_count || 1]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO user_quests (user_id, quest_id, current_count, is_completed, is_claimed, updated_at)
+           VALUES ($1, $2, $3, true, true, CURRENT_TIMESTAMP)`,
+          [userId, questId, quest.target_count || 1]
+        );
+      }
+    } else {
+      // 3. Các nhiệm vụ khác: Khóa bản ghi user_quests
+      const userQuestRes = await client.query(
+        `SELECT uq.current_count, uq.is_completed, uq.is_claimed, uq.updated_at
+         FROM user_quests uq
+         WHERE uq.user_id = $1 AND uq.quest_id = $2 FOR UPDATE`,
+        [userId, questId]
+      );
+
+      if (userQuestRes.rows.length === 0) {
+        throw new Error('Nhiệm vụ này chưa được bắt đầu hoặc không tồn tại tiến trình.');
+      }
+
+      const uq = userQuestRes.rows[0];
+
+      // Kiểm tra chu kỳ reset
+      if (uq.updated_at) {
+        if (quest.quest_type === 'daily' && !isSameVietnamDay(uq.updated_at, now)) {
+          await client.query(
+            'UPDATE user_quests SET current_count = 0, is_completed = false, is_claimed = false, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND quest_id = $2',
+            [userId, questId]
+          );
+          throw new Error('Nhiệm vụ chưa hoàn thành.');
+        }
+        if (quest.quest_type === 'weekly' && getVietnamWeekString(uq.updated_at) !== getVietnamWeekString(now)) {
+          await client.query(
+            'UPDATE user_quests SET current_count = 0, is_completed = false, is_claimed = false, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND quest_id = $2',
+            [userId, questId]
+          );
+          throw new Error('Nhiệm vụ chưa hoàn thành.');
+        }
+        if (quest.quest_type === 'monthly' && getVietnamMonthString(uq.updated_at) !== getVietnamMonthString(now)) {
+          await client.query(
+            'UPDATE user_quests SET current_count = 0, is_completed = false, is_claimed = false, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND quest_id = $2',
+            [userId, questId]
+          );
+          throw new Error('Nhiệm vụ chưa hoàn thành.');
+        }
+      }
+
+      if (!uq.is_completed) {
+        throw new Error('Nhiệm vụ chưa hoàn thành.');
+      }
+
+      if (uq.is_claimed) {
+        throw new Error('Phần thưởng nhiệm vụ này đã được nhận trước đó.');
+      }
+
+      await client.query(
+        'UPDATE user_quests SET is_claimed = true, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND quest_id = $2',
+        [userId, questId]
+      );
     }
 
-    if (uq.is_claimed) {
-      throw new Error('Phần thưởng nhiệm vụ này đã được nhận trước đó.');
-    }
-
-    // 2. Đánh dấu đã nhận thưởng
-    await client.query(
-      'UPDATE user_quests SET is_claimed = true, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND quest_id = $2',
-      [userId, questId]
-    );
-
-    // 3. Cộng XP & Xu
-    const levelUpInfo = await addXpToUser(userId, uq.xp_reward, client);
+    // 4. Cộng XP & Xu
+    const levelUpInfo = await addXpToUser(userId, quest.xp_reward, client);
     await client.query(
       'UPDATE users SET smash_coins = smash_coins + $1 WHERE id = $2',
-      [uq.coin_reward, userId]
+      [quest.coin_reward, userId]
     );
 
     await client.query('COMMIT');
     res.json({
       success: true,
-      message: `Nhận thưởng thành công cho nhiệm vụ: ${uq.title}`,
-      xp_reward: uq.xp_reward,
-      coin_reward: uq.coin_reward,
+      message: `Nhận thưởng thành công cho nhiệm vụ: ${quest.title}`,
+      xp_reward: quest.xp_reward,
+      coin_reward: quest.coin_reward,
       level_up: levelUpInfo
     });
   } catch (error) {

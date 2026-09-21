@@ -10,7 +10,8 @@ const {
   cancelReservation,
   requestLateCancel,
   claimWaitlistOffer,
-  processQrCheckIn
+  processQrCheckIn,
+  processQrCheckOut
 } = require('../services/sessionReservationService');
 
 // Middleware giải mã token tùy chọn (nếu có)
@@ -43,22 +44,8 @@ router.get('/', optionalAuth, async (req, res) => {
                s.reservation_open_at::text AS reservation_open_at_str,
                s.reservation_deadline::text AS reservation_deadline_str,
                s.checkin_open_at::text AS checkin_open_at_str,
-               s.checkin_close_at::text AS checkin_close_at_str,
-               COALESCE(att.active_count, 0) AS active_reservations_count,
-               COALESCE(wl.waiting_count, 0) AS waitlist_count
+               s.checkin_close_at::text AS checkin_close_at_str
         FROM sessions s
-        LEFT JOIN (
-          SELECT session_id, COUNT(*) AS active_count
-          FROM attendances
-          WHERE status IN ('RESERVED', 'CONFIRMED', 'CHECKED_IN', 'going')
-          GROUP BY session_id
-        ) att ON s.id = att.session_id
-        LEFT JOIN (
-          SELECT session_id, COUNT(*) AS waiting_count
-          FROM session_waitlist
-          WHERE status IN ('WAITING', 'OFFERED')
-          GROUP BY session_id
-        ) wl ON s.id = wl.session_id
         ORDER BY s.date_time DESC;
       `;
     } else {
@@ -70,29 +57,16 @@ router.get('/', optionalAuth, async (req, res) => {
                s.reservation_open_at::text AS reservation_open_at_str,
                s.reservation_deadline::text AS reservation_deadline_str,
                s.checkin_open_at::text AS checkin_open_at_str,
-               s.checkin_close_at::text AS checkin_close_at_str,
-               COALESCE(att.active_count, 0) AS active_reservations_count,
-               COALESCE(wl.waiting_count, 0) AS waitlist_count
+               s.checkin_close_at::text AS checkin_close_at_str
         FROM sessions s
-        LEFT JOIN (
-          SELECT session_id, COUNT(*) AS active_count
-          FROM attendances
-          WHERE status IN ('RESERVED', 'CONFIRMED', 'CHECKED_IN', 'going')
-          GROUP BY session_id
-        ) att ON s.id = att.session_id
-        LEFT JOIN (
-          SELECT session_id, COUNT(*) AS waiting_count
-          FROM session_waitlist
-          WHERE status IN ('WAITING', 'OFFERED')
-          GROUP BY session_id
-        ) wl ON s.id = wl.session_id
         WHERE s.date_time >= NOW() - INTERVAL '2 hours' 
         ORDER BY s.date_time ASC LIMIT 10;
       `;
     }
 
     const result = await db.query(queryText);
-    const sessions = result.rows;
+    const { enrichSessionsWithCapacity } = require('../services/sessionCapacityService');
+    const sessions = await enrichSessionsWithCapacity(result.rows);
 
     // Nếu user đã đăng nhập, gắn thêm trạng thái đặt chỗ của user vào từng buổi
     if (userId && sessions.length > 0) {
@@ -119,13 +93,6 @@ router.get('/', optionalAuth, async (req, res) => {
       sessions.forEach(s => {
         s.user_attendance = userAttMap[s.id] || null;
         s.user_waitlist = userWlMap[s.id] || null;
-        s.available_slots = Math.max(0, (s.capacity || 40) - parseInt(s.active_reservations_count, 10));
-        s.is_full = s.available_slots === 0;
-      });
-    } else {
-      sessions.forEach(s => {
-        s.available_slots = Math.max(0, (s.capacity || 40) - parseInt(s.active_reservations_count, 10));
-        s.is_full = s.available_slots === 0;
       });
     }
 
@@ -270,6 +237,28 @@ router.post('/:id/qr-check-in', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error in QR check-in:', error);
     res.status(400).json({ error: error.message || 'Điểm danh thất bại.' });
+  }
+});
+
+// POST /api/sessions/:id/qr-check-out - Thành viên quét mã QR hoặc bấm check-out rời sân
+router.post('/:id/qr-check-out', authenticateToken, async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const userId = req.user.id;
+    const code = req.body.code || req.body.token || req.query.code || '';
+    const isAdmin = req.user && req.user.role === 'admin';
+
+    const result = await processQrCheckOut({
+      sessionId,
+      userId,
+      clientTokenOrCode: code,
+      adminId: isAdmin ? userId : null
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error in QR check-out:', error);
+    res.status(400).json({ error: error.message || 'Check-out thất bại.' });
   }
 });
 

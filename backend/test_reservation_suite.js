@@ -257,7 +257,11 @@ async function runSuite() {
 
     // Dọn dẹp dữ liệu test
     await client.query(`DELETE FROM sessions WHERE id IN ($1, $2);`, [testSessionId, concSessionId]);
-    console.log('✓ Cleaned up temporary test sessions.');
+    if (testUsers && testUsers.length > 0) {
+      const userIds = testUsers.map(u => u.id);
+      await client.query(`UPDATE user_quests SET current_count = 0, is_completed = false, is_claimed = false WHERE user_id = ANY($1) AND quest_id = 1;`, [userIds]).catch(() => {});
+    }
+    console.log('✓ Cleaned up temporary test sessions and test user_quests.');
 
     console.log('\n================================================================');
     console.log('🎉 ALL 14 CORE ENGINE & CONCURRENCY TESTS PASSED 100%!');
@@ -268,6 +272,10 @@ async function runSuite() {
     console.error('\n❌ TEST SUITE FAILED:', error);
     if (testSessionId) {
       await client.query(`DELETE FROM sessions WHERE id = $1;`, [testSessionId]).catch(() => {});
+    }
+    if (testUsers && testUsers.length > 0) {
+      const userIds = testUsers.map(u => u.id);
+      await client.query(`UPDATE user_quests SET current_count = 0, is_completed = false, is_claimed = false WHERE user_id = ANY($1) AND quest_id = 1;`, [userIds]).catch(() => {});
     }
     process.exit(1);
   } finally {

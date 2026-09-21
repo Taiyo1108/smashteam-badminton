@@ -4,9 +4,10 @@ import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   CheckCircle2, AlertCircle, Loader2, Home, User, Sparkles,
-  Camera, KeyRound, ArrowRight, ArrowLeft, RefreshCw, XCircle, LogIn, ShieldCheck, MapPin, Clock
+  Camera, KeyRound, ArrowRight, ArrowLeft, RefreshCw, XCircle, LogIn, ShieldCheck, MapPin, Clock, LogOut
 } from "lucide-react";
 import { API_URL } from "@/app/config";
+import { formatVietnamDate } from "@/app/utils/date";
 import confetti from "canvas-confetti";
 import { Html5Qrcode } from "html5-qrcode";
 
@@ -15,6 +16,8 @@ function CheckInContent() {
   const router = useRouter();
   const sessionId = searchParams.get("session_id");
   const urlCode = searchParams.get("code") || searchParams.get("token");
+  const urlMode = searchParams.get("mode");
+  const isCheckoutMode = urlMode === "checkout" || (urlCode ? urlCode.startsWith("SEC_OUT_") : false);
 
   // Mode: "auto" (khi có params), "manual" (nhập code 5 ký tự), "camera" (quét QR)
   const [activeTab, setActiveTab] = useState<"code" | "camera">("code");
@@ -91,26 +94,37 @@ function CheckInContent() {
       return;
     }
 
-    // Tiến hành tự động điểm danh
-    handleAutoCheckIn(token, sessionId, urlCode);
-  }, [sessionId, urlCode]);
+    // Tiến hành tự động điểm danh / check-out
+    handleAutoCheckIn(token, sessionId, urlCode, urlMode);
+  }, [sessionId, urlCode, urlMode]);
 
-  const handleAutoCheckIn = async (token: string, sId: string | null, code: string | null) => {
+  const handleAutoCheckIn = async (token: string, sId: string | null, code: string | null, targetMode?: string | null) => {
+    const isCheckout = (targetMode === "checkout" || urlMode === "checkout" || (code ? code.startsWith("SEC_OUT_") : false));
     setStatus("loading");
-    setStatusMessage("Đang tiến hành xác thực điểm danh...");
+    setStatusMessage(isCheckout ? "Đang tiến hành xác thực Check-out / rời sân..." : "Đang tiến hành xác thực điểm danh...");
 
     try {
       let res: Response;
       if (sId) {
-        // Gọi API theo session_id
-        res = await fetch(`${API_URL}/api/sessions/${sId}/qr-check-in`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({ code: code || "", token: code || "" })
-        });
+        if (isCheckout) {
+          res = await fetch(`${API_URL}/api/sessions/${sId}/qr-check-out`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ code: code || "", token: code || "" })
+          });
+        } else {
+          res = await fetch(`${API_URL}/api/sessions/${sId}/qr-check-in`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ code: code || "", token: code || "" })
+          });
+        }
       } else {
         // Chỉ có code -> gọi code-check-in
         res = await fetch(`${API_URL}/api/sessions/code-check-in`, {
@@ -128,7 +142,7 @@ function CheckInContent() {
       if (res.ok) {
         setStatus("success");
         setSuccessData(data);
-        setStatusMessage(data.message || "Điểm danh buổi tập thành công!");
+        setStatusMessage(data.message || (isCheckout ? "Check-out buổi tập thành công!" : "Điểm danh buổi tập thành công!"));
         playSuccessSound();
         confetti({
           particleCount: 160,
@@ -137,10 +151,10 @@ function CheckInContent() {
         });
       } else {
         setStatus("error");
-        setErrorMessage(data.error || "Điểm danh thất bại. Vui lòng liên hệ ban quản trị sân.");
+        setErrorMessage(data.error || (isCheckout ? "Check-out thất bại. Vui lòng liên hệ ban quản lý sân." : "Điểm danh thất bại. Vui lòng liên hệ ban quản trị sân."));
       }
     } catch (err) {
-      console.error("Auto Check-in error:", err);
+      console.error("Auto Check-in/out error:", err);
       setStatus("error");
       setErrorMessage("Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại mạng.");
     }
@@ -166,21 +180,33 @@ function CheckInContent() {
     setErrorMessage("");
 
     try {
-      const res = await fetch(`${API_URL}/api/sessions/code-check-in`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ code: cleanCode })
-      });
+      let res: Response;
+      if (isCheckoutMode && sessionId) {
+        res = await fetch(`${API_URL}/api/sessions/${sessionId}/qr-check-out`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ code: cleanCode, token: cleanCode })
+        });
+      } else {
+        res = await fetch(`${API_URL}/api/sessions/code-check-in`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ code: cleanCode })
+        });
+      }
 
       const data = await res.json();
 
       if (res.ok) {
         setStatus("success");
         setSuccessData(data);
-        setStatusMessage(data.message || "Điểm danh thành công!");
+        setStatusMessage(data.message || (isCheckoutMode ? "Check-out thành công!" : "Điểm danh thành công!"));
         playSuccessSound();
         confetti({
           particleCount: 160,
@@ -188,10 +214,10 @@ function CheckInContent() {
           origin: { y: 0.6 }
         });
       } else {
-        setErrorMessage(data.error || "Mã điểm danh không hợp lệ hoặc buổi tập chưa mở.");
+        setErrorMessage(data.error || (isCheckoutMode ? "Mã check-out không hợp lệ hoặc chưa đến giờ." : "Mã điểm danh không hợp lệ hoặc buổi tập chưa mở."));
       }
     } catch (err) {
-      console.error("Manual check-in error:", err);
+      console.error("Manual check error:", err);
       setErrorMessage("Lỗi kết nối máy chủ. Vui lòng thử lại.");
     } finally {
       setIsSubmitting(false);
@@ -244,6 +270,7 @@ function CheckInContent() {
     // Phân tích nếu decodedText là URL hoặc chuỗi code thuần
     let sId: string | null = null;
     let code: string = decodedText.trim();
+    let targetMode: string | null = urlMode;
 
     try {
       if (decodedText.includes("http://") || decodedText.includes("https://") || decodedText.includes("/check-in")) {
@@ -251,6 +278,8 @@ function CheckInContent() {
         sId = urlObj.searchParams.get("session_id");
         const c = urlObj.searchParams.get("code") || urlObj.searchParams.get("token");
         if (c) code = c;
+        const m = urlObj.searchParams.get("mode");
+        if (m) targetMode = m;
       }
     } catch (e) {
       // parse text
@@ -262,7 +291,7 @@ function CheckInContent() {
       return;
     }
 
-    handleAutoCheckIn(token, sId, code);
+    handleAutoCheckIn(token, sId, code, targetMode);
   };
 
   // Dọn dẹp camera khi unmount
@@ -298,7 +327,9 @@ function CheckInContent() {
               S
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl font-black text-white tracking-tight">Cổng Điểm Danh CLB</h1>
+              <h1 className="text-lg sm:text-xl font-black text-white tracking-tight">
+                {isCheckoutMode ? "Cổng Check-out CLB" : "Cổng Điểm Danh CLB"}
+              </h1>
               <p className="text-xs text-slate-400">CLB Cầu Lông SmashTeam UIT</p>
             </div>
           </div>
@@ -315,45 +346,88 @@ function CheckInContent() {
           <div className="space-y-4 py-8 text-center animate-fade-in">
             <Loader2 className="w-12 h-12 text-smash-violet animate-spin mx-auto" aria-hidden="true" />
             <h2 className="text-xl font-bold text-white tracking-wide">{statusMessage}</h2>
-            <p className="text-xs text-slate-400">Đang đồng bộ dữ liệu và trao thưởng XP...</p>
+            <p className="text-xs text-slate-400">
+              {isCheckoutMode ? "Đang đồng bộ thời gian rời sân và hoàn tất buổi tập..." : "Đang đồng bộ dữ liệu và trao thưởng XP..."}
+            </p>
           </div>
         )}
 
         {/* SUCCESS CARD */}
         {status === "success" && (
           <div className="space-y-6 text-center animate-fade-in py-2">
-            <div className="w-20 h-20 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(16,185,129,0.35)]">
+            <div className={`w-20 h-20 rounded-full border flex items-center justify-center mx-auto ${
+              successData?.attendance?.checked_out_at || successData?.status === "CHECKED_OUT" || isCheckoutMode
+                ? "bg-teal-500/15 text-teal-400 border-teal-500/30 shadow-[0_0_30px_rgba(20,184,166,0.35)]"
+                : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.35)]"
+            }`}>
               <CheckCircle2 className="w-12 h-12" aria-hidden="true" />
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Điểm Danh Thành Công!</h2>
+              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                {successData?.attendance?.checked_out_at || successData?.status === "CHECKED_OUT" || isCheckoutMode
+                  ? "Check-out Thành Công!"
+                  : "Điểm Danh Thành Công!"}
+              </h2>
               <p className="text-sm text-slate-200 leading-relaxed font-medium">
                 {statusMessage}
               </p>
             </div>
 
-            {/* Chi tiết phần thưởng */}
-            <div className="bg-gradient-to-br from-white/5 to-white/10 border border-emerald-500/30 rounded-2xl p-4 text-left space-y-3">
-              <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Phần thưởng nhận được
-                </span>
-                <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  +1 Buổi tham gia
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-center">
-                  <div className="text-xs text-slate-400 font-semibold mb-0.5">Kinh nghiệm</div>
-                  <div className="text-lg font-black text-emerald-400">+25 XP</div>
+            {/* Chi tiết Check-out vs Check-in */}
+            {successData?.attendance?.checked_out_at || successData?.status === "CHECKED_OUT" || isCheckoutMode ? (
+              <div className="bg-gradient-to-br from-white/5 to-white/10 border border-teal-500/30 rounded-2xl p-4 text-left space-y-3">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-teal-400" /> Chi tiết tham gia
+                  </span>
+                  <span className="text-xs font-extrabold text-teal-400 bg-teal-500/10 px-2.5 py-0.5 rounded-full border border-teal-500/20">
+                    Hoàn tất buổi tập
+                  </span>
                 </div>
-                <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-center">
-                  <div className="text-xs text-slate-400 font-semibold mb-0.5">Smash Coins</div>
-                  <div className="text-lg font-black text-amber-400">+10 Coins</div>
+                <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                  <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
+                    <div className="text-[10px] text-slate-400 font-semibold mb-0.5">Check-in</div>
+                    <div className="text-sm font-black text-white">
+                      {successData?.attendance?.checked_in_at ? formatVietnamDate(successData.attendance.checked_in_at, "time") : "Đã vào"}
+                    </div>
+                  </div>
+                  <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
+                    <div className="text-[10px] text-slate-400 font-semibold mb-0.5">Check-out</div>
+                    <div className="text-sm font-black text-teal-300">
+                      {successData?.attendance?.checked_out_at ? formatVietnamDate(successData.attendance.checked_out_at, "time") : "Vừa xong"}
+                    </div>
+                  </div>
+                  <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
+                    <div className="text-[10px] text-slate-400 font-semibold mb-0.5">Thời lượng</div>
+                    <div className="text-sm font-black text-amber-400">
+                      {typeof successData?.attendance?.duration_minutes === "number" ? `${successData.attendance.duration_minutes}p` : "N/A"}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="bg-gradient-to-br from-white/5 to-white/10 border border-emerald-500/30 rounded-2xl p-4 text-left space-y-3">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Phần thưởng nhận được
+                  </span>
+                  <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    +1 Buổi tham gia
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-center">
+                    <div className="text-xs text-slate-400 font-semibold mb-0.5">Kinh nghiệm</div>
+                    <div className="text-lg font-black text-emerald-400">+25 XP</div>
+                  </div>
+                  <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-center">
+                    <div className="text-xs text-slate-400 font-semibold mb-0.5">Smash Coins</div>
+                    <div className="text-lg font-black text-amber-400">+10 Coins</div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
@@ -471,27 +545,31 @@ function CheckInContent() {
             {activeTab === "code" && (
               <form onSubmit={handleManualSubmit} className="space-y-5">
                 <div className="text-center space-y-1.5">
-                  <h2 className="text-lg sm:text-xl font-bold text-white">Nhập Mã Buổi Tập Tại Sân</h2>
+                  <h2 className="text-lg sm:text-xl font-bold text-white">
+                    {isCheckoutMode ? "Xác Nhận Check-out Tại Sân" : "Nhập Mã Buổi Tập Tại Sân"}
+                  </h2>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-                    Dành cho thành viên không có camera hoặc quét QR không được. Mã code 5 ký tự được hiển thị trên bảng điều khiển của Ban chủ nhiệm.
+                    {isCheckoutMode
+                      ? "Nhập mã xác nhận rời sân hoặc quét QR Checkout để hệ thống ghi nhận thời lượng tham gia."
+                      : "Dành cho thành viên không có camera hoặc quét QR không được. Mã code 5 ký tự được hiển thị trên bảng điều khiển của Ban chủ nhiệm."}
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <label htmlFor="checkin-code-input" className="block text-xs font-bold text-slate-300 text-center uppercase tracking-wider">
-                    Mã điểm danh (5 ký tự)
+                    {isCheckoutMode ? "Mã check-out" : "Mã điểm danh (5 ký tự)"}
                   </label>
                   <div className="relative">
                     <input
                       id="checkin-code-input"
                       type="text"
-                      maxLength={8}
+                      maxLength={12}
                       value={manualCode}
                       onChange={(e) => {
                         setManualCode(e.target.value.toUpperCase());
                         setErrorMessage("");
                       }}
-                      placeholder="VD: FNAQ8"
+                      placeholder={isCheckoutMode ? "MÃ CHECK-OUT" : "VD: FNAQ8"}
                       className="w-full bg-white/5 border-2 border-primary/40 focus:border-primary focus:outline-none rounded-2xl py-3.5 px-4 text-center font-mono text-2xl sm:text-3xl font-black tracking-[0.25em] text-white placeholder:text-slate-600 uppercase shadow-inner transition-all"
                       autoFocus
                       autoComplete="off"
@@ -522,11 +600,11 @@ function CheckInContent() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Đang xác thực mã...</span>
+                      <span>{isCheckoutMode ? "Đang xác thực check-out..." : "Đang xác thực mã..."}</span>
                     </>
                   ) : (
                     <>
-                      <span>Xác nhận điểm danh</span>
+                      <span>{isCheckoutMode ? "Xác nhận Check-out" : "Xác nhận điểm danh"}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}

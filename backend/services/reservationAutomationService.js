@@ -163,6 +163,56 @@ async function processNoShows() {
 }
 
 /**
+ * Tự động chuyển các attendance CHECKED_IN thành MISSING_CHECKOUT sau khi buổi tập kết thúc
+ */
+async function processMissingCheckouts() {
+  const client = await db.connect();
+  try {
+    const endedSessions = await client.query(
+      `SELECT id, title, session_start, session_end, checkout_close_at 
+       FROM sessions 
+       WHERE (session_end <= CURRENT_TIMESTAMP OR (session_end IS NULL AND date_time <= CURRENT_TIMESTAMP - INTERVAL '2 hours'))
+         AND (missing_checkout_processed IS FALSE OR missing_checkout_processed IS NULL);`
+    );
+
+    let missingCount = 0;
+
+    for (const session of endedSessions.rows) {
+      await client.query('BEGIN');
+
+      const sEnd = session.session_end ? new Date(session.session_end) : new Date();
+
+      const updateRes = await client.query(
+        `UPDATE attendances
+         SET status = 'MISSING_CHECKOUT',
+             checkout_status = 'missing',
+             checkout_method = 'auto',
+             duration_minutes = GREATEST(1, ROUND(EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(checked_in_at, created_at))) / 60)),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE session_id = $2::uuid 
+           AND status = 'CHECKED_IN';`,
+        [sEnd, session.id]
+      );
+
+      await client.query(
+        `UPDATE sessions SET missing_checkout_processed = TRUE WHERE id = $1::uuid;`,
+        [session.id]
+      );
+
+      await client.query('COMMIT');
+      missingCount += updateRes.rowCount;
+    }
+
+    return missingCount;
+  } catch (error) {
+    console.error('[Automation] Error processing missing checkouts:', error);
+    return 0;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Chạy toàn bộ các automation jobs
  */
 async function runAllAutomationJobs() {
@@ -170,6 +220,7 @@ async function runAllAutomationJobs() {
     await processAutoConfirmations();
     await processWaitlistExpirations();
     await processNoShows();
+    await processMissingCheckouts();
   } catch (err) {
     console.error('[Automation Worker Error]:', err);
   }
@@ -189,6 +240,7 @@ module.exports = {
   processAutoConfirmations,
   processWaitlistExpirations,
   processNoShows,
+  processMissingCheckouts,
   runAllAutomationJobs,
   startAutomationWorker
 };

@@ -239,10 +239,8 @@ router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
         [session_id]
       );
       players = attendeesRes.rows;
-    }
-
-    // Nếu không có session_id hoặc session chưa có ai check-in hoặc use_all=true, fallback lấy toàn bộ active members
-    if (players.length === 0) {
+    } else {
+      // Nếu không có session_id hoặc use_all=true, lấy toàn bộ active members
       const allMembersRes = await db.query(
         `SELECT 
           id, full_name, nickname, phone_zalo, avatar_url, 
@@ -393,9 +391,7 @@ router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
         [session_id]
       );
       candidateRows = sessionAttRes.rows;
-    }
-
-    if (candidateRows.length === 0) {
+    } else {
       const allActiveRes = await db.query(
         `SELECT id, full_name, nickname, avatar_url, badminton_level,
                 elo_singles, elo_doubles, matches_singles, matches_doubles,

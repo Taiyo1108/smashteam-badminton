@@ -201,40 +201,47 @@ router.post('/sessions', async (req, res) => {
       reservation_deadline,
       checkin_open_at,
       checkin_close_at,
+      checkout_open_at,
+      checkout_close_at,
       waitlist_offer_duration_minutes = 10
     } = req.body;
 
-    if (!title || !date_time || !location) {
+    const sessionDateTime = date_time || session_start;
+    if (!title || !sessionDateTime || !location) {
       return res.status(400).json({ error: 'Vui lòng cung cấp tiêu đề, thời gian và địa điểm.' });
     }
 
-    const tStart = session_start ? toVietnamIso(session_start) : toVietnamIso(date_time);
+    const tStart = session_start ? toVietnamIso(session_start) : toVietnamIso(sessionDateTime);
     const startDateObj = new Date(tStart);
     const tEnd = session_end ? toVietnamIso(session_end) : new Date(startDateObj.getTime() + 2 * 3600000).toISOString();
     const resOpen = reservation_open_at ? toVietnamIso(reservation_open_at) : new Date(startDateObj.getTime() - 3 * 86400000).toISOString();
     const resDeadline = reservation_deadline ? toVietnamIso(reservation_deadline) : new Date(startDateObj.getTime() - 2 * 3600000).toISOString();
     const checkinOpen = checkin_open_at ? toVietnamIso(checkin_open_at) : new Date(startDateObj.getTime() - 30 * 60000).toISOString();
     const checkinClose = checkin_close_at ? toVietnamIso(checkin_close_at) : new Date(startDateObj.getTime() + 30 * 60000).toISOString();
+    const checkoutOpen = checkout_open_at ? toVietnamIso(checkout_open_at) : new Date(startDateObj.getTime() + 30 * 60000).toISOString();
+    const checkoutClose = checkout_close_at ? toVietnamIso(checkout_close_at) : new Date(new Date(tEnd).getTime() + 60 * 60000).toISOString();
 
     // Tự động cấp mã QR, mã 5 ký tự và Secret Token chống giả mạo
     const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
     const newQrCode = `SMASH_${Date.now().toString(36).toUpperCase()}_${randomSuffix}`;
     const newCheckinCode = generateCheckinCode();
     const secretToken = `SEC_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const checkoutSecretToken = `SEC_OUT_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
     const result = await db.query(
       `INSERT INTO sessions (
         title, date_time, location, qr_code, qr_created_at, checkin_code,
         session_start, session_end, reservation_open_at, reservation_deadline,
-        checkin_open_at, checkin_close_at, capacity, qr_secret_token,
+        checkin_open_at, checkin_close_at, checkout_open_at, checkout_close_at,
+        capacity, qr_secret_token, qr_checkout_secret_token,
         waitlist_offer_duration_minutes
       ) 
-      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
       RETURNING *`,
       [
         title, toVietnamIso(date_time), location, newQrCode, newCheckinCode,
-        tStart, tEnd, resOpen, resDeadline, checkinOpen, checkinClose,
-        parseInt(capacity, 10) || 40, secretToken, parseInt(waitlist_offer_duration_minutes, 10) || 10
+        tStart, tEnd, resOpen, resDeadline, checkinOpen, checkinClose, checkoutOpen, checkoutClose,
+        parseInt(capacity, 10) || 40, secretToken, checkoutSecretToken, parseInt(waitlist_offer_duration_minutes, 10) || 10
       ]
     );
 
@@ -260,6 +267,8 @@ router.put('/sessions/:id', async (req, res) => {
       reservation_deadline,
       checkin_open_at,
       checkin_close_at,
+      checkout_open_at,
+      checkout_close_at,
       waitlist_offer_duration_minutes,
       is_closed
     } = req.body;
@@ -282,9 +291,11 @@ router.put('/sessions/:id', async (req, res) => {
            reservation_deadline = COALESCE($8, reservation_deadline),
            checkin_open_at = COALESCE($9, checkin_open_at),
            checkin_close_at = COALESCE($10, checkin_close_at),
-           waitlist_offer_duration_minutes = COALESCE($11, waitlist_offer_duration_minutes),
-           is_closed = COALESCE($12, is_closed)
-       WHERE id = $13::uuid
+           checkout_open_at = COALESCE($11, checkout_open_at),
+           checkout_close_at = COALESCE($12, checkout_close_at),
+           waitlist_offer_duration_minutes = COALESCE($13, waitlist_offer_duration_minutes),
+           is_closed = COALESCE($14, is_closed)
+       WHERE id = $15::uuid
        RETURNING *;`,
       [
         title,
@@ -297,6 +308,8 @@ router.put('/sessions/:id', async (req, res) => {
         reservation_deadline ? toVietnamIso(reservation_deadline) : null,
         checkin_open_at ? toVietnamIso(checkin_open_at) : null,
         checkin_close_at ? toVietnamIso(checkin_close_at) : null,
+        checkout_open_at ? toVietnamIso(checkout_open_at) : null,
+        checkout_close_at ? toVietnamIso(checkout_close_at) : null,
         waitlist_offer_duration_minutes !== undefined ? parseInt(waitlist_offer_duration_minutes, 10) : null,
         is_closed !== undefined ? is_closed : null,
         id
@@ -307,6 +320,33 @@ router.put('/sessions/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating session:', error);
     res.status(500).json({ error: error.message || 'Lỗi cập nhật buổi tập.' });
+  }
+});
+
+// POST /api/admin/sessions/:id/check-out - Admin ghi nhận Check-out thủ công
+router.post('/sessions/:id/check-out', async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const adminId = req.user.id;
+    const { target_user_id, checkout_time, reason } = req.body;
+
+    if (!target_user_id) {
+      return res.status(400).json({ error: 'Vui lòng chọn thành viên cần check-out.' });
+    }
+
+    const { processQrCheckOut } = require('../services/sessionReservationService');
+    const result = await processQrCheckOut({
+      sessionId,
+      userId: target_user_id,
+      adminId,
+      checkoutTime: checkout_time || null,
+      reason: reason || 'Admin ghi nhận Check-out thủ công'
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error in admin checkout:', error);
+    res.status(400).json({ error: error.message || 'Lỗi Check-out thủ công.' });
   }
 });
 

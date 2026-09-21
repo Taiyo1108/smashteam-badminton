@@ -6,7 +6,7 @@ import {
   Calendar, MapPin, Clock, Plus, Loader2, X, Download, Users, 
   CheckCircle, ChevronRight, UserCheck, AlertTriangle, ShieldCheck, 
   Hourglass, Search, RefreshCw, Edit3, Trash2, Check, UserPlus, 
-  FileText, QrCode, Copy, ExternalLink, ShieldAlert
+  FileText, QrCode, Copy, ExternalLink, ShieldAlert, LogOut
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { QRCodeCanvas } from "qrcode.react";
@@ -23,7 +23,7 @@ export default function AdminSessionsPage() {
 
   // Dashboard Subtabs
   const [activeTab, setActiveTab] = useState<"attendees" | "waitlist" | "qr" | "audit">("attendees");
-  const [attendeeFilter, setAttendeeFilter] = useState<"ALL" | "CHECKED_IN" | "CONFIRMED" | "RESERVED" | "PENDING_LATE_CANCEL" | "NO_SHOW" | "CANCELLED">("ALL");
+  const [attendeeFilter, setAttendeeFilter] = useState<"ALL" | "CHECKED_IN" | "CHECKED_OUT" | "MISSING_CHECKOUT" | "CONFIRMED" | "RESERVED" | "PENDING_LATE_CANCEL" | "NO_SHOW" | "CANCELLED">("ALL");
   const [searchMemberQuery, setSearchMemberQuery] = useState("");
 
   // Modals
@@ -34,6 +34,13 @@ export default function AdminSessionsPage() {
   const [isRejectLateCancelModalOpen, setIsRejectLateCancelModalOpen] = useState(false);
   const [rejectTargetUser, setRejectTargetUser] = useState<any>(null);
   const [rejectReason, setRejectReason] = useState("");
+
+  // Admin Check-out Override Modal
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [checkoutTargetUser, setCheckoutTargetUser] = useState<any>(null);
+  const [adminCheckoutTime, setAdminCheckoutTime] = useState("");
+  const [adminCheckoutReason, setAdminCheckoutReason] = useState("Admin check-out tại quầy");
+  const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
 
   // All club members for dropdown search (Walk-in / Manual Add)
   const [allMembers, setAllMembers] = useState<any[]>([]);
@@ -50,6 +57,8 @@ export default function AdminSessionsPage() {
   const [reservationDeadline, setReservationDeadline] = useState("");
   const [checkinOpenAt, setCheckinOpenAt] = useState("");
   const [checkinCloseAt, setCheckinCloseAt] = useState("");
+  const [checkoutOpenAt, setCheckoutOpenAt] = useState("");
+  const [checkoutCloseAt, setCheckoutCloseAt] = useState("");
   const [waitlistDuration, setWaitlistDuration] = useState(10);
   const [template, setTemplate] = useState<"dinh_ky" | "offline" | "khac">("khac");
   
@@ -57,6 +66,7 @@ export default function AdminSessionsPage() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [copiedCheckoutUrl, setCopiedCheckoutUrl] = useState(false);
 
   // Fetch list of sessions
   const fetchSessions = async (historyMode = false, preserveSelectedId?: string) => {
@@ -156,6 +166,8 @@ export default function AdminSessionsPage() {
       setReservationDeadline(`${y}-${m}-${d}T17:00`);
       setCheckinOpenAt(`${y}-${m}-${d}T18:30`);
       setCheckinCloseAt(`${y}-${m}-${d}T22:30`);
+      setCheckoutOpenAt(`${y}-${m}-${d}T21:00`);
+      setCheckoutCloseAt(`${y}-${m}-${d}T22:30`);
       setWaitlistDuration(10);
     } else if (type === "offline") {
       setTitle("Offline & Giao lưu toàn CLB");
@@ -166,6 +178,8 @@ export default function AdminSessionsPage() {
       setReservationDeadline(`${y}-${m}-${d}T13:00`);
       setCheckinOpenAt(`${y}-${m}-${d}T16:30`);
       setCheckinCloseAt(`${y}-${m}-${d}T21:30`);
+      setCheckoutOpenAt(`${y}-${m}-${d}T20:00`);
+      setCheckoutCloseAt(`${y}-${m}-${d}T21:30`);
       setWaitlistDuration(15);
     } else {
       setTitle("");
@@ -176,6 +190,8 @@ export default function AdminSessionsPage() {
       setReservationDeadline("");
       setCheckinOpenAt("");
       setCheckinCloseAt("");
+      setCheckoutOpenAt("");
+      setCheckoutCloseAt("");
       setWaitlistDuration(10);
     }
   };
@@ -205,6 +221,8 @@ export default function AdminSessionsPage() {
           reservation_deadline: reservationDeadline || null,
           checkin_open_at: checkinOpenAt || null,
           checkin_close_at: checkinCloseAt || null,
+          checkout_open_at: checkoutOpenAt || null,
+          checkout_close_at: checkoutCloseAt || null,
           waitlist_offer_duration_minutes: Number(waitlistDuration) || 10
         })
       });
@@ -213,7 +231,7 @@ export default function AdminSessionsPage() {
 
       if (res.ok) {
         setIsCreateModalOpen(false);
-        fetchSessions(false, data.id);
+        fetchSessions(false, data.session?.id || data.id);
       } else {
         setError(data.error || "Không thể tạo buổi tập.");
       }
@@ -235,6 +253,8 @@ export default function AdminSessionsPage() {
     setReservationDeadline(toVietnamDatetimeInput(selectedSession.reservation_deadline));
     setCheckinOpenAt(toVietnamDatetimeInput(selectedSession.checkin_open_at));
     setCheckinCloseAt(toVietnamDatetimeInput(selectedSession.checkin_close_at));
+    setCheckoutOpenAt(toVietnamDatetimeInput(selectedSession.checkout_open_at));
+    setCheckoutCloseAt(toVietnamDatetimeInput(selectedSession.checkout_close_at));
     setWaitlistDuration(selectedSession.waitlist_offer_duration_minutes || 10);
     setIsEditModalOpen(true);
     setError(null);
@@ -265,6 +285,8 @@ export default function AdminSessionsPage() {
           reservation_deadline: reservationDeadline || null,
           checkin_open_at: checkinOpenAt || null,
           checkin_close_at: checkinCloseAt || null,
+          checkout_open_at: checkoutOpenAt || null,
+          checkout_close_at: checkoutCloseAt || null,
           waitlist_offer_duration_minutes: Number(waitlistDuration) || 10
         })
       });
@@ -281,6 +303,40 @@ export default function AdminSessionsPage() {
       setError("Lỗi kết nối máy chủ.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Handle Admin Manual Check-out Override
+  const handleAdminCheckout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!checkoutTargetUser || !selectedSession) return;
+    setIsSubmittingCheckout(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/sessions/${selectedSession.id}/check-out`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          user_id: checkoutTargetUser.user_id,
+          checked_out_at: adminCheckoutTime ? new Date(adminCheckoutTime).toISOString() : new Date().toISOString(),
+          reason: adminCheckoutReason || "Admin check-out tại quầy"
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIsCheckoutModalOpen(false);
+        setCheckoutTargetUser(null);
+        fetchDashboard(selectedSession.id);
+      } else {
+        alert(data.error || "Lỗi ghi nhận check-out.");
+      }
+    } catch (err) {
+      alert("Lỗi kết nối máy chủ.");
+    } finally {
+      setIsSubmittingCheckout(false);
     }
   };
 
@@ -441,15 +497,17 @@ export default function AdminSessionsPage() {
   };
 
   // QR & Link helpers
-  const downloadQRCode = () => {
+  // QR & Link helpers
+  const downloadQRCode = (type: "checkin" | "checkout" = "checkin") => {
     if (!selectedSession) return;
-    const canvas = document.getElementById("session-qr-canvas") as HTMLCanvasElement;
+    const canvasId = type === "checkout" ? "session-checkout-qr-canvas" : "session-qr-canvas";
+    const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
     if (!canvas) return;
 
     const url = canvas.toDataURL("image/png");
     const link = document.createElement("a");
     link.href = url;
-    link.download = `QR-Checkin-${selectedSession.title.replace(/\s+/g, "-")}.png`;
+    link.download = `QR-${type === "checkout" ? "Checkout" : "Checkin"}-${selectedSession.title.replace(/\s+/g, "-")}.png`;
     link.click();
   };
 
@@ -465,6 +523,18 @@ export default function AdminSessionsPage() {
     setTimeout(() => setCopiedUrl(false), 2500);
   };
 
+  const qrCheckoutSecretToken = selectedSession?.qr_checkout_secret_token || "";
+  const qrCheckoutUrl = selectedSession && typeof window !== "undefined"
+    ? `${window.location.origin}/check-in?session_id=${selectedSession.id}&token=${qrCheckoutSecretToken}&mode=checkout`
+    : "";
+
+  const copyQrCheckoutUrl = () => {
+    if (!qrCheckoutUrl) return;
+    navigator.clipboard.writeText(qrCheckoutUrl);
+    setCopiedCheckoutUrl(true);
+    setTimeout(() => setCopiedCheckoutUrl(false), 2500);
+  };
+
   // Filter attendees
   const attendeesList: any[] = dashboardData?.attendees || [];
   const waitlist: any[] = dashboardData?.waitlist || [];
@@ -472,17 +542,21 @@ export default function AdminSessionsPage() {
 
   const pendingLateCancelCount = attendeesList.filter(a => a.cancellation_request_pending).length;
   const checkedInCount = attendeesList.filter(a => a.status === "CHECKED_IN").length;
+  const checkedOutCount = attendeesList.filter(a => a.status === "CHECKED_OUT").length;
+  const missingCheckoutCount = attendeesList.filter(a => a.status === "MISSING_CHECKOUT").length;
   const confirmedCount = attendeesList.filter(a => a.status === "CONFIRMED").length;
   const reservedCount = attendeesList.filter(a => a.status === "RESERVED" || a.status === "going").length;
   const noShowCount = attendeesList.filter(a => a.status === "NO_SHOW").length;
   const cancelledCount = attendeesList.filter(a => a.status === "CANCELLED").length;
-  const totalOccupied = checkedInCount + confirmedCount + reservedCount;
+  const totalOccupied = checkedInCount + checkedOutCount + missingCheckoutCount + confirmedCount + reservedCount;
   const sessionCapacity = selectedSession?.capacity || 40;
   const occupancyPercent = Math.min(100, Math.round((totalOccupied / sessionCapacity) * 100));
 
   const filteredAttendees = attendeesList.filter((a) => {
     // Tab filter
     if (attendeeFilter === "CHECKED_IN" && a.status !== "CHECKED_IN") return false;
+    if (attendeeFilter === "CHECKED_OUT" && a.status !== "CHECKED_OUT") return false;
+    if (attendeeFilter === "MISSING_CHECKOUT" && a.status !== "MISSING_CHECKOUT") return false;
     if (attendeeFilter === "CONFIRMED" && a.status !== "CONFIRMED") return false;
     if (attendeeFilter === "RESERVED" && (a.status !== "RESERVED" && a.status !== "going")) return false;
     if (attendeeFilter === "PENDING_LATE_CANCEL" && !a.cancellation_request_pending) return false;
@@ -677,20 +751,28 @@ export default function AdminSessionsPage() {
                 </div>
                 <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden flex">
                   <div style={{ width: `${Math.min(100, (checkedInCount / sessionCapacity) * 100)}%` }} className="bg-emerald-500" title={`Check-in: ${checkedInCount}`} />
+                  <div style={{ width: `${Math.min(100, (checkedOutCount / sessionCapacity) * 100)}%` }} className="bg-teal-600" title={`Check-out: ${checkedOutCount}`} />
+                  <div style={{ width: `${Math.min(100, (missingCheckoutCount / sessionCapacity) * 100)}%` }} className="bg-amber-600" title={`Quên Check-out: ${missingCheckoutCount}`} />
                   <div style={{ width: `${Math.min(100, (confirmedCount / sessionCapacity) * 100)}%` }} className="bg-blue-500" title={`Confirmed: ${confirmedCount}`} />
                   <div style={{ width: `${Math.min(100, (reservedCount / sessionCapacity) * 100)}%` }} className="bg-amber-400" title={`Reserved: ${reservedCount}`} />
                 </div>
 
                 {/* Timing summary pills */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px] text-slate-600">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px] text-slate-600">
                   <div className="bg-white p-2 rounded-xl border border-slate-200/60">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">Hạn hủy tự do</span>
                     <span className="font-bold">{selectedSession.reservation_deadline ? formatVietnamDate(selectedSession.reservation_deadline) : "Chưa cài đặt"}</span>
                   </div>
                   <div className="bg-white p-2 rounded-xl border border-slate-200/60">
-                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Cửa sổ Check-in sân</span>
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Cửa sổ Check-in</span>
                     <span className="font-bold">
                       {selectedSession.checkin_open_at ? formatVietnamDate(selectedSession.checkin_open_at, "time") : "Bất kỳ"} - {selectedSession.checkin_close_at ? formatVietnamDate(selectedSession.checkin_close_at, "time") : "Hết trận"}
+                    </span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200/60">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Cửa sổ Check-out</span>
+                    <span className="font-bold text-teal-700">
+                      {selectedSession.checkout_open_at ? formatVietnamDate(selectedSession.checkout_open_at, "time") : "Bất kỳ"} - {selectedSession.checkout_close_at ? formatVietnamDate(selectedSession.checkout_close_at, "time") : "Đóng sân"}
                     </span>
                   </div>
                   <div className="bg-white p-2 rounded-xl border border-slate-200/60">
@@ -768,6 +850,22 @@ export default function AdminSessionsPage() {
                         }`}
                       >
                         Đã Check-in ({checkedInCount})
+                      </button>
+                      <button
+                        onClick={() => setAttendeeFilter("CHECKED_OUT")}
+                        className={`px-2.5 py-1 rounded-lg font-bold cursor-pointer transition-all ${
+                          attendeeFilter === "CHECKED_OUT" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        Đã Check-out ({checkedOutCount})
+                      </button>
+                      <button
+                        onClick={() => setAttendeeFilter("MISSING_CHECKOUT")}
+                        className={`px-2.5 py-1 rounded-lg font-bold cursor-pointer transition-all ${
+                          attendeeFilter === "MISSING_CHECKOUT" ? "bg-amber-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        Quên Check-out ({missingCheckoutCount})
                       </button>
                       {pendingLateCancelCount > 0 && (
                         <button
@@ -878,6 +976,18 @@ export default function AdminSessionsPage() {
                             {/* Status & Actions */}
                             <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 shrink-0">
                               {/* Status Tag */}
+                              {a.status === "CHECKED_OUT" && (
+                                <span className="text-[10px] text-teal-700 font-bold bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-full flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3 text-teal-500" />
+                                  Check-out lúc {formatVietnamDate(a.checked_out_at, "time")} ({a.duration_minutes || 0}p)
+                                </span>
+                              )}
+                              {a.status === "MISSING_CHECKOUT" && (
+                                <span className="text-[10px] text-amber-800 font-bold bg-amber-50 border border-amber-300 px-2.5 py-1 rounded-full flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                  Quên Check-out (~{a.duration_minutes || 0}p)
+                                </span>
+                              )}
                               {a.status === "CHECKED_IN" && (
                                 <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1">
                                   <CheckCircle className="w-3 h-3 text-emerald-500" />
@@ -935,8 +1045,25 @@ export default function AdminSessionsPage() {
                                 </div>
                               )}
 
+                              {/* Admin Check-out action for checked-in attendees */}
+                              {a.status === "CHECKED_IN" && (
+                                <button
+                                  onClick={() => {
+                                    setCheckoutTargetUser(a);
+                                    setAdminCheckoutTime(toVietnamDatetimeInput(new Date()));
+                                    setAdminCheckoutReason("Admin check-out tại quầy");
+                                    setIsCheckoutModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold text-[11px] border border-teal-300 transition-all cursor-pointer flex items-center gap-1"
+                                  title="Admin check-out rời sân cho thành viên này"
+                                >
+                                  <LogOut className="w-3 h-3" />
+                                  Check-out
+                                </button>
+                              )}
+
                               {/* Fast Admin Check-in button if reserved/confirmed */}
-                              {a.status !== "CHECKED_IN" && a.status !== "CANCELLED" && (
+                              {a.status !== "CHECKED_IN" && a.status !== "CHECKED_OUT" && a.status !== "MISSING_CHECKOUT" && a.status !== "CANCELLED" && (
                                 <button
                                   onClick={async () => {
                                     const token = localStorage.getItem("admin_token");
@@ -1038,59 +1165,117 @@ export default function AdminSessionsPage() {
 
               {/* TAB CONTENT: QR CODE & PUBLIC DISPLAY */}
               {activeTab === "qr" && (
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                  <div className="md:col-span-2 flex flex-col items-center justify-center p-6 border border-slate-100 rounded-2xl bg-slate-50 text-center">
-                    <span className="text-xs font-black text-secondary uppercase tracking-wider mb-4">
-                      MÃ QR CHECK-IN SÂN ĐẤU
-                    </span>
-                    
-                    <div className="bg-white p-4 rounded-2xl shadow-inner border border-slate-200">
-                      <QRCodeCanvas
-                        id="session-qr-canvas"
-                        value={qrCheckinUrl}
-                        size={200}
-                        level={"H"}
-                        includeMargin={true}
-                      />
-                    </div>
-
-                    <button
-                      onClick={downloadQRCode}
-                      className="mt-4 flex items-center gap-1.5 px-4 py-2 bg-secondary text-white hover:bg-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Tải mã QR (PNG)
-                    </button>
-                    <p className="text-[10px] text-slate-400 mt-3 leading-relaxed">
-                      Admin có thể in mã QR này hoặc mở trên máy tính bảng / điện thoại tại bàn tiếp đón sân.
-                    </p>
-                  </div>
-
-                  <div className="md:col-span-3 space-y-4 text-xs">
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
-                      <span className="font-bold text-secondary uppercase tracking-wider text-[11px]">Đường link Check-in trực tiếp:</span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          readOnly
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* QR 1: CHECK-IN */}
+                    <div className="p-5 border border-slate-200 rounded-3xl bg-slate-50 text-center space-y-4 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                        <span className="text-xs font-black text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                          <CheckCircle className="w-4 h-4 text-emerald-500" />
+                          MÃ QR CHECK-IN SÂN ĐẤU
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          {selectedSession.checkin_open_at ? formatVietnamDate(selectedSession.checkin_open_at, "time") : "Mở"} - {selectedSession.checkin_close_at ? formatVietnamDate(selectedSession.checkin_close_at, "time") : "Hết trận"}
+                        </span>
+                      </div>
+                      
+                      <div className="bg-white p-4 rounded-2xl shadow-inner border border-slate-200 inline-block mx-auto">
+                        <QRCodeCanvas
+                          id="session-qr-canvas"
                           value={qrCheckinUrl}
-                          className="w-full bg-white p-2.5 rounded-xl border border-slate-200 font-mono text-[11px] text-slate-600 select-all"
+                          size={180}
+                          level={"H"}
+                          includeMargin={true}
                         />
+                      </div>
+
+                      <div className="space-y-2">
                         <button
-                          onClick={copyQrUrl}
-                          className="px-3 py-2.5 bg-primary text-secondary font-bold text-xs rounded-xl cursor-pointer hover:bg-primary-hover shrink-0 transition-all"
+                          onClick={() => downloadQRCode("checkin")}
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-secondary text-white hover:bg-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
                         >
-                          {copiedUrl ? "Đã chép!" : <Copy className="w-4 h-4" />}
+                          <Download className="w-3.5 h-3.5" /> Tải mã QR Check-in (PNG)
                         </button>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            readOnly
+                            value={qrCheckinUrl}
+                            className="w-full bg-white p-2 rounded-xl border border-slate-200 font-mono text-[10px] text-slate-600 select-all truncate"
+                          />
+                          <button
+                            onClick={copyQrUrl}
+                            className="px-3 py-2 bg-primary text-secondary font-bold text-xs rounded-xl cursor-pointer hover:bg-primary-hover shrink-0 transition-all"
+                            title="Sao chép link Check-in"
+                          >
+                            {copiedUrl ? "Đã chép!" : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-2">
-                      <h4 className="font-bold text-secondary">Thông tin bảo mật mã QR:</h4>
-                      <ul className="space-y-1.5 text-slate-500 text-[11px]">
-                        <li>• Mã Secret Token: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-secondary font-bold font-mono">{qrSecretToken || "Mặc định"}</code></li>
-                        <li>• Mã 5 ký tự nhập tay: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-secondary font-bold font-mono">{selectedSession.checkin_code || "Không có"}</code></li>
-                        <li>• QR chỉ có hiệu lực trong khung giờ check-in đã cấu hình.</li>
-                      </ul>
+                    {/* QR 2: CHECK-OUT */}
+                    <div className="p-5 border border-teal-200/80 rounded-3xl bg-teal-50/40 text-center space-y-4 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-teal-100 pb-3">
+                        <span className="text-xs font-black text-teal-950 uppercase tracking-wider flex items-center gap-1.5">
+                          <LogOut className="w-4 h-4 text-teal-600" />
+                          MÃ QR CHECK-OUT (RỜI SÂN)
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">
+                          {selectedSession.checkout_open_at ? formatVietnamDate(selectedSession.checkout_open_at, "time") : "Mở"} - {selectedSession.checkout_close_at ? formatVietnamDate(selectedSession.checkout_close_at, "time") : "Đóng sân"}
+                        </span>
+                      </div>
+                      
+                      <div className="bg-white p-4 rounded-2xl shadow-inner border border-teal-200 inline-block mx-auto">
+                        <QRCodeCanvas
+                          id="session-checkout-qr-canvas"
+                          value={qrCheckoutUrl}
+                          size={180}
+                          level={"H"}
+                          includeMargin={true}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => downloadQRCode("checkout")}
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-teal-700 text-white hover:bg-teal-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Tải mã QR Check-out (PNG)
+                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            readOnly
+                            value={qrCheckoutUrl}
+                            className="w-full bg-white p-2 rounded-xl border border-teal-200 font-mono text-[10px] text-slate-600 select-all truncate"
+                          />
+                          <button
+                            onClick={copyQrCheckoutUrl}
+                            className="px-3 py-2 bg-teal-600 text-white font-bold text-xs rounded-xl cursor-pointer hover:bg-teal-500 shrink-0 transition-all"
+                            title="Sao chép link Check-out"
+                          >
+                            {copiedCheckoutUrl ? "Đã chép!" : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Security & Token details */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
+                    <h4 className="font-bold text-secondary">Thông tin bảo mật mã QR & Khung giờ:</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-600 text-[11px]">
+                      <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+                        <p className="font-bold text-secondary">Check-in Token:</p>
+                        <p>• Mã Secret: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-secondary font-bold font-mono">{qrSecretToken || "Mặc định"}</code></p>
+                        <p>• Mã 5 ký tự nhập tay: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-secondary font-bold font-mono">{selectedSession.checkin_code || "Không có"}</code></p>
+                      </div>
+                      <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+                        <p className="font-bold text-teal-800">Check-out Token:</p>
+                        <p>• Mã Secret Check-out: <code className="bg-teal-50 px-1.5 py-0.5 rounded text-teal-800 font-bold font-mono">{qrCheckoutSecretToken || "Mặc định"}</code></p>
+                        <p>• Tự động loại khỏi Match Desk ngay khi Check-out thành công.</p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1301,6 +1486,27 @@ export default function AdminSessionsPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-teal-800 uppercase tracking-wider text-[10px]">Mở Check-out QR</label>
+                  <input
+                    type="datetime-local"
+                    value={checkoutOpenAt}
+                    onChange={(e) => setCheckoutOpenAt(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-teal-200 text-xs bg-teal-50/50 font-bold"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-teal-800 uppercase tracking-wider text-[10px]">Đóng Check-out QR</label>
+                  <input
+                    type="datetime-local"
+                    value={checkoutCloseAt}
+                    onChange={(e) => setCheckoutCloseAt(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-teal-200 text-xs bg-teal-50/50 font-bold"
+                  />
+                </div>
+              </div>
+
               {error && (
                 <div className="p-3 text-xs bg-rose-50 text-rose-500 rounded-xl border border-rose-100 font-medium">
                   {error}
@@ -1433,6 +1639,27 @@ export default function AdminSessionsPage() {
                     value={checkinCloseAt}
                     onChange={(e) => setCheckinCloseAt(e.target.value)}
                     className="w-full p-2 rounded-xl border border-slate-200 text-xs bg-slate-50 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-teal-800 uppercase tracking-wider text-[10px]">Mở Check-out QR</label>
+                  <input
+                    type="datetime-local"
+                    value={checkoutOpenAt}
+                    onChange={(e) => setCheckoutOpenAt(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-teal-200 text-xs bg-teal-50/50 font-bold"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-teal-800 uppercase tracking-wider text-[10px]">Đóng Check-out QR</label>
+                  <input
+                    type="datetime-local"
+                    value={checkoutCloseAt}
+                    onChange={(e) => setCheckoutCloseAt(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-teal-200 text-xs bg-teal-50/50 font-bold"
                   />
                 </div>
               </div>
@@ -1614,6 +1841,75 @@ export default function AdminSessionsPage() {
                   className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer"
                 >
                   {actionLoadingId ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Xác nhận Từ Chối"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN CHECK-OUT OVERRIDE MODAL */}
+      {isCheckoutModalOpen && checkoutTargetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl relative text-xs">
+            <button
+              onClick={() => {
+                setIsCheckoutModalOpen(false);
+                setCheckoutTargetUser(null);
+              }}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-base font-black text-teal-700 mb-2 flex items-center gap-2">
+              <LogOut className="w-5 h-5" /> Ghi Nhận Check-out Rời Sân
+            </h3>
+            <p className="text-slate-500 mb-4">
+              Xác nhận check-out cho <strong>{checkoutTargetUser.full_name}</strong>. Thành viên sẽ được ghi nhận thời lượng tham gia và lập tức bị loại khỏi Match Desk.
+            </p>
+
+            <form onSubmit={handleAdminCheckout} className="space-y-4">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600 uppercase tracking-wider text-[10px]">Thời điểm Check-out</label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={adminCheckoutTime}
+                  onChange={(e) => setAdminCheckoutTime(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 font-bold focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600 uppercase tracking-wider text-[10px]">Lý do / Ghi chú</label>
+                <input
+                  type="text"
+                  required
+                  value={adminCheckoutReason}
+                  onChange={(e) => setAdminCheckoutReason(e.target.value)}
+                  placeholder="Ví dụ: Admin check-out tại quầy / Thành viên về sớm..."
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 font-medium focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCheckoutModalOpen(false);
+                    setCheckoutTargetUser(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingCheckout}
+                  className="flex-1 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow"
+                >
+                  {isSubmittingCheckout ? <Loader2 className="w-4 h-4 animate-spin" /> : "Xác nhận Check-out"}
                 </button>
               </div>
             </form>
