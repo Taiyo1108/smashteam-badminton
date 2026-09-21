@@ -374,8 +374,8 @@ export default function AdminSessionsPage() {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          user_id: checkoutTargetUser.user_id,
-          checked_out_at: adminCheckoutTime ? new Date(adminCheckoutTime).toISOString() : new Date().toISOString(),
+          target_user_id: checkoutTargetUser.user_id,
+          checkout_time: adminCheckoutTime ? new Date(adminCheckoutTime).toISOString() : new Date().toISOString(),
           reason: adminCheckoutReason || "Admin check-out tại quầy"
         })
       });

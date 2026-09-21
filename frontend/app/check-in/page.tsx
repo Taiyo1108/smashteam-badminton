@@ -82,8 +82,8 @@ function CheckInContent() {
 
   // Tự động check-in nếu URL có tham số hợp lệ
   useEffect(() => {
-    if (!sessionId && !urlCode) {
-      // Người dùng truy cập trực tiếp /check-in -> hiển thị form nhập mã & quét camera
+    if (!urlCode) {
+      // Nếu không có mã code/token trên URL -> hiển thị form nhập mã & quét camera
       return;
     }
 
