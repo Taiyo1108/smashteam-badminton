@@ -607,7 +607,9 @@ async function processQrCheckIn({
     }
 
     // 2. Xác thực QR token hoặc checkin_code (nếu client có truyền mã lên)
-    const rawCode = clientTokenOrCode.trim().toUpperCase();
+    const isAdmin = Boolean(adminId);
+    const rawCode = (clientTokenOrCode || '').trim().toUpperCase();
+    
     if (rawCode) {
       const matchSecret = session.qr_secret_token && rawCode === session.qr_secret_token.toUpperCase();
       const matchQr = session.qr_code && rawCode === session.qr_code.toUpperCase();
@@ -616,6 +618,8 @@ async function processQrCheckIn({
       if (!matchSecret && !matchQr && !matchCode && !session.qr_code?.toUpperCase().includes(rawCode)) {
         throw new Error('Mã QR hoặc mã điểm danh không khớp với buổi tập này hoặc đã bị làm mới.');
       }
+    } else if (!isAdmin) {
+      throw new Error('Bạn cần phải quét mã QR tại sân hoặc nhập mã điểm danh để Check-in.');
     }
 
     // 3. Kiểm tra khung giờ check-in (Time Window)
@@ -624,7 +628,6 @@ async function processQrCheckIn({
     const checkinOpen = session.checkin_open_at ? new Date(session.checkin_open_at) : new Date(tStart.getTime() - 30 * 60000);
     const checkinClose = session.checkin_close_at ? new Date(session.checkin_close_at) : new Date(tStart.getTime() + 30 * 60000);
 
-    const isAdmin = Boolean(adminId);
     if (!isAdmin && (now < checkinOpen || now > checkinClose)) {
       throw new Error(
         `Cổng điểm danh mở từ ${checkinOpen.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} đến ${checkinClose.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày ${checkinOpen.toLocaleDateString('vi-VN')}.`
@@ -789,6 +792,8 @@ async function processQrCheckOut({
       if (!matchCheckoutSecret && !session.qr_checkout_secret_token?.toUpperCase().includes(rawCode)) {
         throw new Error('Mã QR Check-out không khớp với buổi tập này hoặc không hợp lệ.');
       }
+    } else if (!isAdmin) {
+      throw new Error('Bạn cần phải quét mã QR tại sân để Check-out.');
     }
 
     // 4. Kiểm tra khung giờ check-out (Time Window)

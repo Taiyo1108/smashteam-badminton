@@ -61,6 +61,36 @@ export default function AdminSessionsPage() {
   const [checkoutCloseAt, setCheckoutCloseAt] = useState("");
   const [waitlistDuration, setWaitlistDuration] = useState(10);
   const [template, setTemplate] = useState<"dinh_ky" | "offline" | "khac">("khac");
+
+  const handleSessionStartChange = (newVal: string) => {
+    if (sessionStart && newVal) {
+      const oldTime = new Date(sessionStart).getTime();
+      const newTime = new Date(newVal).getTime();
+      if (!isNaN(oldTime) && !isNaN(newTime)) {
+        const delta = newTime - oldTime;
+        
+        const shiftTime = (timeStr: string) => {
+          if (!timeStr) return timeStr;
+          const t = new Date(timeStr).getTime();
+          if (isNaN(t)) return timeStr;
+          
+          const shifted = new Date(t + delta);
+          // Format shifted date to YYYY-MM-DDThh:mm
+          const d = shifted;
+          const pad = (n: number) => String(n).padStart(2, "0");
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+
+        setSessionEnd(shiftTime(sessionEnd));
+        setReservationDeadline(shiftTime(reservationDeadline));
+        setCheckinOpenAt(shiftTime(checkinOpenAt));
+        setCheckinCloseAt(shiftTime(checkinCloseAt));
+        setCheckoutOpenAt(shiftTime(checkoutOpenAt));
+        setCheckoutCloseAt(shiftTime(checkoutCloseAt));
+      }
+    }
+    setSessionStart(newVal);
+  };
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -1441,7 +1471,7 @@ export default function AdminSessionsPage() {
                     type="datetime-local"
                     required
                     value={sessionStart}
-                    onChange={(e) => setSessionStart(e.target.value)}
+                    onChange={(e) => handleSessionStartChange(e.target.value)}
                     className="w-full p-2 rounded-xl border border-slate-200 text-xs bg-slate-50 font-bold"
                   />
                 </div>
@@ -1601,7 +1631,7 @@ export default function AdminSessionsPage() {
                     type="datetime-local"
                     required
                     value={sessionStart}
-                    onChange={(e) => setSessionStart(e.target.value)}
+                    onChange={(e) => handleSessionStartChange(e.target.value)}
                     className="w-full p-2 rounded-xl border border-slate-200 text-xs bg-slate-50 font-bold"
                   />
                 </div>
