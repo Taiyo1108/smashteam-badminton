@@ -795,7 +795,7 @@ export default function Home() {
                   <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs sm:text-sm text-slate-300">
                     <span className="flex items-center gap-1.5">
                       <Clock className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
-                      <span className="tabular-nums">{formatDateTime(upcomingSessionHighlight.date_time)}</span>
+                      <span className="tabular-nums">{formatDateTime(upcomingSessionHighlight.session_start || upcomingSessionHighlight.date_time)}</span>
                     </span>
                     <span className="flex items-center gap-1.5">
                       <MapPin className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
@@ -852,7 +852,7 @@ export default function Home() {
                               <span className="w-7 h-7 rounded-full bg-white border border-purple-100 shadow-sm flex items-center justify-center shrink-0">
                                 <Clock className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
                               </span>
-                              <span className="font-semibold tabular-nums truncate">{formatDateTime(session.date_time)}</span>
+                              <span className="font-semibold tabular-nums truncate">{formatDateTime(session.session_start || session.date_time)}</span>
                             </div>
                             <div className="flex items-center gap-2.5 text-[13px] text-slate-600 min-w-0">
                               <span className="w-7 h-7 rounded-full bg-white border border-purple-100 shadow-sm flex items-center justify-center shrink-0">
@@ -932,7 +932,7 @@ export default function Home() {
                         <div className="grid gap-2 bg-slate-50/70 border border-slate-100 rounded-2xl p-3 text-[13px] text-slate-500">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                            <span className="font-medium tabular-nums truncate">{formatDateTime(session.date_time)}</span>
+                            <span className="font-medium tabular-nums truncate">{formatDateTime(session.session_start || session.date_time)}</span>
                           </div>
                           <div className="flex items-center gap-2.5 min-w-0">
                             <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />

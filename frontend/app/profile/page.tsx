@@ -816,7 +816,7 @@ export default function ProfilePage() {
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 mt-2">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5 text-primary" />
-                      {formatVietnamDate(upcomingSession.date_time)}
+                      {formatVietnamDate(upcomingSession.session_start || upcomingSession.date_time)}
                     </span>
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-primary" /> 

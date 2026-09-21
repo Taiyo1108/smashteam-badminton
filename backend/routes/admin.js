@@ -239,7 +239,7 @@ router.post('/sessions', async (req, res) => {
       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
       RETURNING *`,
       [
-        title, toVietnamIso(date_time), location, newQrCode, newCheckinCode,
+        title, toVietnamIso(sessionDateTime), location, newQrCode, newCheckinCode,
         tStart, tEnd, resOpen, resDeadline, checkinOpen, checkinClose, checkoutOpen, checkoutClose,
         parseInt(capacity, 10) || 40, secretToken, checkoutSecretToken, parseInt(waitlist_offer_duration_minutes, 10) || 10
       ]
@@ -316,7 +316,7 @@ router.put('/sessions/:id', async (req, res) => {
        RETURNING *;`,
       [
         title,
-        date_time ? toVietnamIso(date_time) : null,
+        (date_time || session_start) ? toVietnamIso(date_time || session_start) : null,
         location,
         capacity !== undefined ? parseInt(capacity, 10) : null,
         session_start ? toVietnamIso(session_start) : null,
