@@ -25,7 +25,7 @@ async function processAutoConfirmations() {
          SET status = 'CONFIRMED',
              confirmed_at = CURRENT_TIMESTAMP,
              updated_at = CURRENT_TIMESTAMP
-         WHERE session_id = $1::uuid AND status = 'RESERVED';`,
+         WHERE session_id = $1::uuid AND status IN ('RESERVED', 'going');`,
         [session.id]
       );
 
@@ -140,7 +140,7 @@ async function processNoShows() {
          SET status = 'NO_SHOW',
              updated_at = CURRENT_TIMESTAMP
          WHERE session_id = $1::uuid 
-           AND status IN ('RESERVED', 'CONFIRMED');`,
+           AND status IN ('RESERVED', 'CONFIRMED', 'going');`,
         [session.id]
       );
 

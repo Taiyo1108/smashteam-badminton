@@ -489,12 +489,13 @@ async function claimWaitlistOffer(sessionId, userId) {
 
     // 1. Kiểm tra session
     const sessionRes = await client.query(
-      `SELECT id, title, capacity FROM sessions WHERE id = $1::uuid FOR UPDATE;`,
+      `SELECT id, title, capacity, reservation_deadline FROM sessions WHERE id = $1::uuid FOR UPDATE;`,
       [sessionId]
     );
     if (sessionRes.rows.length === 0) {
       throw new Error('Không tìm thấy buổi tập này.');
     }
+    const session = sessionRes.rows[0];
 
     // 2. Kiểm tra waitlist record của user
     const wlRes = await client.query(
@@ -524,7 +525,9 @@ async function claimWaitlistOffer(sessionId, userId) {
       throw new Error('Thời gian giữ slot của bạn đã hết hạn. Hệ thống đã chuyển cơ hội cho người tiếp theo.');
     }
 
-    // 3. Chuyển thành công sang RESERVED
+    // 3. Chuyển thành công sang trạng thái phù hợp
+    const finalStatus = (session.reservation_deadline && now >= new Date(session.reservation_deadline)) ? 'CONFIRMED' : 'RESERVED';
+
     await client.query(
       `UPDATE session_waitlist 
        SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
@@ -536,16 +539,16 @@ async function claimWaitlistOffer(sessionId, userId) {
       `INSERT INTO attendances (
         session_id, user_id, status, reserved_at, updated_at
       )
-      VALUES ($1::uuid, $2::uuid, 'RESERVED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      VALUES ($1::uuid, $2::uuid, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT (session_id, user_id)
       DO UPDATE SET
-        status = 'RESERVED',
+        status = $3,
         reserved_at = CURRENT_TIMESTAMP,
         cancelled_at = NULL,
         cancellation_reason = NULL,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *;`,
-      [sessionId, userId]
+      [sessionId, userId, finalStatus]
     );
 
     await client.query('COMMIT');

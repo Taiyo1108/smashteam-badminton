@@ -316,7 +316,7 @@ export default function SessionReservationWidget({
     }
   };
 
-  const isReserved = attStatus === "RESERVED" || attStatus === "CONFIRMED" || attStatus === "going";
+  const isReserved = attStatus === "RESERVED" || attStatus === "CONFIRMED";
   const isCheckedIn = attStatus === "CHECKED_IN";
   const isCheckedOut = attStatus === "CHECKED_OUT";
   const isMissingCheckout = attStatus === "MISSING_CHECKOUT";
@@ -384,7 +384,7 @@ export default function SessionReservationWidget({
               <ShieldCheck className="w-3.5 h-3.5" /> Đã Chốt Slot (CONFIRMED)
             </span>
           )}
-          {(attStatus === "RESERVED" || attStatus === "going") && !isCheckedIn && !isCheckedOut && !isMissingCheckout && (
+          {(attStatus === "RESERVED") && !isCheckedIn && !isCheckedOut && !isMissingCheckout && (
             <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-primary/30 text-primary-hover border border-primary/40 flex items-center gap-1">
               <Hourglass className="w-3.5 h-3.5" /> Đã Giữ Chỗ (RESERVED)
             </span>

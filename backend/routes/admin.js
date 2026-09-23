@@ -311,7 +311,10 @@ router.put('/sessions/:id', async (req, res) => {
            checkout_open_at = COALESCE($11, checkout_open_at),
            checkout_close_at = COALESCE($12, checkout_close_at),
            waitlist_offer_duration_minutes = COALESCE($13, waitlist_offer_duration_minutes),
-           is_closed = COALESCE($14, is_closed)
+           is_closed = COALESCE($14, is_closed),
+           auto_confirm_processed = FALSE,
+           no_show_processed = FALSE,
+           missing_checkout_processed = FALSE
        WHERE id = $15::uuid
        RETURNING *;`,
       [

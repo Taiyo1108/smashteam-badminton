@@ -599,7 +599,7 @@ export default function AdminSessionsPage() {
   const checkedOutCount = attendeesList.filter(a => a.status === "CHECKED_OUT").length;
   const missingCheckoutCount = attendeesList.filter(a => a.status === "MISSING_CHECKOUT").length;
   const confirmedCount = attendeesList.filter(a => a.status === "CONFIRMED").length;
-  const reservedCount = attendeesList.filter(a => a.status === "RESERVED" || a.status === "going").length;
+  const reservedCount = attendeesList.filter(a => a.status === "RESERVED").length;
   const noShowCount = attendeesList.filter(a => a.status === "NO_SHOW").length;
   const cancelledCount = attendeesList.filter(a => a.status === "CANCELLED").length;
   const totalOccupied = checkedInCount + checkedOutCount + missingCheckoutCount + confirmedCount + reservedCount;
@@ -612,7 +612,7 @@ export default function AdminSessionsPage() {
     if (attendeeFilter === "CHECKED_OUT" && a.status !== "CHECKED_OUT") return false;
     if (attendeeFilter === "MISSING_CHECKOUT" && a.status !== "MISSING_CHECKOUT") return false;
     if (attendeeFilter === "CONFIRMED" && a.status !== "CONFIRMED") return false;
-    if (attendeeFilter === "RESERVED" && (a.status !== "RESERVED" && a.status !== "going")) return false;
+    if (attendeeFilter === "RESERVED" && a.status !== "RESERVED") return false;
     if (attendeeFilter === "PENDING_LATE_CANCEL" && !a.cancellation_request_pending) return false;
     if (attendeeFilter === "NO_SHOW" && a.status !== "NO_SHOW") return false;
     if (attendeeFilter === "CANCELLED" && a.status !== "CANCELLED") return false;
@@ -1061,7 +1061,7 @@ export default function AdminSessionsPage() {
                                   Đã chốt slot
                                 </span>
                               )}
-                              {(a.status === "RESERVED" || a.status === "going") && (
+                              {(a.status === "RESERVED") && (
                                 <span className="text-[10px] text-amber-700 font-bold bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1">
                                   <Hourglass className="w-3 h-3 text-amber-500" />
                                   Đang giữ chỗ
