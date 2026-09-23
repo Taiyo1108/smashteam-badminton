@@ -7,19 +7,23 @@ import {
   Calendar, MapPin, Clock, Trophy, Flame, 
   ArrowRight, Sparkles, CheckCircle2, AlertCircle, ChevronRight 
 } from "lucide-react";
-import { format } from "date-fns";
+import { formatVietnamDate, parseVietnamTime } from "@/app/utils/date";
 
 interface FeaturedEventCountdownProps {
   settings?: Record<string, string>;
   upcomingSession?: any;
+  featuredEvent?: any;
   onViewSchedule?: () => void;
+  onRecruitmentClick?: () => void;
   isLoggedIn?: boolean;
 }
 
 export default function FeaturedEventCountdown({
   settings = {},
   upcomingSession,
+  featuredEvent,
   onViewSchedule,
+  onRecruitmentClick,
   isLoggedIn = false
 }: FeaturedEventCountdownProps) {
   const [mounted, setMounted] = useState(false);
@@ -33,35 +37,61 @@ export default function FeaturedEventCountdown({
     isHappeningNow: false
   });
 
-  // Trang chủ ưu tiên cấu hình admin trong site_settings (nguồn sự thật duy nhất).
+  // Kiểm tra nếu đây là sự kiện tuyển quân
+  const isRecruitment = 
+    featuredEvent?.event_type === "recruitment" ||
+    settings.featured_event_type === "recruitment" ||
+    String(featuredEvent?.action_link || settings.featured_event_action_link || "").includes("recruitment");
+
+  // Trang chủ ưu tiên cấu hình admin trong club_events / site_settings (nguồn sự thật duy nhất).
   // Buổi tập gần nhất từ /api/sessions chỉ là fallback khi admin chưa cấu hình.
   const eventEnabled = settings.featured_event_enabled !== "false";
   const hasUpcoming = Boolean(upcomingSession?.date_time);
   const hasCustomSettings = Boolean(
+    featuredEvent?.title ||
     String(settings.featured_event_title || "").trim() ||
     String(settings.featured_event_date || "").trim()
   );
-  const eventTitle = String(settings.featured_event_title || "").trim() ||
+  const eventTitle = 
+    featuredEvent?.title ||
+    String(settings.featured_event_title || "").trim() ||
     upcomingSession?.title ||
     "Giải Đấu Cầu Lông SmashTeam Championship 2026";
-  const eventSubtitle = String(settings.featured_event_subtitle || "").trim() ||
+  const eventSubtitle = 
+    featuredEvent?.subtitle ||
+    String(settings.featured_event_subtitle || "").trim() ||
     "Sự kiện quy tụ các vợt thủ tranh cúp ELO Vàng, vinh danh tay vợt xuất sắc và phần thưởng tài trợ độc quyền.";
-  const eventLocation = String(settings.featured_event_location || "").trim() ||
+  const eventLocation = 
+    featuredEvent?.location ||
+    String(settings.featured_event_location || "").trim() ||
     upcomingSession?.location ||
-    "Cụm Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM";
-  const eventBadge = String(settings.featured_event_badge || "").trim() ||
-    (hasUpcoming && !hasCustomSettings ? "BUỔI TẬP GẦN NHẤT" : "SỰ KIỆN NỔI BẬT");
-  const actionText = settings.featured_event_action_text || "Đăng ký tham gia ngay";
-  const actionLink = settings.featured_event_action_link || (isLoggedIn ? "/check-in" : "/register");
+    "Sân Bình Thắng, Đông Hòa, HCM";
+  const eventBadge = 
+    featuredEvent?.badge ||
+    String(settings.featured_event_badge || "").trim() ||
+    (isRecruitment ? "MÙA TUYỂN QUÂN 2026" : hasUpcoming && !hasCustomSettings ? "BUỔI TẬP GẦN NHẤT" : "SỰ KIỆN NỔI BẬT");
+  const actionText = 
+    featuredEvent?.action_text ||
+    settings.featured_event_action_text || 
+    (isRecruitment ? "Gia nhập ngay" : "Đăng ký tham gia ngay");
+  const actionLink = 
+    featuredEvent?.action_link ||
+    settings.featured_event_action_link || 
+    (isRecruitment ? "#recruitment-event-section" : (isLoggedIn ? "/check-in" : "/register"));
 
   // Determine target date/time — cấu hình admin luôn được ưu tiên
-  const targetDateStr = String(settings.featured_event_date || "").trim() || upcomingSession?.date_time || "2026-09-20T08:30:00";
+  const targetDateStr = 
+    featuredEvent?.event_date ||
+    String(settings.featured_event_date || "").trim() || 
+    upcomingSession?.date_time || 
+    "2026-09-20T08:30:00";
 
   useEffect(() => {
     setMounted(true);
 
     const calculateTime = () => {
-      const targetTime = new Date(targetDateStr).getTime();
+      const targetDate = parseVietnamTime(targetDateStr);
+      const targetTime = targetDate.getTime();
       const now = Date.now();
       const diff = targetTime - now;
 
@@ -123,15 +153,7 @@ export default function FeaturedEventCountdown({
   if (!eventEnabled) return null;
 
   // Format date display in Vietnamese (dd/MM/yyyy HH:mm)
-  const formattedEventDate = (() => {
-    try {
-      const d = new Date(targetDateStr);
-      if (isNaN(d.getTime())) return targetDateStr;
-      return format(d, "dd/MM/yyyy HH:mm");
-    } catch {
-      return targetDateStr;
-    }
-  })();
+  const formattedEventDate = formatVietnamDate(targetDateStr) || targetDateStr;
 
   const padZero = (n: number) => String(n).padStart(2, "0");
 
@@ -221,15 +243,35 @@ export default function FeaturedEventCountdown({
 
             {/* CTA Buttons */}
             <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Link href={actionLink} className="inline-block">
+              {isRecruitment || actionLink.includes("#recruitment") ? (
                 <button
                   id="countdown-cta-primary"
-                  className="min-h-[48px] px-6 sm:px-8 py-3 bg-primary hover:bg-primary-hover text-white text-xs sm:text-sm font-black rounded-full shadow-[0_0_25px_rgba(122,34,224,0.6)] hover:shadow-[0_0_35px_rgba(157,78,221,0.8)] transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                  onClick={() => {
+                    if (onRecruitmentClick) {
+                      onRecruitmentClick();
+                    } else {
+                      const el = document.getElementById("recruitment-event-section");
+                      if (el) {
+                        el.scrollIntoView({ behavior: "smooth" });
+                      }
+                    }
+                  }}
+                  className="min-h-[48px] px-7 sm:px-9 py-3.5 bg-gradient-to-r from-cyan-500 via-primary to-purple-600 hover:from-cyan-400 hover:to-primary-hover text-white text-xs sm:text-sm font-black rounded-full shadow-[0_0_28px_rgba(6,182,212,0.55)] hover:shadow-[0_0_38px_rgba(6,182,212,0.8)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
                 >
                   <span>{actionText}</span>
                   <ArrowRight className="w-4 h-4" aria-hidden="true" />
                 </button>
-              </Link>
+              ) : (
+                <Link href={actionLink} className="inline-block">
+                  <button
+                    id="countdown-cta-primary"
+                    className="min-h-[48px] px-6 sm:px-8 py-3 bg-primary hover:bg-primary-hover text-white text-xs sm:text-sm font-black rounded-full shadow-[0_0_25px_rgba(122,34,224,0.6)] hover:shadow-[0_0_35px_rgba(157,78,221,0.8)] transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                  >
+                    <span>{actionText}</span>
+                    <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </Link>
+              )}
 
               {onViewSchedule && (
                 <button

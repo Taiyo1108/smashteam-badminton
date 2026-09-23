@@ -6,8 +6,8 @@ import {
   AlertCircle, Loader2, Sparkles, ExternalLink, RefreshCw, Flame, Users, 
   ShieldCheck, Eye, EyeOff, Star, Award, Check, Save, ChevronRight, X
 } from "lucide-react";
-import { format } from "date-fns";
 import { API_URL } from "@/app/config";
+import { formatVietnamDate, toVietnamDatetimeInput, vietnamInputToIso } from "@/app/utils/date";
 
 export default function AdminEventsPage() {
   const [activeMainTab, setActiveMainTab] = useState<"featured" | "recruitment">("featured");
@@ -29,6 +29,7 @@ export default function AdminEventsPage() {
   const [isSavingEvent, setIsSavingEvent] = useState(false);
 
   // Form State cho sự kiện nổi bật đang hiển thị trên trang chủ
+  const [isCreatingNewFeatured, setIsCreatingNewFeatured] = useState(false);
   const [featuredForm, setFeaturedForm] = useState({
     id: "",
     title: "Giải Đấu Cầu Lông Mở Rộng SmashTeam Championship 2026",
@@ -38,6 +39,7 @@ export default function AdminEventsPage() {
     badge: "GIẢI ĐẤU NỔI BẬT",
     actionText: "Đăng ký tham gia ngay",
     actionLink: "/schedule",
+    event_type: "tournament",
     enabled: true,
     max_participants: 50,
     description: "",
@@ -62,7 +64,7 @@ export default function AdminEventsPage() {
     badge_text: "Mùa Tuyển Quân 2026",
     start_date: "2026-03-01T00:00",
     end_date: "2026-03-30T23:59",
-    location: "Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM",
+    location: "Sân Bình Thắng, Đông Hòa, HCM",
     target_audience: "Mọi cấp độ tay vợt",
     target_capacity: 60,
     description: "Chào đón mọi cấp độ vợt thủ đam mê cầu lông gia nhập ngôi nhà chung SmashTeam. Tham gia ngay để tỏa sáng, nâng hạng ELO và rèn luyện thể lực hàng tuần!",
@@ -72,7 +74,7 @@ export default function AdminEventsPage() {
   // Slot Form
   const [slotForm, setSlotForm] = useState({
     casting_time: "2026-03-22T08:30",
-    location: "Sân Cầu Lông Lan Anh, Q.10 - Sân số 2",
+    location: "Sân Bình Thắng, Đông Hòa, HCM",
     max_capacity: 20
   });
   const [isSavingSlot, setIsSavingSlot] = useState(false);
@@ -94,16 +96,17 @@ export default function AdminEventsPage() {
 
         // Tìm event nổi bật
         const featured = events.find((e: any) => e.is_featured) || events[0];
-        if (featured) {
+        if (featured && !isCreatingNewFeatured) {
           setFeaturedForm({
             id: featured.id,
             title: featured.title,
             subtitle: featured.subtitle || "",
-            date: featured.event_date ? featured.event_date.substring(0, 16) : "2026-09-20T08:30",
+            date: featured.event_date ? toVietnamDatetimeInput(featured.event_date) : "2026-09-20T08:30",
             location: featured.location || "",
             badge: featured.badge || "GIẢI ĐẤU NỔI BẬT",
             actionText: featured.action_text || "Đăng ký tham gia ngay",
             actionLink: featured.action_link || "/schedule",
+            event_type: featured.event_type || "tournament",
             enabled: featured.status !== "cancelled",
             max_participants: featured.max_participants || 50,
             description: featured.description || "",
@@ -125,9 +128,9 @@ export default function AdminEventsPage() {
             id: activeCamp.id,
             name: activeCamp.name,
             badge_text: activeCamp.badge_text || "Mùa Tuyển Quân 2026",
-            start_date: activeCamp.start_date ? activeCamp.start_date.substring(0, 16) : "2026-03-01T00:00",
-            end_date: activeCamp.end_date ? activeCamp.end_date.substring(0, 16) : "2026-03-30T23:59",
-            location: activeCamp.location || "Sân Cầu Lông Lan Anh",
+            start_date: activeCamp.start_date ? toVietnamDatetimeInput(activeCamp.start_date) : "2026-03-01T00:00",
+            end_date: activeCamp.end_date ? toVietnamDatetimeInput(activeCamp.end_date) : "2026-03-30T23:59",
+            location: activeCamp.location || "Sân Bình Thắng, Đông Hòa, HCM",
             target_audience: activeCamp.target_audience || "Mọi cấp độ tay vợt",
             target_capacity: activeCamp.target_capacity || 60,
             description: activeCamp.description || "",
@@ -167,8 +170,67 @@ export default function AdminEventsPage() {
   }, []);
 
   // =========================================================================
-  // HANDLERS PHÂN HỆ 1: GIẢI ĐẤU
+  // HANDLERS PHÂN HỆ 1: GIẢI ĐẤU & ĐẾM NGƯỢC
   // =========================================================================
+  // Bật chế độ tạo sự kiện đếm ngược mới
+  const startCreateNewFeaturedEvent = () => {
+    setIsCreatingNewFeatured(true);
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    futureDate.setHours(8, 30, 0, 0);
+
+    setFeaturedForm({
+      id: "",
+      title: "",
+      subtitle: "",
+      date: toVietnamDatetimeInput(futureDate),
+      location: "Sân Bình Thắng, Đông Hòa, HCM",
+      badge: "GIẢI ĐẤU NỔI BẬT",
+      actionText: "Đăng ký tham gia ngay",
+      actionLink: "/schedule",
+      event_type: "tournament",
+      enabled: true,
+      max_participants: 50,
+      description: "",
+      results_summary: ""
+    });
+  };
+
+  // Quay lại sửa sự kiện đang chiếu
+  const cancelCreateNewFeaturedEvent = () => {
+    setIsCreatingNewFeatured(false);
+    fetchAllEventsData();
+  };
+
+  // Tự động gợi ý text, link, badge khi đổi loại sự kiện
+  const handleFeaturedEventTypeChange = (newType: string) => {
+    let newBadge = featuredForm.badge;
+    let newActionText = featuredForm.actionText;
+    let newActionLink = featuredForm.actionLink;
+
+    if (newType === "recruitment") {
+      newBadge = "MÙA TUYỂN QUÂN 2026";
+      newActionText = "Gia nhập ngay";
+      newActionLink = "#recruitment-event-section";
+    } else if (newType === "tournament") {
+      newBadge = "GIẢI ĐẤU NỔI BẬT";
+      newActionText = "Đăng ký tham gia ngay";
+      newActionLink = "/schedule";
+    } else if (newType === "training") {
+      newBadge = "BUỔI TẬP ĐỊNH KỲ";
+      newActionText = "Tham gia buổi tập";
+      newActionLink = "/schedule";
+    }
+
+    setFeaturedForm({
+      ...featuredForm,
+      event_type: newType,
+      badge: newBadge,
+      actionText: newActionText,
+      actionLink: newActionLink
+    });
+  };
+
   const handleSaveFeatured = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingFeatured(true);
@@ -179,50 +241,58 @@ export default function AdminEventsPage() {
         Authorization: `Bearer ${token}`
       };
 
-      if (featuredForm.id) {
+      if (!featuredForm.title.trim() || !featuredForm.date || !featuredForm.location.trim()) {
+        throw new Error("Vui lòng điền đầy đủ Tiêu đề, Ngày giờ và Địa điểm sự kiện.");
+      }
+
+      const payload = {
+        title: featuredForm.title.trim(),
+        subtitle: featuredForm.subtitle.trim(),
+        event_date: vietnamInputToIso(featuredForm.date),
+        location: featuredForm.location.trim(),
+        badge: featuredForm.badge.trim() || "GIẢI ĐẤU NỔI BẬT",
+        action_text: featuredForm.actionText.trim() || "Đăng ký tham gia ngay",
+        action_link: featuredForm.actionLink.trim() || "/schedule",
+        event_type: featuredForm.event_type || "tournament",
+        is_featured: true,
+        max_participants: Number(featuredForm.max_participants) || 50,
+        description: featuredForm.description,
+        results_summary: featuredForm.results_summary
+      };
+
+      if (featuredForm.id && !isCreatingNewFeatured) {
         // Cập nhật sự kiện hiện tại
         const res = await fetch(`${API_URL}/api/events/${featuredForm.id}`, {
           method: "PUT",
           headers,
-          body: JSON.stringify({
-            title: featuredForm.title,
-            subtitle: featuredForm.subtitle,
-            event_date: featuredForm.date,
-            location: featuredForm.location,
-            badge: featuredForm.badge,
-            action_text: featuredForm.actionText,
-            action_link: featuredForm.actionLink,
-            is_featured: true,
-            max_participants: featuredForm.max_participants,
-            description: featuredForm.description,
-            results_summary: featuredForm.results_summary
-          })
+          body: JSON.stringify(payload)
         });
 
-        if (!res.ok) throw new Error("Cập nhật thất bại.");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Cập nhật thất bại.");
+        }
+
+        showToast("Đã cập nhật sự kiện nổi bật và đồng bộ Trang Chủ Real-time!");
       } else {
         // Tạo mới sự kiện nổi bật
         const res = await fetch(`${API_URL}/api/events`, {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            title: featuredForm.title,
-            subtitle: featuredForm.subtitle,
-            event_date: featuredForm.date,
-            location: featuredForm.location,
-            badge: featuredForm.badge,
-            action_text: featuredForm.actionText,
-            action_link: featuredForm.actionLink,
-            is_featured: true,
-            max_participants: featuredForm.max_participants,
-            description: featuredForm.description
-          })
+          body: JSON.stringify(payload)
         });
 
-        if (!res.ok) throw new Error("Tạo sự kiện thất bại.");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Tạo sự kiện thất bại.");
+        }
+
+        const created = await res.json();
+        setIsCreatingNewFeatured(false);
+        setFeaturedForm(prev => ({ ...prev, id: created.id }));
+        showToast("Đã tạo sự kiện đếm ngược mới thành công và hiển thị trên Trang Chủ!");
       }
 
-      showToast("Đã lưu sự kiện nổi bật và cập nhật Trang Chủ Real-time!");
       fetchAllEventsData();
     } catch (err: any) {
       showToast(err.message || "Lỗi khi lưu sự kiện.", "error");
@@ -241,6 +311,7 @@ export default function AdminEventsPage() {
 
       if (res.ok) {
         showToast(`Đã đưa "${event.title}" lên làm Sự Kiện Nổi Bật trang chủ!`);
+        setIsCreatingNewFeatured(false);
         fetchAllEventsData();
       } else {
         showToast("Không thể đặt sự kiện này.", "error");
@@ -296,47 +367,49 @@ export default function AdminEventsPage() {
         Authorization: `Bearer ${token}`
       };
 
+      const payload = {
+        title: formData.get("title"),
+        subtitle: formData.get("subtitle"),
+        event_date: vietnamInputToIso(formData.get("event_date") as string),
+        location: formData.get("location"),
+        event_type: formData.get("event_type") || "tournament",
+        badge: formData.get("badge") || "GIẢI ĐẤU NỔI BẬT",
+        action_text: formData.get("action_text") || "Đăng ký tham gia ngay",
+        action_link: formData.get("action_link") || "/schedule",
+        max_participants: Number(formData.get("max_participants")) || 50,
+        is_featured: formData.get("is_featured") === "on",
+        status: formData.get("status") || "upcoming"
+      };
+
       if (editingEvent) {
-        // Chỉnh sửa trực tiếp, giữ nguyên trạng thái nổi bật/trạng thái trừ khi admin đổi
+        // Chỉnh sửa trực tiếp
         const res = await fetch(`${API_URL}/api/events/${editingEvent.id}`, {
           method: "PUT",
           headers,
-          body: JSON.stringify({
-            title: formData.get("title"),
-            subtitle: formData.get("subtitle"),
-            event_date: formData.get("event_date"),
-            location: formData.get("location"),
-            badge: formData.get("badge") || "GIẢI ĐẤU NỔI BẬT",
-            max_participants: Number(formData.get("max_participants")) || 50,
-            is_featured: formData.get("is_featured") === "on",
-            status: formData.get("status") || "upcoming"
-          })
+          body: JSON.stringify(payload)
         });
-        if (!res.ok) throw new Error();
-        showToast("Đã cập nhật thông tin giải đấu thành công!");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Không thể lưu thay đổi.");
+        }
+        showToast("Đã cập nhật thông tin sự kiện thành công!");
       } else {
         const res = await fetch(`${API_URL}/api/events`, {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            title: formData.get("title"),
-            subtitle: formData.get("subtitle"),
-            event_date: formData.get("event_date"),
-            location: formData.get("location"),
-            badge: formData.get("badge") || "GIẢI ĐẤU NỔI BẬT",
-            max_participants: Number(formData.get("max_participants")) || 50,
-            is_featured: formData.get("is_featured") === "on",
-            status: "upcoming"
-          })
+          body: JSON.stringify(payload)
         });
-        if (!res.ok) throw new Error();
-        showToast("Đã tạo sự kiện giải đấu mới thành công!");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Không thể tạo sự kiện mới.");
+        }
+        showToast("Đã tạo sự kiện mới thành công!");
       }
 
       closeEventModal();
       fetchAllEventsData();
-    } catch {
-      showToast(editingEvent ? "Không thể lưu thay đổi." : "Không thể tạo sự kiện.", "error");
+    } catch (err: any) {
+      showToast(err.message || (editingEvent ? "Không thể lưu thay đổi." : "Không thể tạo sự kiện."), "error");
     } finally {
       setIsSavingEvent(false);
     }
@@ -358,7 +431,11 @@ export default function AdminEventsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(campaignForm)
+        body: JSON.stringify({
+          ...campaignForm,
+          start_date: vietnamInputToIso(campaignForm.start_date),
+          end_date: vietnamInputToIso(campaignForm.end_date)
+        })
       });
 
       if (res.ok) {
@@ -404,7 +481,10 @@ export default function AdminEventsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(slotForm)
+        body: JSON.stringify({
+          ...slotForm,
+          casting_time: vietnamInputToIso(slotForm.casting_time)
+        })
       });
 
       if (res.ok) {
@@ -536,31 +616,92 @@ export default function AdminEventsPage() {
                 
                 {/* FORM CHỈNH SỬA REAL-TIME (7 CỘT) */}
                 <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 shadow-sm space-y-6">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
                     <div>
-                      <span className="text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded bg-amber-100 text-amber-900">
-                        Chỉnh sửa Real-Time
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded ${
+                          isCreatingNewFeatured 
+                            ? "bg-purple-100 text-purple-900 border border-purple-200" 
+                            : "bg-amber-100 text-amber-900"
+                        }`}>
+                          {isCreatingNewFeatured ? "✨ Tạo Mới Sự Kiện Đếm Ngược" : "Chỉnh sửa Real-Time"}
+                        </span>
+                        {!isCreatingNewFeatured && featuredForm.id && (
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
+                            Đang Chiếu
+                          </span>
+                        )}
+                      </div>
                       <h2 className="text-lg font-black text-secondary mt-1.5">
-                        Cấu Hình Sự Kiện Nổi Bật Đang Chiếu
+                        {isCreatingNewFeatured 
+                          ? "Tạo Sự Kiện Đếm Ngược Mới Lên Trang Chủ" 
+                          : "Cấu Hình Bảng Đếm Ngược Đang Chiếu"}
                       </h2>
                     </div>
-                    <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full font-bold flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5" /> Đồng bộ Trang Chủ
-                    </span>
+
+                    <div className="flex items-center gap-2">
+                      {isCreatingNewFeatured ? (
+                        <button
+                          type="button"
+                          onClick={cancelCreateNewFeaturedEvent}
+                          className="text-xs font-bold text-slate-500 hover:text-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
+                        >
+                          Hủy tạo mới
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={startCreateNewFeaturedEvent}
+                          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 text-xs font-black rounded-xl transition-all cursor-pointer active:scale-95"
+                          title="Tạo một sự kiện hoàn toàn mới thay thế sự kiện hiện tại trên trang chủ"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Tạo Sự Kiện Mới
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <form onSubmit={handleSaveFeatured} className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* PHÂN LOẠI LOẠI SỰ KIỆN */}
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <Trophy className="w-3.5 h-3.5 text-primary" /> Phân loại loại sự kiện *
+                          </span>
+                          {featuredForm.event_type === "recruitment" && (
+                            <span className="text-[10px] font-extrabold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-200">
+                              Tự trượt xuống form tuyển quân khi bấm nút
+                            </span>
+                          )}
+                        </label>
+                        <select
+                          value={featuredForm.event_type}
+                          onChange={(e) => handleFeaturedEventTypeChange(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs font-bold bg-white text-slate-800 cursor-pointer"
+                        >
+                          <option value="tournament">🏆 Giải Đấu / Thi Đấu Cúp ELO (Đăng ký tham gia)</option>
+                          <option value="recruitment">👥 Tuyển Thành Viên / Chiêu Mộ (Bấm nút sẽ tự trượt xuống ô tuyển quân & mở đăng ký)</option>
+                          <option value="training">🏸 Buổi Tập Sinh Hoạt / Giao Lưu CLB (Xem lịch tập)</option>
+                          <option value="other">🎯 Sự Kiện / Hoạt Động Khác</option>
+                        </select>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {featuredForm.event_type === "recruitment" 
+                            ? "💡 Khi khách bấm nút 'Gia nhập ngay' trên bảng đếm ngược, trang chủ sẽ tự động cuộn mượt xuống ô tuyển quân và mở form đăng ký thành viên mới."
+                            : "💡 Sự kiện này sẽ hiển thị bảng đếm ngược thể thao trên Trang Chủ để toàn thể thành viên theo dõi."}
+                        </p>
+                      </div>
+
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                          Tiêu đề giải đấu / sự kiện *
+                          Tiêu đề sự kiện / giải đấu *
                         </label>
                         <input
                           type="text"
                           required
                           value={featuredForm.title}
                           onChange={(e) => setFeaturedForm({ ...featuredForm, title: e.target.value })}
+                          placeholder="VD: Chiến Dịch Tuyển Tân Binh SmashTeam Mùa Hè 2026"
                           className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-sm font-semibold"
                         />
                       </div>
@@ -573,6 +714,7 @@ export default function AdminEventsPage() {
                           rows={2}
                           value={featuredForm.subtitle}
                           onChange={(e) => setFeaturedForm({ ...featuredForm, subtitle: e.target.value })}
+                          placeholder="VD: Chào đón các tay vợt đam mê cầu lông gia nhập mái nhà chung SmashTeam..."
                           className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs leading-relaxed"
                         />
                       </div>
@@ -592,13 +734,14 @@ export default function AdminEventsPage() {
 
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5 text-cyan-600" /> Địa điểm thi đấu *
+                          <MapPin className="w-3.5 h-3.5 text-cyan-600" /> Địa điểm thi đấu / Test sân *
                         </label>
                         <input
                           type="text"
                           required
                           value={featuredForm.location}
                           onChange={(e) => setFeaturedForm({ ...featuredForm, location: e.target.value })}
+                          placeholder="VD: Cụm Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM"
                           className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs"
                         />
                       </div>
@@ -611,14 +754,14 @@ export default function AdminEventsPage() {
                           type="text"
                           value={featuredForm.badge}
                           onChange={(e) => setFeaturedForm({ ...featuredForm, badge: e.target.value })}
-                          placeholder="GIẢI ĐẤU NỔI BẬT"
+                          placeholder="GIẢI ĐẤU NỔI BẬT hoặc MÙA TUYỂN QUÂN 2026"
                           className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs"
                         />
                       </div>
 
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1">
-                          <Users className="w-3.5 h-3.5 text-purple-600" /> Số VĐV tối đa
+                          <Users className="w-3.5 h-3.5 text-purple-600" /> Chỉ tiêu / Số VĐV tối đa
                         </label>
                         <input
                           type="number"
@@ -630,13 +773,14 @@ export default function AdminEventsPage() {
 
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                          Chữ trên nút đăng ký
+                          Chữ trên nút hành động (CTA)
                         </label>
                         <input
                           type="text"
                           value={featuredForm.actionText}
                           onChange={(e) => setFeaturedForm({ ...featuredForm, actionText: e.target.value })}
-                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs"
+                          placeholder="Gia nhập ngay hoặc Đăng ký tham gia ngay"
+                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs font-bold"
                         />
                       </div>
 
@@ -648,6 +792,7 @@ export default function AdminEventsPage() {
                           type="text"
                           value={featuredForm.actionLink}
                           onChange={(e) => setFeaturedForm({ ...featuredForm, actionLink: e.target.value })}
+                          placeholder="#recruitment-event-section hoặc /schedule"
                           className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs"
                         />
                       </div>
@@ -655,15 +800,29 @@ export default function AdminEventsPage() {
 
                     <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                       <span className="text-xs text-slate-500">
-                        Tất cả thay đổi sẽ hiển thị ngay trên Trang Chủ khi bấm Lưu.
+                        {isCreatingNewFeatured
+                          ? "Sự kiện mới sẽ thay thế bảng đếm ngược hiện tại trên Trang Chủ."
+                          : "Tất cả thay đổi sẽ hiển thị ngay trên Trang Chủ khi bấm Lưu."}
                       </span>
                       <button
                         type="submit"
                         disabled={isSavingFeatured}
                         className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary-hover text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50"
                       >
-                        {isSavingFeatured ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                        <span>{isSavingFeatured ? "Đang lưu..." : "Lưu Thay Đổi Real-time"}</span>
+                        {isSavingFeatured ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : isCreatingNewFeatured ? (
+                          <Plus className="w-4 h-4" />
+                        ) : (
+                          <Save className="w-4 h-4" />
+                        )}
+                        <span>
+                          {isSavingFeatured 
+                            ? "Đang lưu..." 
+                            : isCreatingNewFeatured 
+                            ? "Tạo Mới & Đếm Ngược Ngay" 
+                            : "Lưu Thay Đổi Real-time"}
+                        </span>
                       </button>
                     </div>
                   </form>
@@ -729,7 +888,7 @@ export default function AdminEventsPage() {
                       <div className="flex items-center gap-1.5 text-[11px]">
                         <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
                         <span className="font-semibold text-white">
-                          {featuredForm.date ? format(new Date(featuredForm.date), "dd/MM/yyyy HH:mm") : "20/09/2026 08:30"}
+                          {featuredForm.date ? formatVietnamDate(featuredForm.date) : "20/09/2026 08:30"}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 text-[11px] truncate">
@@ -807,9 +966,11 @@ export default function AdminEventsPage() {
                           <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
                             evt.status === "completed"
                               ? "bg-slate-100 text-slate-600"
+                              : evt.event_type === "recruitment"
+                              ? "bg-cyan-100 text-cyan-800 border border-cyan-300"
                               : "bg-amber-100 text-amber-800"
                           }`}>
-                            {evt.badge || "SỰ KIỆN"}
+                            {evt.event_type === "recruitment" ? "👥 TUYỂN QUÂN" : evt.badge || "SỰ KIỆN"}
                           </span>
                           {evt.is_featured && (
                             <span className="text-[10px] bg-primary text-white font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
@@ -826,7 +987,7 @@ export default function AdminEventsPage() {
                         <div className="space-y-1 text-xs text-slate-600 pt-1">
                           <div className="flex items-center gap-1.5">
                             <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-                            <span>{format(new Date(evt.event_date), "dd/MM/yyyy HH:mm")}</span>
+                            <span>{formatVietnamDate(evt.event_date)}</span>
                           </div>
                           <div className="flex items-center gap-1.5 truncate">
                             <MapPin className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
@@ -1146,7 +1307,7 @@ export default function AdminEventsPage() {
                         <div className="space-y-1 text-xs">
                           <div className="flex items-center gap-1.5 font-bold text-secondary">
                             <Clock className="w-3.5 h-3.5 text-primary" />
-                            <span>{format(new Date(slot.casting_time), "dd/MM/yyyy HH:mm")}</span>
+                            <span>{formatVietnamDate(slot.casting_time)}</span>
                           </div>
                           <div className="flex items-center gap-1.5 text-slate-500 truncate">
                             <MapPin className="w-3.5 h-3.5 text-cyan-600" />
@@ -1198,7 +1359,7 @@ export default function AdminEventsPage() {
                             <span className="text-[10px] text-slate-400 font-normal">{c.badge_text || "Tuyển quân"}</span>
                           </td>
                           <td className="p-3 font-medium text-slate-600">
-                            {format(new Date(c.start_date), "dd/MM/yyyy")} - {format(new Date(c.end_date), "dd/MM/yyyy")}
+                            {formatVietnamDate(c.start_date, "date")} - {formatVietnamDate(c.end_date, "date")}
                           </td>
                           <td className="p-3">
                             <span className="font-extrabold text-primary">{c.total_registered || 0}</span>
@@ -1259,8 +1420,25 @@ export default function AdminEventsPage() {
               onSubmit={handleSubmitEventModal}
               className="space-y-4 text-xs"
             >
+              {/* PHÂN LOẠI LOẠI SỰ KIỆN */}
               <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Tên giải đấu *</label>
+                <label className="block font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
+                  <Trophy className="w-3.5 h-3.5 text-primary" /> Phân loại loại sự kiện *
+                </label>
+                <select
+                  name="event_type"
+                  defaultValue={editingEvent?.event_type || "tournament"}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs font-bold bg-white text-slate-800 cursor-pointer"
+                >
+                  <option value="tournament">🏆 Giải Đấu / Thi Đấu Cúp ELO (Đăng ký giải)</option>
+                  <option value="recruitment">👥 Tuyển Thành Viên / Chiêu Mộ (Bấm nút sẽ tự trượt xuống ô tuyển quân & mở đăng ký)</option>
+                  <option value="training">🏸 Buổi Tập Sinh Hoạt / Giao Lưu CLB (Xem lịch)</option>
+                  <option value="other">🎯 Sự Kiện / Hoạt Động Khác</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">Tên sự kiện / giải đấu *</label>
                 <input
                   name="title"
                   required
@@ -1288,7 +1466,7 @@ export default function AdminEventsPage() {
                     name="event_date"
                     type="datetime-local"
                     required
-                    defaultValue={editingEvent?.event_date ? String(editingEvent.event_date).substring(0, 16) : "2026-09-20T08:30"}
+                    defaultValue={editingEvent?.event_date ? toVietnamDatetimeInput(editingEvent.event_date) : "2026-09-20T08:30"}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs font-bold"
                   />
                 </div>
@@ -1304,7 +1482,7 @@ export default function AdminEventsPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Địa điểm thi đấu *</label>
+                <label className="block font-bold text-slate-700 uppercase mb-1">Địa điểm thi đấu / Test sân *</label>
                 <input
                   name="location"
                   required
@@ -1339,13 +1517,34 @@ export default function AdminEventsPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Chữ trên nút (CTA)</label>
+                  <input
+                    name="action_text"
+                    defaultValue={editingEvent?.action_text || "Đăng ký tham gia ngay"}
+                    placeholder="Gia nhập ngay / Đăng ký tham gia ngay"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Đường dẫn nút (Link)</label>
+                  <input
+                    name="action_link"
+                    defaultValue={editingEvent?.action_link || "/schedule"}
+                    placeholder="#recruitment-event-section hoặc /schedule"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-primary text-xs"
+                  />
+                </div>
+              </div>
+
               <div className="flex items-center gap-2 pt-2">
                 <input
                   id="is_featured_check"
                   name="is_featured"
                   type="checkbox"
                   defaultChecked={editingEvent ? !!editingEvent.is_featured : true}
-                  className="w-4 h-4 text-primary rounded"
+                  className="w-4 h-4 text-primary rounded cursor-pointer"
                 />
                 <label htmlFor="is_featured_check" className="font-bold text-slate-700 cursor-pointer">
                   Đặt làm sự kiện nổi bật trên Trang Chủ (Thay thế sự kiện hiện tại)

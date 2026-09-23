@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   LayoutDashboard, Users, Swords, LogOut, Loader2, Menu, X,
-  Image as ImageIcon, Calendar, Sparkles, ShoppingBag, Home, Trophy
+  Image as ImageIcon, Calendar, Sparkles, ShoppingBag, Home, Trophy, Mail
 } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -46,6 +46,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Quản lý Sự kiện", href: "/admin/events", icon: Trophy },
     { name: "Quản lý Nhiệm vụ", href: "/admin/quests", icon: Sparkles },
     { name: "Quản lý Gian hàng", href: "/admin/shop", icon: ShoppingBag },
+    { name: "Hộp Thư & Gửi Mail", href: "/admin/emails", icon: Mail },
     { name: "Quản lý Nội dung", href: "/admin/content", icon: ImageIcon },
   ];
 
@@ -135,8 +136,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Main Content Area — cột duy nhất được cuộn, sidebar giữ cố định */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile Header */}
-        <header className="lg:hidden bg-white/95 backdrop-blur-md border-b border-purple-100 h-16 flex items-center px-4 justify-between shrink-0 shadow-xs">
+        {/* Mobile Header (iOS Safe Area Notch Support) */}
+        <header 
+          className="lg:hidden bg-white/95 backdrop-blur-md border-b border-purple-100 flex items-center px-4 justify-between shrink-0 shadow-xs pt-safe"
+          style={{ paddingTop: "env(safe-area-inset-top, 0px)", height: "calc(4rem + env(safe-area-inset-top, 0px))" }}
+        >
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-bold text-white shadow-xs">
               S

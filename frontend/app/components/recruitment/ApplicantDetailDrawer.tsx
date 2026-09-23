@@ -180,10 +180,10 @@ export default function ApplicantDetailDrawer({
                   )}
                 </div>
 
-                {/* Soft Skills */}
+                {/* Vị trí ứng tuyển / Ban */}
                 <div className="space-y-3">
                   <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
-                    Kỹ Năng Đăng Ký Hỗ Trợ
+                    Vị Trí Ứng Tuyển / Ban Đăng Ký
                   </h4>
                   {skillsList.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
@@ -197,7 +197,7 @@ export default function ApplicantDetailDrawer({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-slate-400">Không đăng ký kỹ năng hỗ trợ thêm.</p>
+                    <p className="text-xs text-slate-400">Ứng viên đăng ký vị trí Thành viên.</p>
                   )}
                 </div>
 
@@ -237,22 +237,22 @@ export default function ApplicantDetailDrawer({
               </div>
 
               {/* Drawer Bottom Actions */}
-              <div className="p-6 bg-slate-50 border-t border-slate-200 space-y-3">
+              <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 space-y-2.5">
                 <button
                   type="button"
                   onClick={() => onApprove(candidate)}
-                  className="w-full py-3.5 bg-primary hover:bg-primary-hover text-white rounded-2xl font-bold text-sm shadow-md shadow-primary/30 transition-all flex items-center justify-center gap-2 cursor-pointer focus-ring"
+                  className="w-full h-14 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black text-sm sm:text-base shadow-lg shadow-emerald-600/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer focus-ring"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle2 className="w-5 h-5" />
                   <span>Duyệt Ứng Viên & Đánh Giá Điểm</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => onReject(candidate.id)}
-                  className="w-full py-2.5 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-600 hover:text-rose-600 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full h-11 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="w-4 h-4 text-rose-500" />
                   <span>Loại bỏ ứng viên này</span>
                 </button>
               </div>

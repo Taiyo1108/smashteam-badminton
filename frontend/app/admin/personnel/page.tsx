@@ -4,10 +4,10 @@ import { useState, useEffect, useDeferredValue, useRef } from "react";
 import { 
   Search, CheckCircle2, Loader2, MoreHorizontal, X, ShieldAlert, Award, Ban, Unlock, 
   Phone, Clock, Star, Copy, Check, Plus, Calendar, MapPin, Edit, Trash2, Power,
-  PowerOff, Save, Download
+  PowerOff, Save, Download, QrCode, Upload, ExternalLink, AlertCircle
 } from "lucide-react";
-import { format } from "date-fns";
 import { API_URL } from "@/app/config";
+import { formatVietnamDate, toVietnamDatetimeInput, vietnamInputToIso } from "@/app/utils/date";
 import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
 import RecruitmentKPIs from "@/app/components/recruitment/RecruitmentKPIs";
 import ApplicantTable from "@/app/components/recruitment/ApplicantTable";
@@ -49,6 +49,7 @@ export default function PersonnelPage() {
   const [mRank, setMRank] = useState("all");
   const [mStatus, setMStatus] = useState("all");
   const [mSkill, setMSkill] = useState("all");
+  const [mActivated, setMActivated] = useState<"all" | "activated" | "pending">("all");
 
   // Modal Thao tác nhanh (Quick Actions)
   const [showActionsModal, setShowActionsModal] = useState(false);
@@ -87,10 +88,46 @@ export default function PersonnelPage() {
   const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
   const [campaignStats, setCampaignStats] = useState<any>(null);
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
-  const [cForm, setCForm] = useState({ name: "", start: "", end: "", active: true });
+  const [cForm, setCForm] = useState({
+    name: "",
+    start: "",
+    end: "",
+    active: true,
+    zalo_qr_url: "",
+    zalo_group_link: ""
+  });
+  const [isUploadingZaloQr, setIsUploadingZaloQr] = useState(false);
+  const zaloQrFileInputRef = useRef<HTMLInputElement>(null);
   const [sForm, setSForm] = useState({ time: "", location: "", max: "20" });
   // Bộ câu hỏi tùy chỉnh của đợt tuyển (hiển thị sau bước 2 ở form ứng tuyển)
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([]);
+
+  const handleUploadZaloQr = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsUploadingZaloQr(true);
+      const token = localStorage.getItem("admin_token");
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch(`${API_URL}/api/campaigns/upload-zalo-qr`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        setCForm(prev => ({ ...prev, zalo_qr_url: data.url }));
+      } else {
+        alert(data.error || "Không thể tải ảnh QR lên.");
+      }
+    } catch (err) {
+      alert("Lỗi kết nối khi tải ảnh lên.");
+    } finally {
+      setIsUploadingZaloQr(false);
+      if (zaloQrFileInputRef.current) zaloQrFileInputRef.current.value = "";
+    }
+  };
 
   const fetchCampaigns = async () => {
     try {
@@ -113,9 +150,11 @@ export default function PersonnelPage() {
       fetchCampaignStats(selectedCampaign.id);
       setCForm({
         name: selectedCampaign.name,
-        start: new Date(selectedCampaign.start_date).toISOString().slice(0, 16),
-        end: new Date(selectedCampaign.end_date).toISOString().slice(0, 16),
-        active: selectedCampaign.is_active
+        start: toVietnamDatetimeInput(selectedCampaign.start_date),
+        end: toVietnamDatetimeInput(selectedCampaign.end_date),
+        active: selectedCampaign.is_active,
+        zalo_qr_url: selectedCampaign.zalo_qr_url || "",
+        zalo_group_link: selectedCampaign.zalo_group_link || ""
       });
       setCustomQuestions(parseQuestions(selectedCampaign.custom_questions));
       setIsCreatingCampaign(false);
@@ -136,7 +175,7 @@ export default function PersonnelPage() {
         .map((q) => ({
           ...q,
           label: q.label.trim(),
-          options: q.options.map((o) => o.trim()).filter(Boolean),
+          options: (q.options || []).map((o) => o.trim()).filter(Boolean),
         }));
 
       const res = await fetch(url, {
@@ -144,10 +183,12 @@ export default function PersonnelPage() {
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           name: cForm.name,
-          start_date: new Date(cForm.start).toISOString(),
-          end_date: new Date(cForm.end).toISOString(),
+          start_date: vietnamInputToIso(cForm.start),
+          end_date: vietnamInputToIso(cForm.end),
           is_active: cForm.active,
-          custom_questions: cleanedQuestions
+          custom_questions: cleanedQuestions,
+          zalo_qr_url: cForm.zalo_qr_url || null,
+          zalo_group_link: cForm.zalo_group_link || null
         })
       });
       if (res.ok) {
@@ -198,7 +239,7 @@ export default function PersonnelPage() {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          casting_time: new Date(sForm.time).toISOString(),
+          casting_time: vietnamInputToIso(sForm.time),
           location: sForm.location,
           max_capacity: parseInt(sForm.max)
         })
@@ -419,6 +460,13 @@ export default function PersonnelPage() {
     setSelectedStars(defaultStars);
     setCastingNotes("");
     setAssessmentError(null);
+  };
+
+  const handleCopyClaimLink = (member: any) => {
+    const host = typeof window !== 'undefined' ? window.location.origin : '';
+    const text = `🏸 Chào ${member.full_name}, bạn đã được duyệt trở thành thành viên chính thức của CLB Cầu Lông SmashTeam!\nVui lòng truy cập đường dẫn sau để kích hoạt thẻ vận động viên và đặt mật khẩu đăng nhập:\n👉 ${host}/claim-account\n📱 SĐT Zalo: ${member.phone_zalo}\n🔑 Mã PIN xác thực CLB: 123456\n\nHẹn gặp bạn trên sân nhé!`;
+    navigator.clipboard.writeText(text);
+    alert(`Đã sao chép tin nhắn kích hoạt cho ${member.full_name}!\nBạn có thể dán gửi trực tiếp qua Zalo cho thành viên.`);
   };
 
   const handleRejectCandidate = async (id: string) => {
@@ -692,6 +740,11 @@ export default function PersonnelPage() {
       }
       if (!skillsArray.includes(mSkill)) return false;
     }
+    if (mActivated !== "all") {
+      const isAct = Boolean(m.is_activated);
+      if (mActivated === "activated" && !isAct) return false;
+      if (mActivated === "pending" && isAct) return false;
+    }
     return true;
   });
 
@@ -704,7 +757,7 @@ export default function PersonnelPage() {
         </div>
         {activeTab === 'campaigns' && (
           <button 
-            onClick={() => { setIsCreatingCampaign(true); setSelectedCampaign(null); setCForm({ name: "", start: "", end: "", active: true }); setCustomQuestions([]); }}
+            onClick={() => { setIsCreatingCampaign(true); setSelectedCampaign(null); setCForm({ name: "", start: "", end: "", active: true, zalo_qr_url: "", zalo_group_link: "" }); setCustomQuestions([]); }}
             className="flex items-center gap-2 px-5 py-2.5 bg-black hover:bg-black/85 text-white rounded-xl font-bold text-sm transition-all shadow-md active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Đợt mới
@@ -810,6 +863,51 @@ export default function PersonnelPage() {
       {/* MEMBERS TAB */}
       {activeTab === 'members' && (
         <div className="space-y-4">
+          {/* Members Activation & Overview KPI Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng thành viên</p>
+                <p className="text-2xl font-black text-secondary mt-0.5">{members.length}</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-primary flex items-center justify-center font-bold">
+                <Award className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-emerald-100 bg-emerald-50/20 shadow-xs flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Đã Kích Hoạt Thẻ
+                </p>
+                <p className="text-2xl font-black text-emerald-600 mt-0.5">
+                  {members.filter(m => m.is_activated).length}
+                  <span className="text-xs font-semibold text-slate-400 ml-1.5 font-normal">
+                    ({members.length ? Math.round((members.filter(m => m.is_activated).length / members.length) * 100) : 0}%)
+                  </span>
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                <Check className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-amber-100 bg-amber-50/20 shadow-xs flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" /> Chờ Kích Hoạt
+                </p>
+                <p className="text-2xl font-black text-amber-600 mt-0.5">
+                  {members.filter(m => !m.is_activated).length}
+                  <span className="text-xs font-semibold text-slate-400 ml-1.5 font-normal">chưa tạo mật khẩu</span>
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                <Clock className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
           {/* Smart Filter Bar */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-center shadow-sm">
             <div className="relative flex-1 min-w-[200px]">
@@ -820,6 +918,18 @@ export default function PersonnelPage() {
                 className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none"
               />
             </div>
+
+            {/* Filter by Activation Status */}
+            <select 
+              value={mActivated} 
+              onChange={e => setMActivated(e.target.value as any)} 
+              className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[160px] font-medium"
+            >
+              <option value="all">Mọi trạng thái kích hoạt</option>
+              <option value="activated">🟢 Đã kích hoạt ({members.filter(m => m.is_activated).length})</option>
+              <option value="pending">🟡 Chờ kích hoạt ({members.filter(m => !m.is_activated).length})</option>
+            </select>
+
             <select value={mLevel} onChange={e => setMLevel(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none min-w-[140px]">
               <option value="all">Mọi trình độ</option>
               <option value="Mới chơi">Mới chơi</option>
@@ -862,7 +972,7 @@ export default function PersonnelPage() {
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Thành viên</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trình độ & Lối chơi</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase">Phân cấp & Elo</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trạng thái</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Kích hoạt & Trạng thái</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase text-center">Thống kê</th>
                     <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Hành động</th>
                   </tr>
@@ -914,20 +1024,44 @@ export default function PersonnelPage() {
                           </div>
                         </td>
                         <td className="p-4">
-                          <div className="flex flex-col gap-1 items-start">
-                            {status === "active" ? (
-                              <span className="text-[11px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full">Hoạt động</span>
-                            ) : status === "inactive" ? (
-                              <span className="text-[11px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-full">Tạm nghỉ</span>
-                            ) : (
-                              <span className="text-[11px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-full">Đã rời CLB</span>
-                            )}
-                            
-                            {isBlocked && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 bg-red-100 text-red-600 rounded-full flex items-center gap-1">
-                                <Ban className="w-2.5 h-2.5" /> Đã Khóa
+                          <div className="flex flex-col gap-1.5 items-start">
+                            {/* Activation Status Badge */}
+                            {m.is_activated ? (
+                              <span className="text-[11px] font-extrabold px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Đã kích hoạt
                               </span>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-extrabold px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full flex items-center gap-1" title="Thành viên chưa đặt mật khẩu tại /claim-account">
+                                  <Clock className="w-3 h-3 text-amber-600" /> Chờ kích hoạt
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyClaimLink(m)}
+                                  title="Sao chép hướng dẫn kích hoạt gửi qua Zalo"
+                                  className="p-1 text-slate-400 hover:text-primary hover:bg-purple-50 rounded-lg transition-all cursor-pointer border border-slate-200"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </div>
                             )}
+
+                            {/* Membership Status Badge */}
+                            <div className="flex items-center gap-1">
+                              {status === "active" ? (
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">Hoạt động</span>
+                              ) : status === "inactive" ? (
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md">Tạm nghỉ</span>
+                              ) : (
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">Đã rời CLB</span>
+                              )}
+                              
+                              {isBlocked && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-md flex items-center gap-0.5">
+                                  <Ban className="w-2.5 h-2.5" /> Khóa
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="p-4 text-center">
@@ -1208,7 +1342,7 @@ export default function PersonnelPage() {
                               <div>
                                 <p className="text-xs font-bold text-secondary line-clamp-1">{item.title}</p>
                                 <p className="text-[10px] text-slate-400 mt-0.5">
-                                  {format(new Date(item.date_time), "dd/MM/yyyy HH:mm")}
+                                  {formatVietnamDate(item.date_time)}
                                 </p>
                               </div>
                               <div>
@@ -1235,162 +1369,196 @@ export default function PersonnelPage() {
 
       {/* MODAL ĐÁNH GIÁ CHUYÊN MÔN & PHÂN LOẠI (CASTING ASSESSMENT) */}
       {assessmentCandidate && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden relative animate-fade-up my-8">
-            {/* Header */}
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+        <div className="fixed inset-0 bg-black/70 z-50 flex flex-col justify-end sm:justify-center p-0 sm:p-4 backdrop-blur-xs overflow-hidden">
+          <div className="w-full sm:max-w-2xl bg-white border border-slate-200 rounded-t-[32px] sm:rounded-3xl shadow-2xl overflow-hidden relative flex flex-col max-h-[92vh] sm:max-h-[88vh] animate-fade-up">
+            {/* Sticky Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
               <div>
-                <h3 className="font-bold text-lg tracking-tight flex items-center gap-2">
-                  <Award className="w-5 h-5" /> Xác nhận & Đánh giá Tuyển chọn
+                <h3 className="font-bold text-base sm:text-lg tracking-tight flex items-center gap-2 text-secondary">
+                  <Award className="w-5 h-5 text-emerald-600" /> Duyệt Ứng Viên & Đánh Giá
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Buổi tuyển chọn cho ứng viên: {assessmentCandidate.full_name}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Ứng viên: <strong className="text-slate-800 font-bold">{assessmentCandidate.full_name}</strong>
+                </p>
               </div>
               <button
+                type="button"
                 onClick={() => setAssessmentCandidate(null)}
                 aria-label="Đóng"
-                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors cursor-pointer"
+                className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors cursor-pointer text-slate-500 hover:text-slate-800"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitApprove} className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Cột trái: Chuẩn hóa thông tin cá nhân */}
-                <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase tracking-wider">1. Chuẩn hóa thông tin cá nhân</h4>
+            <form onSubmit={handleSubmitApprove} className="flex flex-col flex-1 overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div className="p-4 sm:p-6 space-y-6 overflow-y-auto flex-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Cột trái: Chuẩn hóa thông tin cá nhân */}
+                  <div className="space-y-3.5">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-purple-700 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-purple-100 text-primary flex items-center justify-center text-[10px] font-bold">1</span>
+                      Thông tin cá nhân
+                    </h4>
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">Họ và tên</label>
-                    <input
-                      type="text"
-                      required
-                      value={editFullName}
-                      onChange={(e) => setEditFullName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-black transition-all font-semibold"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">Số điện thoại Zalo</label>
-                    <input
-                      type="text"
-                      required
-                      value={editPhoneZalo}
-                      onChange={(e) => setEditPhoneZalo(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-black transition-all font-semibold tabular-nums"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">Địa chỉ Email</label>
-                    <input
-                      type="email"
-                      required
-                      value={editEmail}
-                      onChange={(e) => setEditEmail(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-black transition-all font-semibold"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">Trường đại học / Học vấn</label>
-                    <input
-                      type="text"
-                      required
-                      value={editAcademicInfo}
-                      onChange={(e) => setEditAcademicInfo(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-black transition-all font-semibold"
-                    />
-                  </div>
-                </div>
-
-                {/* Cột phải: Phân loại trình độ */}
-                <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase tracking-wider">2. Đánh giá trình độ</h4>
-
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block">Trình độ thực tế (Đánh test)</label>
-
-                    {/* Stars Selector (1-5 sao) */}
-                    <div className="flex items-center gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 justify-center">
-                      {[1, 2, 3, 4, 5].map((star) => {
-                        const active = star <= selectedStars;
-                        return (
-                          <button
-                            key={star}
-                            type="button"
-                            onClick={() => setSelectedStars(star)}
-                            className="p-1 hover:scale-125 transition-all text-amber-400 cursor-pointer"
-                          >
-                            <Star className={`w-8 h-8 ${active ? "fill-amber-400 text-amber-400" : "text-slate-300"}`} />
-                          </button>
-                        );
-                      })}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Họ và tên *</label>
+                      <input
+                        type="text"
+                        required
+                        value={editFullName}
+                        onChange={(e) => setEditFullName(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-primary transition-all font-semibold"
+                      />
                     </div>
 
-                    {/* Star Level Description Text */}
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-center text-xs">
-                      {selectedStars === 1 && (
-                        <p className="text-slate-600">⭐ <span className="font-bold text-amber-500">1 Sao:</span> Mới bắt đầu chơi, chưa nắm vững bộ môn.</p>
-                      )}
-                      {selectedStars === 2 && (
-                        <p className="text-slate-600">⭐⭐ <span className="font-bold text-amber-500">2 Sao:</span> Biết chơi cơ bản, di chuyển còn chậm.</p>
-                      )}
-                      {selectedStars === 3 && (
-                        <p className="text-slate-600">⭐⭐⭐ <span className="font-bold text-amber-500">3 Sao:</span> Trung bình, có thể tham gia giao lưu ELO.</p>
-                      )}
-                      {selectedStars === 4 && (
-                        <p className="text-slate-600">⭐⭐⭐⭐ <span className="font-bold text-amber-500">4 Sao:</span> Trình độ khá, kỹ thuật tốt, di chuyển nhịp nhàng.</p>
-                      )}
-                      {selectedStars === 5 && (
-                        <p className="text-slate-600">⭐⭐⭐⭐⭐ <span className="font-bold text-amber-500">5 Sao:</span> Trình độ giỏi, đẳng cấp tuyển thủ hoặc cận chuyên nghiệp.</p>
-                      )}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Số điện thoại Zalo *</label>
+                      <input
+                        type="text"
+                        required
+                        value={editPhoneZalo}
+                        onChange={(e) => setEditPhoneZalo(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-primary transition-all font-semibold tabular-nums"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Địa chỉ Email</label>
+                      <input
+                        type="email"
+                        value={editEmail}
+                        onChange={(e) => setEditEmail(e.target.value)}
+                        placeholder="email-ung-vien@gmail.com"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-primary transition-all font-semibold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Trường đại học / Học vấn *</label>
+                      <input
+                        type="text"
+                        required
+                        value={editAcademicInfo}
+                        onChange={(e) => setEditAcademicInfo(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-primary transition-all font-semibold"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Cột phải: Phân loại trình độ */}
+                  <div className="space-y-3.5">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-purple-700 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-purple-100 text-primary flex items-center justify-center text-[10px] font-bold">2</span>
+                      Đánh giá trình độ
+                    </h4>
+
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase block">Trình độ thực tế (Đánh test)</label>
+
+                      {/* Stars Selector (1-5 sao) */}
+                      <div className="flex items-center gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 justify-center">
+                        {[1, 2, 3, 4, 5].map((star) => {
+                          const active = star <= selectedStars;
+                          return (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setSelectedStars(star)}
+                              className="p-1 hover:scale-125 transition-all text-amber-400 cursor-pointer"
+                            >
+                              <Star className={`w-8 h-8 ${active ? "fill-amber-400 text-amber-400" : "text-slate-300"}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Star Level Description Text */}
+                      <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-center text-xs">
+                        {selectedStars === 1 && (
+                          <p className="text-slate-600">⭐ <span className="font-bold text-amber-500">1 Sao:</span> Mới bắt đầu chơi, chưa nắm vững bộ môn.</p>
+                        )}
+                        {selectedStars === 2 && (
+                          <p className="text-slate-600">⭐⭐ <span className="font-bold text-amber-500">2 Sao:</span> Biết chơi cơ bản, di chuyển còn chậm.</p>
+                        )}
+                        {selectedStars === 3 && (
+                          <p className="text-slate-600">⭐⭐⭐ <span className="font-bold text-amber-500">3 Sao:</span> Trung bình, có thể tham gia giao lưu ELO.</p>
+                        )}
+                        {selectedStars === 4 && (
+                          <p className="text-slate-600">⭐⭐⭐⭐ <span className="font-bold text-amber-500">4 Sao:</span> Trình độ khá, kỹ thuật tốt, di chuyển nhịp nhàng.</p>
+                        )}
+                        {selectedStars === 5 && (
+                          <p className="text-slate-600">⭐⭐⭐⭐⭐ <span className="font-bold text-amber-500">5 Sao:</span> Trình độ giỏi, đẳng cấp tuyển thủ hoặc cận chuyên nghiệp.</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Nhận xét chuyên môn */}
-              <div className="space-y-1.5">
-                <h4 className="text-xs font-black uppercase tracking-wider">3. Nhận xét chuyên môn</h4>
-                <textarea
-                  placeholder="Ví dụ: Kỹ năng đập lưới nhanh, lực đập tốt. Thể lực di chuyển cuối sân cần rèn luyện thêm..."
-                  value={castingNotes}
-                  onChange={(e) => setCastingNotes(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:outline-none focus:border-black transition-all font-medium h-24 resize-none"
-                />
-              </div>
-
-              {/* Error messages */}
-              {assessmentError && (
-                <div className="p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl text-xs font-bold leading-relaxed">
-                  {assessmentError}
+                {/* Nhận xét chuyên môn */}
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-purple-700 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-purple-100 text-primary flex items-center justify-center text-[10px] font-bold">3</span>
+                    Nhận xét chuyên môn
+                  </h4>
+                  <textarea
+                    placeholder="Ví dụ: Kỹ năng đập lưới nhanh, lực đập tốt. Thể lực di chuyển cuối sân cần rèn luyện thêm..."
+                    value={castingNotes}
+                    onChange={(e) => setCastingNotes(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:outline-none focus:border-primary transition-all font-medium h-24 resize-none"
+                  />
                 </div>
-              )}
 
-              {/* Footer Actions */}
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleRejectCandidate(assessmentCandidate.id)}
-                  className="flex-1 h-12 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-full transition-all cursor-pointer text-center"
-                >
-                  Loại bỏ ứng viên
-                </button>
+                {/* Error messages */}
+                {assessmentError && (
+                  <div className="p-4 bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl text-xs font-bold leading-relaxed flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                    <span>{assessmentError}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Sticky Footer Actions - Designed specifically for Mobile Touch targets */}
+              <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 shrink-0 space-y-2.5">
+                {/* NÚT DUYỆT CHÍNH (TO, NỔI BẬT, DỄ BẤM 100%) */}
                 <button
                   type="submit"
                   disabled={isApproving}
-                  className="flex-1 h-12 bg-black hover:bg-black/85 text-white font-bold text-sm rounded-full transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  className="w-full h-14 bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm sm:text-base rounded-2xl shadow-lg shadow-emerald-600/30 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2.5 disabled:opacity-50"
                 >
                   {isApproving ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Đang duyệt...
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>ĐANG DUYỆT ỨNG VIÊN...</span>
                     </>
                   ) : (
-                    "Xác nhận & Gia nhập CLB"
+                    <>
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span>DUYỆT ỨNG VIÊN & GIA NHẬP CLB</span>
+                    </>
                   )}
                 </button>
+
+                {/* HÀNG NÚT PHỤ: TÁCH BIỆT RÕ RÀNG KHỎI NÚT DUYỆT */}
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setAssessmentCandidate(null)}
+                    className="flex-1 h-11 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <X className="w-4 h-4 text-slate-400" />
+                    <span>Hủy bỏ / Đóng</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRejectCandidate(assessmentCandidate.id)}
+                    className="flex-1 h-11 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-500" />
+                    <span>Loại bỏ ứng viên</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1419,8 +1587,8 @@ export default function PersonnelPage() {
                         <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${c.is_active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-slate-300'}`}></div>
                       </div>
                       <div className="text-[11px] text-slate-500 flex flex-col gap-1 font-medium">
-                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Mở: {format(new Date(c.start_date), "dd/MM/yyyy HH:mm")}</span>
-                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Đóng: {format(new Date(c.end_date), "dd/MM/yyyy HH:mm")}</span>
+                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Mở: {formatVietnamDate(c.start_date)}</span>
+                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400"/> Đóng: {formatVietnamDate(c.end_date)}</span>
                       </div>
                       {c.is_active ? (
                         <div className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
@@ -1479,6 +1647,100 @@ export default function PersonnelPage() {
                       <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Thời gian đóng</label>
                       <input type="datetime-local" required value={cForm.end} onChange={e => setCForm({...cForm, end: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-black" />
                     </div>
+                    {/* Thiết lập Mã QR & Link Nhóm Zalo Tuyển Quân */}
+                    <div className="md:col-span-2 pt-4 mt-2 border-t border-slate-200/70 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                          <QrCode className="w-4 h-4 text-purple-600" />
+                          Mã QR Nhóm Zalo Tuyển Quân / Casting
+                        </label>
+                        {cForm.zalo_qr_url && (
+                          <button
+                            type="button"
+                            onClick={() => setCForm(prev => ({ ...prev, zalo_qr_url: "" }))}
+                            className="text-[11px] font-bold text-rose-500 hover:underline cursor-pointer"
+                          >
+                            Gỡ ảnh QR
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Sau khi ứng viên hoàn tất nộp đơn, mã QR này sẽ hiển thị kèm nút tham gia nhóm để ứng viên vào nhóm Zalo casting tức thì.
+                      </p>
+
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 bg-white border border-slate-200 rounded-2xl">
+                        {cForm.zalo_qr_url ? (
+                          <div className="relative group shrink-0">
+                            <img
+                              src={cForm.zalo_qr_url}
+                              alt="Mã QR Zalo Casting"
+                              className="w-24 h-24 object-contain rounded-xl border border-slate-200 bg-slate-50 p-1 shadow-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => zaloQrFileInputRef.current?.click()}
+                              className="absolute inset-0 bg-black/60 rounded-xl text-white text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            >
+                              Đổi ảnh
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            onClick={() => zaloQrFileInputRef.current?.click()}
+                            className="w-24 h-24 rounded-xl border-2 border-dashed border-slate-300 hover:border-primary flex flex-col items-center justify-center text-slate-400 hover:text-primary transition-colors cursor-pointer shrink-0 bg-slate-50"
+                          >
+                            <QrCode className="w-7 h-7 mb-1" />
+                            <span className="text-[10px] font-bold">Upload QR</span>
+                          </div>
+                        )}
+
+                        <div className="flex-1 space-y-2 w-full">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="file"
+                              ref={zaloQrFileInputRef}
+                              accept="image/*"
+                              onChange={handleUploadZaloQr}
+                              className="hidden"
+                            />
+                            <button
+                              type="button"
+                              disabled={isUploadingZaloQr}
+                              onClick={() => zaloQrFileInputRef.current?.click()}
+                              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              {isUploadingZaloQr ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Đang tải lên...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="w-3.5 h-3.5" />
+                                  <span>{cForm.zalo_qr_url ? "Thay đổi ảnh QR" : "Tải ảnh QR nhóm Zalo lên"}</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                              Đường link mời tham gia nhóm Zalo (Tùy chọn)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="url"
+                                value={cForm.zalo_group_link}
+                                onChange={e => setCForm(prev => ({ ...prev, zalo_group_link: e.target.value }))}
+                                placeholder="Ví dụ: https://zalo.me/g/abcxyz (để ứng viên bấm mở app Zalo trực tiếp)"
+                                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-secondary focus:outline-none focus:border-black placeholder:text-slate-400 placeholder:opacity-90"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Bộ câu hỏi tùy chỉnh (hiển thị sau bước 2 ở form ứng tuyển) */}
                     <div className="md:col-span-2 pt-4 mt-2 border-t border-slate-200/70">
                       <CustomQuestionsEditor value={customQuestions} onChange={setCustomQuestions} />
@@ -1534,7 +1796,7 @@ export default function PersonnelPage() {
                               <div key={slot.id} className={`p-4 border rounded-2xl flex items-center justify-between transition-colors ${!slot.is_active ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}>
                                 <div className="flex-1 pr-4">
                                   <div className="flex items-center gap-2 mb-1.5">
-                                    <h4 className="font-bold text-secondary text-sm">{format(new Date(slot.casting_time), "dd/MM/yyyy HH:mm")}</h4>
+                                    <h4 className="font-bold text-secondary text-sm">{formatVietnamDate(slot.casting_time)}</h4>
                                     <span className="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-bold text-slate-600">{slot.location}</span>
                                     {!slot.is_active && <span className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-black uppercase">Đã đóng</span>}
                                   </div>

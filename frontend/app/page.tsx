@@ -13,6 +13,7 @@ import {
 import { useState, useEffect } from "react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
+import RankingHubSection from "@/app/components/ranking/RankingHubSection";
 import FeaturedEventCountdown from "@/app/components/FeaturedEventCountdown";
 import { getRankName, getRankBadgeClass, getShortName } from "@/app/utils/rank";
 import ClubStats from "@/app/components/recruitment/ClubStats";
@@ -20,7 +21,9 @@ import ClubBenefitsBento from "@/app/components/recruitment/ClubBenefitsBento";
 import ClubHighlightsMasonry from "@/app/components/recruitment/ClubHighlightsMasonry";
 import EventRecruitmentCard from "@/app/components/recruitment/EventRecruitmentCard";
 import RegistrationModal from "@/app/components/recruitment/RegistrationModal";
+import { formatVietnamDate } from "@/app/utils/date";
 import { format } from "date-fns";
+import SessionReservationWidget from "@/app/components/SessionReservationWidget";
 
 // ===== Giới thiệu & Liên hệ động từ site_settings (admin chỉnh ở Quản lý nội dung) =====
 const ADDRESS_FALLBACK = "304 ĐT743A, Đông Hòa, Hồ Chí Minh";
@@ -71,6 +74,7 @@ export default function Home() {
 
   // Site Settings (Featured event, cover, config)
   const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
+  const [featuredEvent, setFeaturedEvent] = useState<any>(null);
 
   // Số liệu thật cho dải stats (rớt về số mặc định của ClubStats khi API lỗi)
   const [clubStats, setClubStats] = useState<any>(null);
@@ -109,7 +113,7 @@ export default function Home() {
     { id: "6", full_name: "Hoàng Văn F", elo_score: 1050, win_rate: 40.0, rank_name: getRankName(1050), total_matches: 4 },
   ]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [leaderboardType, setLeaderboardType] = useState<"singles" | "doubles">("singles");
+  const [leaderboardType, setLeaderboardType] = useState<"singles" | "doubles">("doubles");
 
   // Sessions / Schedule data
   const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
@@ -209,23 +213,38 @@ export default function Home() {
       })
       .catch(e => console.error("Error loading active campaign:", e));
 
+    fetch(`${API_URL}/api/events/featured?t=${Date.now()}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) setFeaturedEvent(data);
+      })
+      .catch(e => console.error("Error loading featured event:", e));
+
     fetchSessions();
   }, []);
 
   const fetchSessions = () => {
-    fetch(`${API_URL}/api/sessions?t=${Date.now()}`)
+    const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    fetch(`${API_URL}/api/sessions?t=${Date.now()}`, { headers })
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         if (Array.isArray(data)) {
           setUpcomingSessions(data);
-          if (data.length > 0 && !upcomingSessionHighlight) {
-            setUpcomingSessionHighlight(data[0]);
+          if (data.length > 0) {
+            setUpcomingSessionHighlight((prev: any) => {
+              if (!prev) return data[0];
+              const match = data.find((s: any) => s.id === prev.id);
+              return match || data[0];
+            });
           }
         }
       })
       .catch(e => console.error("Error loading upcoming sessions:", e));
 
-    fetch(`${API_URL}/api/sessions?history=true&t=${Date.now()}`)
+    fetch(`${API_URL}/api/sessions?history=true&t=${Date.now()}`, { headers })
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         if (Array.isArray(data)) {
@@ -295,13 +314,7 @@ export default function Home() {
   };
 
   const formatDateTime = (dateStr: string) => {
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return format(d, "dd/MM/yyyy HH:mm");
-    } catch {
-      return dateStr;
-    }
+    return formatVietnamDate(dateStr) || dateStr;
   };
 
   const shortSessionId = (id: unknown) => {
@@ -329,8 +342,11 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* TOP NAVBAR (Glassmorphism + Purple Brand) */}
-      <header className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md border-b border-purple-100 shadow-sm transition-all">
+      {/* TOP NAVBAR (Glassmorphism + Purple Brand + iOS Safe Area Notch Support) */}
+      <header 
+        className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-purple-100 shadow-sm transition-all pt-safe"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-18 flex items-center justify-between gap-3">
           
           {/* LOGO LINK */}
@@ -523,7 +539,7 @@ export default function Home() {
       </header>
 
       {/* BODY CONTENT AREA */}
-      <div className="pt-28 md:pt-22 flex-1 flex flex-col">
+      <div className="pt-[calc(7.25rem+env(safe-area-inset-top,0px))] md:pt-[calc(5.5rem+env(safe-area-inset-top,0px))] flex-1 flex flex-col">
 
         {/* ========================================================================= */}
         {/* TAB 1: GIỚI THIỆU & TUYỂN QUÂN (REDESIGNED SPORTY LANDING)                */}
@@ -592,8 +608,8 @@ export default function Home() {
                   transition={{ duration: 0.5, delay: 0.1 }}
                   className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight leading-[1.08]"
                 >
-                  BỨT PHÁ <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent">GIỚI HẠN</span>
-                  <br className="hidden sm:inline" /> CHINH PHỤC ĐỈNH CAO
+                  ĐAM MÊ DẪN LỐI <br className="hidden sm:inline" />
+                  <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent">ĐẬP TAN GIỚI HẠN</span>
                 </motion.h1>
                 
                 {/* Value Proposition Subtitle */}
@@ -603,7 +619,7 @@ export default function Home() {
                   transition={{ duration: 0.5, delay: 0.2 }}
                   className="text-base sm:text-lg md:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-normal"
                 >
-                  Môi trường thể thao chuyên nghiệp và tràn đầy năng lượng dành cho mọi cấp độ vợt thủ. Tỏa sáng trên sân đấu, nâng tầm thứ hạng ELO và kết nối đam mê bền chặt cùng SmashTeam.
+                  Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!
                 </motion.p>
 
                 {/* 2 Prominent Action CTA Buttons */}
@@ -653,13 +669,21 @@ export default function Home() {
               </div>
             </section>
 
-            {/* FEATURED EVENT COUNTDOWN BOARD (For Upcoming Sessions / Matches) */}
+            {/* FEATURED EVENT COUNTDOWN BOARD (For Upcoming Sessions / Matches / Recruitment) */}
             <FeaturedEventCountdown
               settings={siteSettings}
+              featuredEvent={featuredEvent}
               upcomingSession={upcomingSessionHighlight || upcomingSessions[0]}
               onViewSchedule={() => {
                 setActiveTab("schedule");
                 window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onRecruitmentClick={() => {
+                const el = document.getElementById("recruitment-event-section");
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth" });
+                }
+                setIsRegisterModalOpen(true);
               }}
               isLoggedIn={isLoggedIn}
             />
@@ -694,207 +718,9 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
-            className="max-w-5xl mx-auto px-4 sm:px-6 py-8 w-full space-y-8"
+            className="max-w-5xl mx-auto px-4 sm:px-6 py-8 w-full"
           >
-            {/* Header Mục BXH */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-purple-100 pb-6">
-              <div>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold uppercase tracking-wider mb-2">
-                  <Trophy className="w-3.5 h-3.5 text-amber-600" aria-hidden="true" />
-                  <span>Hệ thống ELO SmashTeam</span>
-                </div>
-                <h2 className="text-3xl font-black text-secondary tracking-tight">Bảng Xếp Hạng Câu Lạc Bộ</h2>
-                <p className="text-sm text-slate-500 mt-1">Cập nhật tự động dựa trên kết quả thi đấu thực tế</p>
-              </div>
-
-              {/* Segmented Control Switcher: Đơn vs Đôi */}
-              <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200/80 self-start sm:self-auto">
-                <button
-                  id="btn-rank-singles"
-                  onClick={() => setLeaderboardType("singles")}
-                  className={`min-h-[40px] px-5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer focus-ring ${
-                    leaderboardType === "singles"
-                      ? "bg-white text-primary shadow-sm border border-slate-200/40 scale-[1.02]"
-                      : "text-slate-500 hover:text-secondary"
-                  }`}
-                >
-                  Xếp Hạng Đơn
-                </button>
-                <button
-                  id="btn-rank-doubles"
-                  onClick={() => setLeaderboardType("doubles")}
-                  className={`min-h-[40px] px-5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer focus-ring ${
-                    leaderboardType === "doubles"
-                      ? "bg-white text-primary shadow-sm border border-slate-200/40 scale-[1.02]"
-                      : "text-slate-500 hover:text-secondary"
-                  }`}
-                >
-                  Xếp Hạng Đôi
-                </button>
-              </div>
-            </div>
-
-            {/* PODIUM TOP 3 CHAMPIONS */}
-            {leaderboard.length >= 3 && (
-              <div className="bg-gradient-to-b from-purple-50/70 via-white to-white rounded-3xl p-6 sm:p-8 border border-purple-100 shadow-sm relative overflow-hidden">
-                <div className="text-center mb-8">
-                  <span className="text-xs font-black text-primary uppercase tracking-widest bg-purple-100/70 px-4 py-1.5 rounded-full border border-primary/20">
-                    Vinh danh Top 3 Tay Vợt Dẫn Đầu
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 sm:gap-6 items-end max-w-2xl mx-auto pt-6 pb-2">
-                  {/* 2ND PLACE (Silver) */}
-                  <div className="flex flex-col items-center">
-                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-3 border-slate-300 shadow-[0_0_18px_rgba(203,213,225,0.85)] flex items-center justify-center bg-slate-100 text-slate-700 font-bold px-1 text-center">
-                      <span className={`truncate max-w-full uppercase ${getShortName(leaderboard[1].full_name).length > 2 ? 'text-xs sm:text-sm font-black' : 'text-base sm:text-lg font-black'}`}>
-                        {getShortName(leaderboard[1].full_name)}
-                      </span>
-                    </div>
-                    <span className="text-xs font-black text-slate-500 uppercase mt-2.5">Hạng 2</span>
-                    <p className="text-xs sm:text-sm font-bold text-secondary truncate max-w-[95px] sm:max-w-[140px] text-center mt-0.5">
-                      {leaderboard[1].full_name}
-                    </p>
-                    <p className="text-xs sm:text-sm font-black text-primary mt-0.5 tabular-nums">{leaderboard[1].elo_score} ELO</p>
-                    <span className={`text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded mt-1.5 ${getRankBadgeClass(leaderboard[1].rank_name)}`}>
-                      {leaderboard[1].rank_name}
-                    </span>
-                  </div>
-
-                  {/* 1ST PLACE (Gold Champion) */}
-                  <div className="flex flex-col items-center transform -translate-y-4 sm:-translate-y-6">
-                    <div className="relative">
-                      {/* Bouncing Crown */}
-                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-amber-500 fill-amber-500 animate-bounce">
-                        <Crown className="w-7 h-7 text-amber-500 fill-amber-400 drop-shadow-md" aria-hidden="true" />
-                      </div>
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-amber-400 shadow-[0_0_28px_rgba(251,191,36,0.7)] flex items-center justify-center bg-amber-50 text-amber-800 font-black px-1 text-center">
-                        <span className={`truncate max-w-full uppercase ${getShortName(leaderboard[0].full_name).length > 2 ? 'text-sm sm:text-base font-black' : 'text-xl sm:text-2xl font-black'}`}>
-                          {getShortName(leaderboard[0].full_name)}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs sm:text-sm font-black text-amber-600 uppercase mt-2.5">Quán Quân</span>
-                    <p className="text-sm sm:text-base font-black text-secondary truncate max-w-[110px] sm:max-w-[160px] text-center mt-0.5">
-                      {leaderboard[0].full_name}
-                    </p>
-                    <p className="text-sm sm:text-base font-black text-primary mt-0.5 tabular-nums">{leaderboard[0].elo_score} ELO</p>
-                    <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded mt-1.5 ${getRankBadgeClass(leaderboard[0].rank_name)}`}>
-                      {leaderboard[0].rank_name}
-                    </span>
-                  </div>
-
-                  {/* 3RD PLACE (Bronze) */}
-                  <div className="flex flex-col items-center">
-                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-3 border-amber-800/40 shadow-[0_0_15px_rgba(180,83,9,0.35)] flex items-center justify-center bg-amber-900/10 text-amber-900 font-bold px-1 text-center">
-                      <span className={`truncate max-w-full uppercase ${getShortName(leaderboard[2].full_name).length > 2 ? 'text-xs sm:text-sm font-black' : 'text-base sm:text-lg font-black'}`}>
-                        {getShortName(leaderboard[2].full_name)}
-                      </span>
-                    </div>
-                    <span className="text-xs font-black text-amber-800/80 uppercase mt-2.5">Hạng 3</span>
-                    <p className="text-xs sm:text-sm font-bold text-secondary truncate max-w-[95px] sm:max-w-[140px] text-center mt-0.5">
-                      {leaderboard[2].full_name}
-                    </p>
-                    <p className="text-xs sm:text-sm font-black text-primary mt-0.5 tabular-nums">{leaderboard[2].elo_score} ELO</p>
-                    <span className={`text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded mt-1.5 ${getRankBadgeClass(leaderboard[2].rank_name)}`}>
-                      {leaderboard[2].rank_name}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* SEARCH BOX & FULL TABLE */}
-            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-purple-100 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                <h3 className="font-bold text-lg text-secondary">
-                  Danh sách xếp hạng đầy đủ
-                </h3>
-                
-                <div className="relative w-full sm:w-72">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
-                  <input
-                    id="search-player-input"
-                    type="text"
-                    placeholder="Tìm tên tay vợt..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full min-h-[44px] pl-10 pr-4 py-2 text-xs md:text-sm border border-slate-200 rounded-xl outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-slate-800"
-                  />
-                </div>
-              </div>
-
-              {/* Table Rows */}
-              <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
-                {leaderboard
-                  .filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .map((user, index) => {
-                    const overallIndex = leaderboard.findIndex(u => u.id === user.id);
-                    return (
-                      <div 
-                        key={user.id} 
-                        className="flex items-center justify-between p-3.5 sm:p-4 rounded-2xl hover:bg-purple-50/40 border border-slate-100 hover:border-primary/20 transition-all group"
-                      >
-                        <div className="flex items-center gap-3 sm:gap-4">
-                          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-black text-xs shrink-0 tabular-nums ${
-                            overallIndex === 0 ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm' :
-                            overallIndex === 1 ? 'bg-slate-200 text-slate-700 border border-slate-300' :
-                            overallIndex === 2 ? 'bg-amber-900/15 text-amber-900 border border-amber-800/30' :
-                            'bg-slate-100 text-slate-500'
-                          }`}>
-                            {overallIndex + 1}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-bold text-secondary group-hover:text-primary transition-colors text-sm sm:text-base">
-                                {user.full_name}
-                              </p>
-                              <span className={`text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded ${getRankBadgeClass(user.rank_name)}`}>
-                                {user.rank_name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
-                              <span>Tỉ lệ thắng: <strong className="text-slate-600 tabular-nums">{user.win_rate.toFixed(1)}%</strong></span>
-                              <span>•</span>
-                              <span className="tabular-nums">{user.total_matches} trận</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="text-right shrink-0">
-                          <p className="font-black text-base sm:text-lg text-secondary group-hover:text-primary transition-colors tabular-nums">{user.elo_score}</p>
-                          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Điểm ELO</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                {leaderboard.filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
-                  <div className="text-center py-10 space-y-2">
-                    <Search className="w-8 h-8 text-slate-300 mx-auto" aria-hidden="true" />
-                    <p className="text-xs text-slate-500 font-medium">
-                      Không tìm thấy tay vợt nào phù hợp với từ khóa &ldquo;{searchQuery}&rdquo;.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* RANK TIERS LEGEND */}
-            <div className="bg-slate-50 rounded-2xl p-5 border border-purple-100 text-xs text-slate-600 space-y-3">
-              <div className="flex items-center gap-1.5 font-bold text-secondary">
-                <Info className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
-                <span>Quy chuẩn phân cấp điểm ELO tại SmashTeam:</span>
-              </div>
-              <div className="flex flex-wrap gap-2 pt-0.5">
-                <span className="px-2.5 py-1 rounded-md bg-gradient-to-r from-red-500 to-purple-600 text-white font-extrabold shadow-xs">Challenger: 1800+</span>
-                <span className="px-2.5 py-1 rounded-md bg-blue-500 text-white font-bold shadow-xs">Diamond: 1600+</span>
-                <span className="px-2.5 py-1 rounded-md bg-teal-500 text-white font-bold shadow-xs">Platinum: 1400+</span>
-                <span className="px-2.5 py-1 rounded-md bg-amber-500 text-white font-bold shadow-xs">Gold: 1200+</span>
-                <span className="px-2.5 py-1 rounded-md bg-slate-300 text-slate-800 font-bold shadow-xs">Silver: 1100+</span>
-                <span className="px-2.5 py-1 rounded-md bg-amber-800/20 text-amber-900 font-bold shadow-xs">Bronze: &lt; 1100</span>
-              </div>
-            </div>
+            <RankingHubSection />
           </motion.div>
         )}
 
@@ -950,83 +776,43 @@ export default function Home() {
 
             {/* FEATURED NEXT MATCH CARD */}
             {scheduleViewMode === "upcoming" && upcomingSessionHighlight && (
-              <div className="bg-gradient-to-br from-secondary via-[#190e38] to-secondary rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl border border-primary/30">
+              <div className="bg-gradient-to-br from-secondary via-[#190e38] to-secondary rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl border border-primary/30 space-y-6">
                 {/* Purple decorative spotlight */}
                 <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
                 
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-                  <div className="space-y-3">
+                <div className="space-y-3 relative z-10">
+                  <div className="flex items-center justify-between gap-3">
                     <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase px-3 py-1 rounded-full bg-primary/30 text-purple-200 border border-primary/40">
                       <Sparkles className="w-3 h-3 text-purple-300" aria-hidden="true" />
-                      <span>Buổi tập gần nhất</span>
+                      <span>Buổi tập tâm điểm</span>
                     </span>
-                    <h3 className="text-2xl sm:text-3xl font-black tracking-tight">{upcomingSessionHighlight.title}</h3>
-                    
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs sm:text-sm text-slate-300">
-                      <span className="flex items-center gap-1.5">
-                        <Clock className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
-                        <span className="tabular-nums">{formatDateTime(upcomingSessionHighlight.date_time)}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <MapPin className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
-                        <span>{upcomingSessionHighlight.location}</span>
-                      </span>
-                    </div>
+                    <span className="font-mono text-[11px] text-slate-400 bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">
+                      #{shortSessionId(upcomingSessionHighlight.id)}
+                    </span>
                   </div>
-
-                  {/* Hành động RSVP & QR Check-in */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-                    {isLoggedIn ? (
-                      <>
-                        <button
-                          id="btn-rsvp-join"
-                          onClick={() => handleRsvp(upcomingSessionHighlight.id, "going")}
-                          disabled={updatingRsvp}
-                          className={`min-h-[44px] px-6 py-2.5 rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer focus-ring ${
-                            upcomingSessionHighlight.rsvp_status === "going"
-                              ? "bg-primary text-white shadow-[0_0_20px_rgba(122,34,224,0.7)] border border-purple-400/60"
-                              : "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                          }`}
-                        >
-                          <Check className="w-4 h-4" aria-hidden="true" /> 
-                          <span>{upcomingSessionHighlight.rsvp_status === "going" ? "Đã xác nhận Tham gia" : "Tham gia"}</span>
-                        </button>
-
-                        <button
-                          id="btn-rsvp-busy"
-                          onClick={() => handleRsvp(upcomingSessionHighlight.id, "absent")}
-                          disabled={updatingRsvp}
-                          className={`min-h-[44px] px-5 py-2.5 rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer focus-ring ${
-                            upcomingSessionHighlight.rsvp_status === "absent"
-                              ? "bg-slate-700 text-white border border-slate-600"
-                              : "bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700"
-                          }`}
-                        >
-                          <X className="w-4 h-4" aria-hidden="true" />
-                          <span>Bận</span>
-                        </button>
-
-                        <Link href="/check-in">
-                          <button 
-                            id="btn-rsvp-qr"
-                            className="min-h-[44px] px-5 py-2.5 rounded-full font-bold text-xs bg-white text-slate-900 hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer focus-ring"
-                          >
-                            <QrCode className="w-4 h-4 text-primary" aria-hidden="true" />
-                            <span>Quét QR sân</span>
-                          </button>
-                        </Link>
-                      </>
-                    ) : (
-                      <Link href="/login?redirect=/">
-                        <button 
-                          id="btn-rsvp-login"
-                          className="min-h-[44px] px-7 py-3 rounded-full font-bold text-xs bg-primary hover:bg-primary-hover text-white flex items-center justify-center gap-2 shadow-lg shadow-primary/30 transition-all cursor-pointer focus-ring"
-                        >
-                          Đăng nhập để RSVP
-                        </button>
-                      </Link>
-                    )}
+                  <h3 className="text-2xl sm:text-3xl font-black tracking-tight">{upcomingSessionHighlight.title}</h3>
+                  
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs sm:text-sm text-slate-300">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
+                      <span className="tabular-nums">{formatDateTime(upcomingSessionHighlight.session_start || upcomingSessionHighlight.date_time)}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-smash-violet" aria-hidden="true" /> 
+                      <span>{upcomingSessionHighlight.location}</span>
+                    </span>
                   </div>
+                </div>
+
+                {/* Session Reservation & QR Widget */}
+                <div className="relative z-10 pt-2 border-t border-white/10">
+                  <SessionReservationWidget
+                    session={upcomingSessionHighlight}
+                    isLoggedIn={isLoggedIn}
+                    onActionSuccess={() => {
+                      fetchSessions();
+                    }}
+                  />
                 </div>
               </div>
             )}
@@ -1066,7 +852,7 @@ export default function Home() {
                               <span className="w-7 h-7 rounded-full bg-white border border-purple-100 shadow-sm flex items-center justify-center shrink-0">
                                 <Clock className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
                               </span>
-                              <span className="font-semibold tabular-nums truncate">{formatDateTime(session.date_time)}</span>
+                              <span className="font-semibold tabular-nums truncate">{formatDateTime(session.session_start || session.date_time)}</span>
                             </div>
                             <div className="flex items-center gap-2.5 text-[13px] text-slate-600 min-w-0">
                               <span className="w-7 h-7 rounded-full bg-white border border-purple-100 shadow-sm flex items-center justify-center shrink-0">
@@ -1078,17 +864,40 @@ export default function Home() {
                         </div>
 
                         <div className="pt-3 border-t border-dashed border-slate-200 flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                            Điểm danh trực tiếp
+                          <span className="inline-flex items-center gap-1.5 text-xs">
+                            {session.available_slots !== undefined ? (
+                              session.available_slots > 0 ? (
+                                <span className="text-emerald-600 font-bold flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  Còn {session.available_slots}/{session.capacity || 40} slot
+                                </span>
+                              ) : (
+                                <span className="text-rose-500 font-bold flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  Đã đủ {session.capacity || 40} slot
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-slate-500 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                                Điểm danh trực tiếp
+                              </span>
+                            )}
                           </span>
-                          <Link href="/check-in" className="shrink-0">
-                            <button className="min-h-[36px] pl-3 pr-2 py-1.5 rounded-full text-xs font-bold text-white bg-secondary hover:bg-primary flex items-center gap-1.5 shadow-sm hover:shadow-md hover:gap-2.5 transition-all cursor-pointer focus-ring">
-                              <QrCode className="w-3.5 h-3.5" aria-hidden="true" />
-                              <span className="whitespace-nowrap">Mở QR Check-in</span>
-                              <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-                            </button>
-                          </Link>
+                          <button
+                            onClick={() => {
+                              setUpcomingSessionHighlight(session);
+                              window.scrollTo({ top: 350, behavior: "smooth" });
+                            }}
+                            className={`min-h-[36px] px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                              upcomingSessionHighlight?.id === session.id
+                                ? "bg-primary text-white"
+                                : "bg-secondary text-white hover:bg-slate-800"
+                            }`}
+                          >
+                            <span>{upcomingSessionHighlight?.id === session.id ? "Đang chọn" : "Giữ chỗ / Chi tiết"}</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1123,7 +932,7 @@ export default function Home() {
                         <div className="grid gap-2 bg-slate-50/70 border border-slate-100 rounded-2xl p-3 text-[13px] text-slate-500">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                            <span className="font-medium tabular-nums truncate">{formatDateTime(session.date_time)}</span>
+                            <span className="font-medium tabular-nums truncate">{formatDateTime(session.session_start || session.date_time)}</span>
                           </div>
                           <div className="flex items-center gap-2.5 min-w-0">
                             <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />

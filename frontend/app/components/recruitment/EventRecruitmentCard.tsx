@@ -46,7 +46,7 @@ export default function EventRecruitmentCard({
   const campaignName = campaign?.name || `Chiến Dịch Tuyển Vợt Thủ SmashTeam Mùa Giải ${new Date().getFullYear()}`;
   const campaignBadge = campaign?.badge_text || `Mùa Tuyển Quân ${new Date().getFullYear()}`;
   const campaignDesc = campaign?.description || "Chào đón mọi cấp độ vợt thủ đam mê cầu lông gia nhập ngôi nhà chung SmashTeam. Tham gia ngay để tỏa sáng, nâng hạng ELO và rèn luyện thể lực hàng tuần!";
-  const campaignLocation = campaign?.location || "Sân Cầu Lông Lan Anh";
+  const campaignLocation = campaign?.location || "Sân Bình Thắng, Đông Hòa, HCM";
   const campaignAudience = campaign?.target_audience || "Mọi cấp độ tay vợt";
 
   // Format dates

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { toVietnamIso } = require('../utils/date');
 
 // Helper đồng bộ sự kiện nổi bật vào site_settings để trang chủ nhận ngay tức thì
 async function syncToSiteSettings(event) {
@@ -9,11 +10,12 @@ async function syncToSiteSettings(event) {
   const updates = [
     ['featured_event_title', event.title || ''],
     ['featured_event_subtitle', event.subtitle || ''],
-    ['featured_event_date', event.event_date ? new Date(event.event_date).toISOString() : ''],
+    ['featured_event_date', event.event_date ? toVietnamIso(event.event_date) : ''],
     ['featured_event_location', event.location || ''],
     ['featured_event_badge', event.badge || 'GIẢI ĐẤU NỔI BẬT'],
     ['featured_event_action_text', event.action_text || 'Đăng ký tham gia ngay'],
     ['featured_event_action_link', event.action_link || '/schedule'],
+    ['featured_event_type', event.event_type || 'tournament'],
     ['featured_event_enabled', 'true']
   ];
 
@@ -76,14 +78,17 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const {
       title, subtitle, event_date, location, badge,
       action_text, action_link, is_featured, status,
-      max_participants, description, results_summary
+      max_participants, description, results_summary, event_type
     } = req.body;
 
     if (!title || !event_date || !location) {
       return res.status(400).json({ error: 'Vui lòng điền đầy đủ Tiêu đề, Ngày giờ và Địa điểm sự kiện.' });
     }
 
-    const featured = is_featured === true || is_featured === 'true';
+    const featured = is_featured === true || is_featured === 'true' || is_featured === 'on';
+    const parsedMax = parseInt(max_participants, 10) || 50;
+    const type = event_type || 'tournament';
+    const normalizedDate = toVietnamIso(event_date);
 
     // Nếu đặt làm nổi bật, gỡ nổi bật các sự kiện khác
     if (featured) {
@@ -93,22 +98,23 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const result = await db.query(
       `INSERT INTO club_events (
         title, subtitle, event_date, location, badge, action_text, action_link,
-        is_featured, status, max_participants, description, results_summary
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        is_featured, status, max_participants, description, results_summary, event_type
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *`,
       [
         title,
         subtitle || '',
-        event_date,
+        normalizedDate,
         location,
-        badge || 'GIẢI ĐẤU NỔI BẬT',
-        action_text || 'Đăng ký tham gia ngay',
-        action_link || '/schedule',
+        badge || (type === 'recruitment' ? 'TUYỂN THÀNH VIÊN' : 'GIẢI ĐẤU NỔI BẬT'),
+        action_text || (type === 'recruitment' ? 'Gia nhập ngay' : 'Đăng ký tham gia ngay'),
+        action_link || (type === 'recruitment' ? '#recruitment-event-section' : '/schedule'),
         featured,
         status || 'upcoming',
-        max_participants || 50,
+        parsedMax,
         description || '',
-        results_summary || ''
+        results_summary || '',
+        type
       ]
     );
 
@@ -122,7 +128,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     res.status(201).json(newEvent);
   } catch (error) {
     console.error('Error creating club event:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error: ' + error.message });
   }
 });
 
@@ -133,10 +139,11 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
     const {
       title, subtitle, event_date, location, badge,
       action_text, action_link, is_featured, status,
-      participants_count, max_participants, description, results_summary
+      participants_count, max_participants, description, results_summary, event_type
     } = req.body;
 
-    const featured = is_featured === true || is_featured === 'true';
+    const featured = is_featured === true || is_featured === 'true' || is_featured === 'on';
+    const normalizedDate = event_date !== undefined ? toVietnamIso(event_date) : undefined;
 
     if (featured) {
       await db.query(`UPDATE club_events SET is_featured = false WHERE id != $1`, [id]);
@@ -157,12 +164,14 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
          participants_count = COALESCE($10, participants_count),
          max_participants = COALESCE($11, max_participants),
          description = COALESCE($12, description),
-         results_summary = COALESCE($13, results_summary)
-       WHERE id = $14
+         results_summary = COALESCE($13, results_summary),
+         event_type = COALESCE($14, event_type)
+       WHERE id = $15
        RETURNING *`,
       [
-        title, subtitle, event_date, location, badge, action_text, action_link,
-        featured, status, participants_count, max_participants, description, results_summary,
+        title, subtitle, normalizedDate, location, badge, action_text, action_link,
+        featured, status, participants_count, max_participants ? parseInt(max_participants, 10) : undefined,
+        description, results_summary, event_type,
         id
       ]
     );
@@ -181,7 +190,7 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
     res.json(updatedEvent);
   } catch (error) {
     console.error('Error updating club event:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error: ' + error.message });
   }
 });
 
@@ -215,7 +224,7 @@ router.put('/:id/set-featured', authenticateToken, isAdmin, async (req, res) => 
     });
   } catch (error) {
     console.error('Error setting featured event:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error: ' + error.message });
   }
 });
 
@@ -223,11 +232,34 @@ router.put('/:id/set-featured', authenticateToken, isAdmin, async (req, res) => 
 router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Kiểm tra xem sự kiện bị xóa có đang nổi bật không
+    const check = await db.query(`SELECT is_featured FROM club_events WHERE id = $1`, [id]);
+    const wasFeatured = check.rows[0] && check.rows[0].is_featured;
+
     await db.query(`DELETE FROM club_events WHERE id = $1`, [id]);
+
+    if (wasFeatured) {
+      // Tìm sự kiện sắp tới khác để làm nổi bật
+      const nextEvt = await db.query(
+        `SELECT * FROM club_events WHERE status = 'upcoming' ORDER BY event_date ASC LIMIT 1`
+      );
+      if (nextEvt.rows.length > 0) {
+        await db.query(`UPDATE club_events SET is_featured = true WHERE id = $1`, [nextEvt.rows[0].id]);
+        await syncToSiteSettings({ ...nextEvt.rows[0], is_featured: true });
+      } else {
+        // Tắt cờ nổi bật trong site_settings nếu không còn sự kiện nào
+        await db.query(
+          `INSERT INTO site_settings (key, value, updated_at) VALUES ('featured_event_enabled', 'false', CURRENT_TIMESTAMP)
+           ON CONFLICT (key) DO UPDATE SET value = 'false', updated_at = CURRENT_TIMESTAMP`
+        );
+      }
+    }
+
     res.json({ success: true, message: 'Đã xóa sự kiện thành công.' });
   } catch (error) {
     console.error('Error deleting club event:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error: ' + error.message });
   }
 });
 

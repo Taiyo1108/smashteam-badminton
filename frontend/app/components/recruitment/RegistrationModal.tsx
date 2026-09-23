@@ -6,7 +6,7 @@ import {
   X, ArrowRight, ArrowLeft, CheckCircle2, Loader2, 
   MapPin, AlertCircle, Sparkles, Trophy, Calendar, 
   Clock, Shield, User, Phone, Mail, GraduationCap, 
-  Download, QrCode 
+  Download, QrCode, ExternalLink, BookOpen
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { format } from "date-fns";
@@ -43,28 +43,36 @@ const levels = [
   { 
     id: "Mới chơi", 
     label: "Mới chơi / Tân thủ", 
-    stars: "⭐",
     desc: "Đang làm quen với kỹ thuật cơ bản, muốn học hỏi và giao lưu rèn luyện sức khỏe." 
   },
   { 
     id: "Trung bình", 
     label: "Trung bình phong trào", 
-    stars: "⭐⭐⭐",
     desc: "Đã nắm vững luật, di chuyển cơ bản ổn, có thể phông, đập, gài lưới trong các trận đôi." 
   },
   { 
     id: "Khá/Giỏi", 
     label: "Khá / Bán chuyên", 
-    stars: "⭐⭐⭐⭐⭐",
     desc: "Kỹ chiến thuật tốt, lực đập mạnh, bộ chân linh hoạt, sẵn sàng thi đấu giải thăng hạng ELO." 
   }
 ];
 
-const availableSkills = [
-  "Chụp ảnh & Truyền thông",
-  "Quay dựng video / TikTok",
-  "Thiết kế đồ họa",
-  "Hỗ trợ trọng tài & Chạy giải"
+const availablePositions = [
+  {
+    id: "Thành viên",
+    label: "Thành viên",
+    desc: "Vận động viên thi đấu, rèn luyện & nâng hạng ELO"
+  },
+  {
+    id: "Ban Sự Kiện (hỗ trợ tổ chức, chạy giải, sự kiện)",
+    label: "Ban Sự Kiện",
+    desc: "Hỗ trợ tổ chức, chạy giải, sự kiện của CLB"
+  },
+  {
+    id: "Ban Truyền Thông (chuyên về xây dựng và duy trì truyền thông clb)",
+    label: "Ban Truyền Thông",
+    desc: "Chuyên về xây dựng và duy trì truyền thông CLB"
+  }
 ];
 
 export default function RegistrationModal({
@@ -81,15 +89,20 @@ export default function RegistrationModal({
   const [emailError, setEmailError] = useState<string>("");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Thông tin mã QR nhóm Zalo casting của đợt
+  const [zaloQrUrl, setZaloQrUrl] = useState<string | null>(null);
+  const [zaloGroupLink, setZaloGroupLink] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     fullName: "",
     phoneZalo: "",
     email: "",
     gender: "Nam",
     university: "",
+    major: "",
     courseYear: "",
     level: "Trung bình",
-    selectedSkills: [] as string[],
+    selectedSkills: ["Thành viên"] as string[],
     selectedSlot: ""
   });
 
@@ -104,11 +117,11 @@ export default function RegistrationModal({
 
   const stepLabel =
     step === 1 ? "1. Thông tin cá nhân & Liên hệ" :
-    step === 2 ? "2. Trình độ & Kỹ năng bổ trợ" :
+    step === 2 ? "2. Học vấn, Trình độ & Vị trí ứng tuyển" :
     isQuestionStep ? "3. Câu hỏi bổ sung" :
     `${totalSteps}. Chọn Ca Casting & Xác nhận`;
 
-  // Fetch active recruitment slots + custom questions
+  // Fetch active recruitment slots + custom questions + zalo qr
   useEffect(() => {
     fetch(`${API_URL}/api/campaigns/active`)
       .then(res => res.ok ? res.json() : null)
@@ -126,6 +139,8 @@ export default function RegistrationModal({
         }
         if (data) {
           setCustomQuestions(parseQuestions(data.custom_questions));
+          if (data.zalo_qr_url) setZaloQrUrl(data.zalo_qr_url);
+          if (data.zalo_group_link) setZaloGroupLink(data.zalo_group_link);
         }
       })
       .catch(e => console.error("Error fetching campaign slots:", e))
@@ -261,6 +276,12 @@ export default function RegistrationModal({
     setSubmitError(null);
 
     try {
+      const academicParts = [
+        formData.university.trim(),
+        formData.major.trim() ? `Ngành: ${formData.major.trim()}` : "",
+        formData.courseYear.trim() ? `Khóa: ${formData.courseYear.trim()}` : ""
+      ].filter(Boolean);
+
       const response = await fetch(`${API_URL}/api/users/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -268,7 +289,7 @@ export default function RegistrationModal({
           full_name: formData.fullName.trim(),
           phone_zalo: formData.phoneZalo.trim(),
           email: formData.email.trim(),
-          academic_info: `${formData.university.trim()}${formData.courseYear.trim() ? ` - ${formData.courseYear.trim()}` : ""}`,
+          academic_info: academicParts.join(" - "),
           badminton_level: formData.level,
           soft_skills: formData.selectedSkills,
           casting_slot_id: formData.selectedSlot || null,
@@ -387,7 +408,7 @@ export default function RegistrationModal({
                       placeholder="Ví dụ: Nguyễn Văn An"
                       value={formData.fullName}
                       onChange={e => updateForm("fullName", e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary focus:outline-none focus:border-primary focus:bg-white transition-all"
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 font-normal focus:outline-none focus:border-primary focus:bg-white transition-all"
                       required
                     />
                   </div>
@@ -410,7 +431,7 @@ export default function RegistrationModal({
                           updateForm("phoneZalo", e.target.value);
                           validatePhone(e.target.value);
                         }}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary focus:outline-none focus:border-primary focus:bg-white transition-all font-mono"
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 font-normal focus:outline-none focus:border-primary focus:bg-white transition-all font-mono"
                         required
                       />
                     </div>
@@ -456,7 +477,7 @@ export default function RegistrationModal({
                         updateForm("email", e.target.value);
                         validateEmail(e.target.value);
                       }}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary focus:outline-none focus:border-primary focus:bg-white transition-all"
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 font-normal focus:outline-none focus:border-primary focus:bg-white transition-all"
                       required
                     />
                   </div>
@@ -467,14 +488,14 @@ export default function RegistrationModal({
               </motion.div>
             )}
 
-            {/* Step 2: Badminton Level & Skills */}
+            {/* Step 2: Badminton Level, School, Major, Course & Positions */}
             {step === 2 && (
               <motion.div
                 key="step2"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="space-y-5"
+                className="space-y-4"
               >
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
@@ -487,18 +508,53 @@ export default function RegistrationModal({
                       placeholder="Ví dụ: ĐH CNTT (UIT), ĐH Bách Khoa, Đi làm..."
                       value={formData.university}
                       onChange={e => updateForm("university", e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary focus:outline-none focus:border-primary focus:bg-white transition-all"
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 font-normal focus:outline-none focus:border-primary focus:bg-white transition-all"
                       required
                     />
                   </div>
                 </div>
 
-                {/* Level Selection Cards */}
+                {/* Ngành và Khóa học sau câu Trường */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                      Ngành học / Chuyên môn
+                    </label>
+                    <div className="relative">
+                      <BookOpen className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Ví dụ: Kỹ thuật phần mềm, Quản trị..."
+                        value={formData.major}
+                        onChange={e => updateForm("major", e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 font-normal focus:outline-none focus:border-primary focus:bg-white transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                      Khóa học / Niên khóa
+                    </label>
+                    <div className="relative">
+                      <Calendar className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Ví dụ: K20, K21, 2022 - 2026..."
+                        value={formData.courseYear}
+                        onChange={e => updateForm("courseYear", e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 font-normal focus:outline-none focus:border-primary focus:bg-white transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Level Selection Cards - Minimalist, không có sao */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                     Trình độ cầu lông tự đánh giá <span className="text-rose-500">*</span>
                   </label>
-                  <div className="space-y-2.5">
+                  <div className="space-y-2">
                     {levels.map(lvl => {
                       const isSelected = formData.level === lvl.id;
                       return (
@@ -512,10 +568,7 @@ export default function RegistrationModal({
                           }`}
                         >
                           <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-sm text-secondary">{lvl.label}</span>
-                              <span className="text-xs">{lvl.stars}</span>
-                            </div>
+                            <span className="font-bold text-sm text-secondary">{lvl.label}</span>
                             <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{lvl.desc}</p>
                           </div>
                           <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
@@ -529,31 +582,41 @@ export default function RegistrationModal({
                   </div>
                 </div>
 
-                {/* Soft Skills Checkboxes */}
+                {/* Vị trí muốn ứng tuyển */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
-                    Kỹ năng có thể hỗ trợ CLB (Tùy chọn)
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {availableSkills.map(skill => {
-                      const checked = formData.selectedSkills.includes(skill);
+                  <div className="mb-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                      Vị trí muốn ứng tuyển <span className="text-slate-400 font-normal normal-case">(Có thể chọn nhiều)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Chọn các vị trí hoặc ban chuyên môn bạn mong muốn tham gia cùng SmashTeam:
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {availablePositions.map(pos => {
+                      const checked = formData.selectedSkills.includes(pos.id);
                       return (
                         <button
-                          key={skill}
+                          key={pos.id}
                           type="button"
-                          onClick={() => handleSkillToggle(skill)}
-                          className={`p-3 rounded-2xl border text-xs font-semibold text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                          onClick={() => handleSkillToggle(pos.id)}
+                          className={`w-full p-3 rounded-2xl border text-xs text-left flex items-center justify-between gap-3 transition-all cursor-pointer ${
                             checked
                               ? "bg-purple-50 text-primary border-primary font-bold shadow-xs"
                               : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
                           }`}
                         >
-                          <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
-                            checked ? "bg-primary border-primary text-white" : "border-slate-300 bg-white"
-                          }`}>
-                            {checked && <span className="text-[10px]">✓</span>}
+                          <div className="flex items-center gap-3">
+                            <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
+                              checked ? "bg-primary border-primary text-white" : "border-slate-300 bg-white"
+                            }`}>
+                              {checked && <span className="text-[10px]">✓</span>}
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm text-secondary">{pos.label}</p>
+                              <p className="text-[11px] text-slate-500 font-normal mt-0.5">{pos.desc}</p>
+                            </div>
                           </div>
-                          <span>{skill}</span>
                         </button>
                       );
                     })}
@@ -588,7 +651,7 @@ export default function RegistrationModal({
                             value={value as string}
                             onChange={e => setAnswer(q.id, e.target.value)}
                             placeholder="Nhập câu trả lời của bạn..."
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary focus:outline-none focus:border-primary focus:bg-white transition-all"
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 font-normal focus:outline-none focus:border-primary focus:bg-white transition-all"
                           />
                         )}
                         {q.type === "textarea" && (
@@ -597,7 +660,7 @@ export default function RegistrationModal({
                             value={value as string}
                             onChange={e => setAnswer(q.id, e.target.value)}
                             placeholder="Chia sẻ chi tiết hơn..."
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary focus:outline-none focus:border-primary focus:bg-white transition-all resize-y"
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 font-normal focus:outline-none focus:border-primary focus:bg-white transition-all resize-y"
                           />
                         )}
                         {q.type === "select" && (
@@ -841,6 +904,58 @@ export default function RegistrationModal({
               </h3>
               <p className="text-slate-500 text-xs sm:text-sm max-w-md mx-auto">
                 Hồ sơ ứng tuyển của bạn đã được ghi nhận vào hệ thống. Ban tổ chức sẽ liên hệ qua số Zalo <strong>{formData.phoneZalo}</strong> trước ngày casting.
+              </p>
+            </div>
+
+            {/* Hộp Mã QR & Link Nhóm Zalo Casting */}
+            <div className="max-w-md mx-auto bg-gradient-to-br from-purple-900/5 via-purple-50 to-indigo-50 border-2 border-primary/30 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 text-center relative overflow-hidden">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[11px] font-black uppercase tracking-wider">
+                <QrCode className="w-3.5 h-3.5" />
+                <span>Nhóm Zalo Vận Động Viên Casting</span>
+              </div>
+              
+              <h4 className="font-black text-secondary text-base sm:text-lg">
+                Vào Nhóm Zalo Tuyển Quân Để Nhận Lịch Đấu!
+              </h4>
+              
+              <p className="text-slate-600 text-xs leading-relaxed max-w-sm mx-auto">
+                Quét mã QR bên dưới hoặc nhấn nút để vào nhóm Zalo casting, nhận thông báo cập nhật ca thi đấu và phân sân từ Ban Tổ Chức.
+              </p>
+
+              {zaloQrUrl ? (
+                <div className="p-3 bg-white rounded-2xl border-2 border-purple-200 shadow-md inline-block mx-auto">
+                  <img
+                    src={zaloQrUrl}
+                    alt="Mã QR Nhóm Zalo Tuyển Quân SmashTeam"
+                    className="w-48 h-48 sm:w-52 sm:h-52 object-contain rounded-xl mx-auto"
+                  />
+                </div>
+              ) : (
+                <div className="p-6 bg-white/90 rounded-2xl border border-dashed border-purple-300 text-xs text-slate-500 max-w-xs mx-auto space-y-2">
+                  <QrCode className="w-12 h-12 text-primary/40 mx-auto" />
+                  <p className="font-bold text-secondary">Đã kích hoạt chế độ mời Zalo</p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Ban tổ chức sẽ trực tiếp thêm số Zalo <strong>{formData.phoneZalo}</strong> vào nhóm casting trước ngày thử sân.
+                  </p>
+                </div>
+              )}
+
+              {zaloGroupLink && (
+                <div className="pt-1">
+                  <a
+                    href={zaloGroupLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 w-full py-3.5 px-6 bg-gradient-to-r from-primary to-smash-violet hover:opacity-95 text-white font-black text-sm rounded-2xl shadow-lg shadow-primary/30 transition-all transform active:scale-95 cursor-pointer"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Tham Gia Nhóm Zalo Casting Ngay</span>
+                  </a>
+                </div>
+              )}
+
+              <p className="text-[10px] text-slate-400 font-medium">
+                * Vui lòng tham gia nhóm để không bỏ lỡ các thông báo quan trọng về buổi casting.
               </p>
             </div>
 

@@ -27,6 +27,22 @@ export default function CustomQuestionsEditor({ value, onChange }: CustomQuestio
     onChange(next);
   };
 
+  const addOption = (qIndex: number) => {
+    const current = value[qIndex].options || [];
+    updateAt(qIndex, { options: [...current, ""] });
+  };
+
+  const updateOption = (qIndex: number, optIndex: number, text: string) => {
+    const nextOpts = [...(value[qIndex].options || [])];
+    nextOpts[optIndex] = text;
+    updateAt(qIndex, { options: nextOpts });
+  };
+
+  const removeOption = (qIndex: number, optIndex: number) => {
+    const nextOpts = (value[qIndex].options || []).filter((_, idx) => idx !== optIndex);
+    updateAt(qIndex, { options: nextOpts });
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -93,7 +109,7 @@ export default function CustomQuestionsEditor({ value, onChange }: CustomQuestio
                 value={q.label}
                 onChange={(e) => updateAt(i, { label: e.target.value })}
                 placeholder={`Ví dụ: Bạn có thể tham gia sinh hoạt cố định tối thứ 3 & 5 không?`}
-                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-secondary focus:outline-none focus:border-black"
+                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 focus:outline-none focus:border-black"
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -101,9 +117,10 @@ export default function CustomQuestionsEditor({ value, onChange }: CustomQuestio
                   value={q.type}
                   onChange={(e) => {
                     const type = e.target.value as CustomQuestionType;
+                    const defaultOpts = q.options && q.options.length > 0 ? q.options : ["", ""];
                     updateAt(i, {
                       type,
-                      options: NEEDS_OPTIONS.includes(type) ? q.options : [],
+                      options: NEEDS_OPTIONS.includes(type) ? defaultOpts : [],
                     });
                   }}
                   className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-black cursor-pointer"
@@ -126,21 +143,51 @@ export default function CustomQuestionsEditor({ value, onChange }: CustomQuestio
               </div>
 
               {NEEDS_OPTIONS.includes(q.type) && (
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 mb-1">
-                    Các lựa chọn (mỗi dòng 1 lựa chọn)
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={q.options.join("\n")}
-                    onChange={(e) =>
-                      updateAt(i, {
-                        options: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean),
-                      })
-                    }
-                    placeholder={"Có\nKhông\nChưa chắc"}
-                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-secondary focus:outline-none focus:border-black resize-y"
-                  />
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold text-slate-500">
+                      Các lựa chọn trả lời ({(q.options || []).length} phương án)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => addOption(i)}
+                      className="text-[11px] font-bold text-primary hover:text-black flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Thêm lựa chọn
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {((q.options && q.options.length > 0) ? q.options : ["", ""]).map((opt, optIdx) => (
+                      <div key={optIdx} className="flex items-center gap-2">
+                        <span className="w-6 text-center text-xs font-bold text-slate-400 select-none">
+                          {optIdx + 1}.
+                        </span>
+                        <input
+                          type="text"
+                          value={opt}
+                          onChange={(e) => updateOption(i, optIdx, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addOption(i);
+                            }
+                          }}
+                          placeholder={`Nhập phương án ${optIdx + 1}...`}
+                          className="flex-1 p-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-secondary placeholder:text-slate-400 placeholder:opacity-90 focus:outline-none focus:border-black"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeOption(i, optIdx)}
+                          disabled={(q.options || []).length <= 1}
+                          className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-20 cursor-pointer"
+                          title="Xóa phương án này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

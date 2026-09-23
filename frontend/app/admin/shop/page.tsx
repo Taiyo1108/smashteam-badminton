@@ -824,7 +824,7 @@ export default function AdminShopPage() {
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-black"
                   >
                     <option value="physical">Quà vật lý (Nhận tại sân)</option>
-                    <option value="virtual">Vật phẩm ảo (Khung viền, danh hiệu...)</option>
+                    <option value="virtual">Vật phẩm ảo (Danh hiệu...)</option>
                   </select>
                 </div>
 

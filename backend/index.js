@@ -15,6 +15,8 @@ const gamificationRoutes = require('./routes/gamification');
 const shopRoutes = require('./routes/shop');
 const statsRoutes = require('./routes/stats');
 const eventRoutes = require('./routes/events');
+const emailRoutes = require('./routes/emails');
+const rankingRoutes = require('./routes/ranking');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -76,6 +78,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/matches', matchRoutes);
+app.use('/api/admin/matches', matchRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/profile', profileRoutes);
@@ -85,6 +88,8 @@ app.use('/api/gamification', gamificationRoutes);
 app.use('/api/shop', shopRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/admin/emails', emailRoutes);
+app.use('/api/ranking', rankingRoutes);
 
 // Base route
 app.get('/', (req, res) => {
@@ -97,6 +102,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
+const { startAutomationWorker } = require('./services/reservationAutomationService');
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT} (0.0.0.0)`);
+  // Bật worker tự động xử lý auto-confirmation, waitlist expiration, và no-show
+  startAutomationWorker(30000);
 });
+

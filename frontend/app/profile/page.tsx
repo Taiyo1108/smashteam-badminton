@@ -13,7 +13,10 @@ import {
 import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
-import { format } from "date-fns";
+import CompetitivePlayerCard from "@/app/components/CompetitivePlayerCard";
+import SharePlayerCard from "@/app/components/SharePlayerCard";
+import { formatVietnamDate } from "@/app/utils/date";
+import SessionReservationWidget from "@/app/components/SessionReservationWidget";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -21,6 +24,7 @@ export default function ProfilePage() {
   const [playerData, setPlayerData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatingRsvp, setUpdatingRsvp] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Gamification states
   const [gamProfile, setGamProfile] = useState<any>(null);
@@ -259,10 +263,14 @@ export default function ProfilePage() {
       const data = await res.json();
       if (res.ok) {
         setMysteryBoxReward(data.reward);
+        setBoxCooldown(168 * 3600); // 7 ngày = 168 giờ
         showToast(data.message || "Mở hộp quà thành công!", "success");
         await fetchGamificationData();
         await fetchProfileData();
       } else {
+        if (data.remainingMs) {
+          setBoxCooldown(Math.ceil(data.remainingMs / 1000));
+        }
         showToast(data.error || "Lỗi khi mở hộp quà.", "error");
       }
     } catch (e) {
@@ -282,14 +290,14 @@ export default function ProfilePage() {
     return () => clearInterval(timer);
   }, [cooldownActive]);
 
-  // Tính cooldown từ inventory — chỉ nạp khi chưa có countdown đang chạy
+  // Tính cooldown từ inventory (168 giờ = 7 ngày = 1 tuần) — chỉ nạp khi chưa có countdown đang chạy
   useEffect(() => {
     if (boxCooldown !== null || inventory.length === 0) return;
     const claims = inventory.filter(i => i.item_type === 'mystery_box_claim');
     if (claims.length === 0) return;
     const diffHours = (Date.now() - new Date(claims[0].acquired_at).getTime()) / (1000 * 60 * 60);
-    if (diffHours < 24) {
-      setBoxCooldown(Math.ceil((24 - diffHours) * 60 * 60));
+    if (diffHours < 168) {
+      setBoxCooldown(Math.ceil((168 - diffHours) * 60 * 60));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory]);
@@ -642,14 +650,6 @@ export default function ProfilePage() {
   }
 
   const { player, upcomingSession, attendanceHistory } = playerData;
-  const maxElo = Math.max(player.elo_singles, player.elo_doubles);
-  const rank = getRankConfig(maxElo);
-
-  // Tính % tiến trình lên rank
-  const progressPercent = Math.min(
-    100,
-    Math.max(0, ((maxElo - rank.prevElo) / (rank.nextElo - rank.prevElo)) * 100)
-  );
 
   // Phân tích kỹ năng đóng góp
   let softSkills: string[] = [];
@@ -700,8 +700,11 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Navigation Minimalist */}
-      <nav className="w-full bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40">
+      {/* Navigation Minimalist (iOS Safe Area Notch Support) */}
+      <nav 
+        className="w-full bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 pt-safe"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -741,125 +744,25 @@ export default function ProfilePage() {
         {/* LEFT COLUMN: Player Card & Badges */}
         <div className="lg:col-span-1 space-y-8">
           
-          {/* PLAYER CARD */}
-          <div className={`relative overflow-hidden rounded-2xl bg-white border border-slate-200 p-6 ${rank.glowClass} flex flex-col`}>
-            {/* Background glowing gradient overlay */}
-            <div className="absolute top-0 right-0 w-36 h-36 bg-slate-100 rounded-bl-full -z-0 pointer-events-none"></div>
-            
-            {/* Settings Button */}
-            <button
-              onClick={() => setIsSettingsModalOpen(true)}
-              className="absolute top-4 right-4 p-2 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-black hover:border-black/30 hover:scale-115 active:scale-95 transition-all z-20 cursor-pointer shadow-sm"
-              title="Thiết lập tài khoản"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-
-            {/* Rank badge top header */}
-            <div className="flex justify-between items-start relative z-10 mb-6">
-              <span className={`text-[10px] uppercase font-black tracking-widest px-3 py-1 rounded-full ${rank.badgeClass}`}>
-                RANK {rank.name}
-              </span>
-              
-              {/* Streak Badge if >= 3 */}
-              {Math.max(player.streak_singles, player.streak_doubles) >= 3 && (
-                <div className="flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full text-xs font-black animate-pulse">
-                  <Flame className="w-4 h-4 fill-amber-400" />
-                  <span>+{Math.max(player.streak_singles, player.streak_doubles)} STREAK</span>
-                </div>
-              )}
-            </div>
-
-            {/* Avatar & Player Name */}
-            <div className="flex flex-col items-center text-center relative z-10 mb-6">
-              <AvatarWithFrame 
-                avatarUrl={player.avatar_url} 
-                frameStyle={gamProfile?.selected_avatar_frame || player.selected_avatar_frame} 
-                sizeClass="w-24 h-24 mb-4" 
-                alt={player.full_name}
-              />
-              
-              <h2 className="text-2xl font-black text-slate-900 tracking-wide">{player.full_name}</h2>
-              {(player.selected_title || gamProfile?.selected_title) && (
-                <div className="text-[10px] font-black text-amber-400 mt-1 uppercase tracking-widest bg-amber-400/10 px-2.5 py-0.5 rounded border border-amber-400/20">
-                  👑 {player.selected_title || gamProfile?.selected_title}
-                </div>
-              )}
-              
-              <div className="flex items-center gap-1.5 mt-2 text-slate-500">
-                <span className="text-sm font-medium italic">
-                  {player.nickname ? `"${player.nickname}"` : "Chưa đặt biệt danh"}
-                </span>
-              </div>
-
-              {/* Stats badges inside card */}
-              <div className="flex items-center gap-3.5 mt-3.5 bg-slate-50 px-4 py-2 rounded-full border border-slate-200 text-xs">
-                <div className="flex items-center gap-1 font-bold text-amber-500">
-                  <Coins className="w-4 h-4 text-amber-500" /> {gamProfile?.smash_coins ?? 0} xu
-                </div>
-                <div className="w-px h-3.5 bg-slate-200" />
-                <div className="flex items-center gap-1 font-bold text-orange-500">
-                  <Flame className="w-4 h-4 text-orange-500 animate-pulse" /> {gamProfile?.current_streak ?? 0} ngày
-                </div>
-                <div className="w-px h-3.5 bg-slate-200" />
-                <div className="flex items-center gap-1 font-bold text-indigo-400">
-                  <Shield className="w-4 h-4 text-indigo-400" /> {gamProfile?.streak_shields ?? 0} khiên
-                </div>
-              </div>
-            </div>
-
-            {/* Elo Scores Table */}
-            <div className="grid grid-cols-2 gap-4 relative z-10 border-t border-slate-200 pt-6 mb-6">
-              <div className="text-center p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Đấu Đơn</span>
-                <p className="text-2xl font-black text-black mt-1">{player.elo_singles}</p>
-                <p className="text-[9px] text-slate-500 mt-1">Win rate: {parseFloat(player.win_rate_singles).toFixed(1)}%</p>
-                <p className="text-[9px] text-slate-600">Trận: {player.matches_singles} ({player.win_singles}T - {player.loss_singles}B)</p>
-              </div>
-
-              <div className="text-center p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Đấu Đôi</span>
-                <p className="text-2xl font-black text-black mt-1">{player.elo_doubles}</p>
-                <p className="text-[9px] text-slate-500 mt-1">Win rate: {parseFloat(player.win_rate_doubles).toFixed(1)}%</p>
-                <p className="text-[9px] text-slate-600">Trận: {player.matches_doubles} ({player.win_doubles}T - {player.loss_doubles}B)</p>
-              </div>
-            </div>
-
-            {/* Level & Rank Progress */}
-            <div className="relative z-10 space-y-4">
-              {/* Level XP Bar */}
-              <div>
-                <div className="flex justify-between text-[10px] text-slate-500 font-bold mb-1.5 uppercase">
-                  <span>Cấp độ {gamProfile?.level ?? 1}</span>
-                  <span>{gamProfile?.xp ?? 0} / {gamProfile?.xp_needed ?? 80} XP</span>
-                </div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
-                  <div 
-                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-                    style={{ width: `${gamProfile ? Math.min(100, (gamProfile.xp / gamProfile.xp_needed) * 100) : 0}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Rank ELO Bar */}
-              <div>
-                <div className="flex justify-between text-[10px] text-slate-500 font-bold mb-1.5 uppercase">
-                  <span>Rank ELO {maxElo}</span>
-                  <span>Mục tiêu {rank.nextElo}</span>
-                </div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
-                  <div 
-                    className="h-full bg-black rounded-full transition-all duration-1000"
-                    style={{ width: `${progressPercent}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between mt-1.5 text-[9px] text-slate-500">
-                  <span>Học vấn: {player.academic_info || "Chưa đặt"}</span>
-                  <span>Cần thêm {Math.max(0, rank.nextElo - maxElo)} ELO</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* COMPETITIVE PLAYER CARD */}
+          <CompetitivePlayerCard
+            player={playerData.player}
+            singles={playerData.singles}
+            doubles={playerData.doubles}
+            overall={playerData.overall}
+            progression={playerData.progression}
+            achievements={playerData.achievements}
+            streak={playerData.streak}
+            title={playerData.title}
+            meta={playerData.meta || {
+              level: gamProfile?.level ?? 1,
+              xp: gamProfile?.xp ?? 0,
+              smashCoins: gamProfile?.smash_coins ?? 0,
+              dailyStreak: gamProfile?.current_streak ?? 0
+            }}
+            onOpenSettings={() => setIsSettingsModalOpen(true)}
+            onOpenShareModal={() => setIsShareModalOpen(true)}
+          />
 
           {/* BADGES WIDGET */}
           <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
@@ -896,59 +799,39 @@ export default function ProfilePage() {
         {/* RIGHT COLUMN: RSVP & Match History */}
         <div className="lg:col-span-2 space-y-8">
           
-          {/* RSVP WIDGET */}
-          {false && (
-          <div className="rounded-2xl bg-white border border-slate-200 p-6 relative overflow-hidden shadow-sm">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-slate-100 rounded-bl-full pointer-events-none"></div>
-            
-            <h3 className="font-extrabold text-slate-900 text-lg mb-4 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-black" /> Đăng ký Lịch tập (RSVP)
+          {/* RSVP & RESERVATION WIDGET */}
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 relative overflow-hidden shadow-sm space-y-4">
+            <h3 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary" /> Đăng ký Lịch tập & Giữ chỗ (Reservation)
             </h3>
             
             {upcomingSession ? (
-              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="space-y-2">
-                  <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-black/5 text-black border border-slate-200">
-                    Sắp diễn ra
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                    Buổi tập sắp tới
                   </span>
-                  <h4 className="text-lg font-bold text-slate-900 tracking-wide">{upcomingSession.title}</h4>
+                  <h4 className="text-lg font-bold text-slate-900 tracking-wide mt-1.5">{upcomingSession.title}</h4>
                   
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 mt-2">
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-smash-violet" />
-                      {format(new Date(upcomingSession.date_time), "dd/MM/yyyy HH:mm")}
+                      <Clock className="w-3.5 h-3.5 text-primary" />
+                      {formatVietnamDate(upcomingSession.session_start || upcomingSession.date_time)}
                     </span>
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-black" /> 
+                      <MapPin className="w-3.5 h-3.5 text-primary" /> 
                       {upcomingSession.location}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <button
-                    onClick={() => handleRsvp(upcomingSession.id, "going")}
-                    disabled={updatingRsvp}
-                    className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
-                      upcomingSession.rsvp_status === "going"
-                        ? "bg-black text-white border border-black"
-                        : "bg-white hover:bg-slate-100 text-slate-600 border border-slate-200"
-                    }`}
-                  >
-                    <Check className="w-3.5 h-3.5" /> Tham gia
-                  </button>
-                  <button
-                    onClick={() => handleRsvp(upcomingSession.id, "absent")}
-                    disabled={updatingRsvp}
-                    className={`px-5 py-2.5 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer ${
-                      upcomingSession.rsvp_status === "absent"
-                        ? "bg-black text-white"
-                        : "bg-white hover:bg-slate-100 text-slate-500 border border-slate-200"
-                    }`}
-                  >
-                    <X className="w-3.5 h-3.5" /> Bận
-                  </button>
-                </div>
+                <SessionReservationWidget
+                  session={upcomingSession}
+                  isLoggedIn={true}
+                  onActionSuccess={() => {
+                    fetchProfileData();
+                  }}
+                />
               </div>
             ) : (
               <div className="p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-slate-500 text-sm">
@@ -956,7 +839,6 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
-          )}
 
           {/* GAME PORTAL */}
           <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
@@ -1048,6 +930,10 @@ export default function ProfilePage() {
             {activeGamTab === "inventory" && (() => {
               const filteredAndSortedInventory = inventory
                 .filter((item: any) => {
+                  // Bỏ mystery_box_claim (tracking) và avatar_frame (đã gỡ bỏ)
+                  if (item.item_type === "mystery_box_claim" || item.item_type === "avatar_frame") {
+                    return false;
+                  }
                   if (inventorySubTab === "physical") {
                     return item.item_type === "physical";
                   } else {
@@ -1086,7 +972,7 @@ export default function ProfilePage() {
                           : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
-                      Trang bị (Danh hiệu, Khung...)
+                      Trang bị (Danh hiệu...)
                     </button>
                   </div>
 
@@ -1099,7 +985,7 @@ export default function ProfilePage() {
                       <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">
                         {inventorySubTab === "physical" 
                           ? "Hãy tích cực thi đấu, tích lũy xu để đổi những phần quà vật lý hấp dẫn tại Cửa hàng!"
-                          : "Hoàn thành nhiệm vụ và mở hộp quà mỗi ngày để sưu tầm thêm danh hiệu và khung viền độc quyền nhé!"}
+                          : "Hoàn thành nhiệm vụ và mở hộp quà mỗi tuần để sưu tầm thêm danh hiệu độc quyền nhé!"}
                       </p>
                     </div>
                   ) : (
@@ -1108,7 +994,7 @@ export default function ProfilePage() {
                         const isEquipped = item.is_equipped;
                         const isPhysical = item.item_type === 'physical';
                         const isRedeemed = item.status === 'redeemed';
-                        const canEquip = ['avatar_frame', 'title'].includes(item.item_type);
+                        const canEquip = item.item_type === 'title';
                         
                         if (isPhysical) {
                           return (
@@ -1137,7 +1023,7 @@ export default function ProfilePage() {
                                   </span>
                                 </div>
                                 <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                                <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {format(new Date(item.acquired_at), "dd/MM/yyyy HH:mm")}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {formatVietnamDate(item.acquired_at)}</p>
                               </div>
 
                               <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
@@ -1165,12 +1051,8 @@ export default function ProfilePage() {
                           }`}>
                             <div>
                               <div className="flex items-center justify-between mb-2">
-                                <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                                  item.item_type === 'avatar_frame'
-                                    ? "bg-black/5 text-black border border-slate-200"
-                                    : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                                }`}>
-                                  {item.item_type === 'avatar_frame' ? 'Khung Viền' : 'Danh hiệu'}
+                                <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                  Danh hiệu
                                 </span>
                                 {isEquipped && (
                                   <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
@@ -1179,10 +1061,10 @@ export default function ProfilePage() {
                                 )}
                               </div>
                               <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                              <p className="text-[10px] text-slate-400 mt-1">Sở hữu lúc: {format(new Date(item.acquired_at), "dd/MM/yyyy HH:mm")}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Sở hữu lúc: {formatVietnamDate(item.acquired_at)}</p>
                               {item.expires_at && (
                                 <p className="text-[9px] text-red-400 font-medium mt-1">
-                                  Hết hạn: {format(new Date(item.expires_at), "dd/MM/yyyy HH:mm")}
+                                  Hết hạn: {formatVietnamDate(item.expires_at)}
                                 </p>
                               )}
                             </div>
@@ -1254,7 +1136,7 @@ export default function ProfilePage() {
             {activeGamTab === "shop" && (
               <div className="space-y-6">
                 
-                {/* 1. Hộp quà bí ẩn hàng ngày (Daily Mystery Box) */}
+                {/* 1. Hộp quà bí ẩn hàng tuần (Weekly Mystery Box) */}
                 <div className="p-5 rounded-2xl bg-white border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-slate-100 rounded-full filter blur-2xl pointer-events-none"></div>
                   
@@ -1264,25 +1146,27 @@ export default function ProfilePage() {
                     </div>
                     <div>
                       <h4 className="text-base font-black text-slate-900 tracking-wide flex items-center justify-center sm:justify-start gap-1.5">
-                        Hộp Quà Bí Ẩn Hàng Ngày <span className="text-[10px] bg-amber-400/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-400/20 font-black uppercase">Free</span>
+                        Hộp Quà Bí Ẩn Hàng Tuần <span className="text-[10px] bg-amber-400/10 text-amber-500 px-1.5 py-0.5 rounded border border-amber-400/20 font-black uppercase">Mỗi 7 ngày</span>
                       </h4>
-                      <p className="text-xs text-slate-500 mt-1">Mỗi ngày mở 1 lần để có cơ hội nhận Xu, Khiên hoặc Khung avatar hiếm!</p>
+                      <p className="text-xs text-slate-500 mt-1">Mỗi tuần mở 1 lần để có cơ hội nhận lượng lớn Smash Coins hoặc Khiên bảo vệ chuỗi!</p>
                       
                       {/* Tỉ lệ mở hộp quà */}
                       <div className="flex gap-4 mt-2 text-[10px] text-slate-500 font-bold justify-center sm:justify-start">
-                        <span>💰 70% Xu (10-30)</span>
-                        <span>🛡️ 20% Khiên</span>
-                        <span>👑 10% Khung VIP</span>
+                        <span>💰 75% Xu (20-50)</span>
+                        <span>🛡️ 25% Khiên Bảo Vệ</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="shrink-0 w-full sm:w-auto text-center">
                     {boxCooldown !== null ? (() => {
-                      const h = Math.floor(boxCooldown / 3600);
+                      const d = Math.floor(boxCooldown / 86400);
+                      const h = Math.floor((boxCooldown % 86400) / 3600);
                       const m = Math.floor((boxCooldown % 3600) / 60);
                       const s = boxCooldown % 60;
-                      const timeStr = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+                      const timeStr = d > 0 
+                        ? `${d} ngày ${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+                        : `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
                       return (
                         <div className="flex flex-col items-center gap-1">
                           <span className="text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl">
@@ -1311,9 +1195,7 @@ export default function ProfilePage() {
                       <h4 className="text-lg font-black text-slate-900">Bạn Đã Nhận Được Quà!</h4>
                       <p className="text-base font-black text-amber-400 mt-2">{mysteryBoxReward.name}</p>
                       <p className="text-xs text-slate-500 mt-2">
-                        {mysteryBoxReward.type === 'avatar_frame' 
-                          ? 'Vật phẩm đã được thêm vào Kho đồ của bạn với thời hạn sử dụng 7 ngày.' 
-                          : 'Phần thưởng đã được cộng trực tiếp vào tài khoản.'}
+                        Phần thưởng đã được cộng trực tiếp vào tài khoản của bạn.
                       </p>
                       <button
                         onClick={() => setMysteryBoxReward(null)}
@@ -1529,7 +1411,7 @@ export default function ProfilePage() {
                                 {m.isDoubles ? "Đôi" : "Đơn"}
                               </span>
                               <span className="text-[10px] text-slate-500">
-                                {format(new Date(m.created_at), "dd/MM/yyyy HH:mm")}
+                                {formatVietnamDate(m.created_at)}
                               </span>
                             </div>
                             <p className="text-sm font-bold text-slate-900">
@@ -1832,6 +1714,18 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* SHARE PLAYER CARD MODAL */}
+      <SharePlayerCard
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        player={playerData.player}
+        singles={playerData.singles}
+        doubles={playerData.doubles}
+        achievements={playerData.achievements}
+        streak={playerData.streak}
+        title={playerData.title}
+      />
 
       <footer className="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-xs">
         <p>© {new Date().getFullYear()} SmashTeam Badminton Club. All rights reserved.</p>

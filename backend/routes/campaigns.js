@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { upload } = require('../utils/cloudinary');
+const { toVietnamIso, formatVietnamDate } = require('../utils/date');
 
 // GET /api/campaigns/active - Lấy chiến dịch tuyển thành viên đang diễn ra
 router.get('/active', async (req, res) => {
@@ -66,13 +68,26 @@ router.get('/', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
+// POST /api/campaigns/upload-zalo-qr - Tải ảnh QR nhóm Zalo lên (Admin)
+router.post('/upload-zalo-qr', authenticateToken, isAdmin, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Chưa chọn tệp ảnh QR.' });
+    }
+    res.json({ url: req.file.path });
+  } catch (error) {
+    console.error('Error uploading Zalo QR:', error);
+    res.status(500).json({ error: 'Lỗi khi tải ảnh QR lên.' });
+  }
+});
+
 // POST /api/campaigns - Tạo đợt tuyển mới (Admin)
 router.post('/', authenticateToken, isAdmin, async (req, res) => {
   try {
     const {
       name, start_date, end_date, is_active,
       badge_text, description, location, target_audience, target_capacity, timeline_steps,
-      custom_questions
+      custom_questions, zalo_qr_url, zalo_group_link
     } = req.body;
     
     if (!name || !start_date || !end_date) {
@@ -80,6 +95,8 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     }
 
     const active = is_active === true || is_active === 'true';
+    const normalizedStart = toVietnamIso(start_date);
+    const normalizedEnd = toVietnamIso(end_date);
 
     // Nếu kích hoạt đợt này, chuyển các đợt khác vào lịch sử (is_active = false)
     if (active) {
@@ -89,20 +106,23 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const result = await db.query(
       `INSERT INTO recruitment_campaigns (
         name, start_date, end_date, is_active,
-        badge_text, description, location, target_audience, target_capacity, timeline_steps, custom_questions
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+        badge_text, description, location, target_audience, target_capacity, timeline_steps, custom_questions,
+        zalo_qr_url, zalo_group_link
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
       [
         name,
-        start_date,
-        end_date,
+        normalizedStart,
+        normalizedEnd,
         active,
         badge_text || 'Mùa Tuyển Quân 2026',
         description || '',
-        location || 'Sân Cầu Lông Lan Anh, 291 CMT8, Q.10, TP.HCM',
+        location || 'Sân Bình Thắng, Đông Hòa, HCM',
         target_audience || 'Mọi cấp độ tay vợt',
         target_capacity || 60,
         timeline_steps ? (typeof timeline_steps === 'string' ? timeline_steps : JSON.stringify(timeline_steps)) : null,
-        custom_questions ? (typeof custom_questions === 'string' ? custom_questions : JSON.stringify(custom_questions)) : '[]'
+        custom_questions ? (typeof custom_questions === 'string' ? custom_questions : JSON.stringify(custom_questions)) : '[]',
+        zalo_qr_url || null,
+        zalo_group_link || null
       ]
     );
 
@@ -122,7 +142,7 @@ router.post('/:id/slots', authenticateToken, isAdmin, async (req, res) => {
     const result = await db.query(
       `INSERT INTO casting_slots (campaign_id, casting_time, location, max_capacity)
        VALUES ($1, $2, $3, $4) RETURNING *`,
-      [id, casting_time, location, max_capacity]
+      [id, toVietnamIso(casting_time), location, max_capacity]
     );
 
     res.status(201).json(result.rows[0]);
@@ -139,10 +159,12 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
     const {
       name, start_date, end_date, is_active,
       badge_text, description, location, target_audience, target_capacity, timeline_steps,
-      custom_questions
+      custom_questions, zalo_qr_url, zalo_group_link
     } = req.body;
     
     const active = is_active === true || is_active === 'true';
+    const normalizedStart = start_date !== undefined ? toVietnamIso(start_date) : undefined;
+    const normalizedEnd = end_date !== undefined ? toVietnamIso(end_date) : undefined;
 
     if (active) {
       await db.query(`UPDATE recruitment_campaigns SET is_active = false WHERE id != $1`, [id]);
@@ -159,15 +181,19 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
          description = COALESCE($6, description),
          location = COALESCE($7, location),
          target_audience = COALESCE($8, target_audience),
-          target_capacity = COALESCE($9, target_capacity),
-          timeline_steps = COALESCE($10, timeline_steps),
-          custom_questions = COALESCE($11, custom_questions)
-        WHERE id = $12 RETURNING *`,
+         target_capacity = COALESCE($9, target_capacity),
+         timeline_steps = COALESCE($10, timeline_steps),
+         custom_questions = COALESCE($11, custom_questions),
+         zalo_qr_url = COALESCE($12, zalo_qr_url),
+         zalo_group_link = COALESCE($13, zalo_group_link)
+       WHERE id = $14 RETURNING *`,
       [
-        name, start_date, end_date, active,
+        name, normalizedStart, normalizedEnd, active,
         badge_text, description, location, target_audience, target_capacity,
         timeline_steps ? (typeof timeline_steps === 'string' ? timeline_steps : JSON.stringify(timeline_steps)) : null,
         custom_questions !== undefined ? (typeof custom_questions === 'string' ? custom_questions : JSON.stringify(custom_questions)) : null,
+        zalo_qr_url !== undefined ? zalo_qr_url : null,
+        zalo_group_link !== undefined ? zalo_group_link : null,
         id
       ]
     );
@@ -254,12 +280,13 @@ router.put('/slots/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { casting_time, location, max_capacity, is_active } = req.body;
+    const normalizedCasting = casting_time !== undefined ? toVietnamIso(casting_time) : undefined;
 
     const result = await db.query(
       `UPDATE casting_slots 
-       SET casting_time = $1, location = $2, max_capacity = $3, is_active = $4
+       SET casting_time = COALESCE($1, casting_time), location = COALESCE($2, location), max_capacity = COALESCE($3, max_capacity), is_active = COALESCE($4, is_active)
        WHERE id = $5 RETURNING *`,
-      [casting_time, location, max_capacity, is_active, id]
+      [normalizedCasting, location, max_capacity, is_active, id]
     );
     res.json(result.rows[0]);
   } catch (error) {
@@ -378,15 +405,8 @@ router.get('/slots/:id/export-csv', authenticateToken, isAdmin, async (req, res)
         if (!campaignQuestionLabels.includes(label)) campaignQuestionLabels.push(label);
       }
     }
-    const fmtDate = (d) => {
-      if (!d) return '';
-      const dt = new Date(d);
-      const pad = (n) => String(n).padStart(2, '0');
-      return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-    };
-    const slotTime = new Date(slot.casting_time);
-    const pad = (n) => String(n).padStart(2, '0');
-    const slotLabel = `${pad(slotTime.getHours())}:${pad(slotTime.getMinutes())} ${pad(slotTime.getDate())}/${pad(slotTime.getMonth() + 1)}/${slotTime.getFullYear()} - ${slot.location}`;
+    const fmtDate = (d) => formatVietnamDate(d);
+    const slotLabel = `${formatVietnamDate(slot.casting_time)} - ${slot.location}`;
 
     const header = ['STT', 'Họ tên', 'Giới tính', 'SĐT Zalo', 'Email', 'Trình độ', 'Thông tin học tập', 'Kỹ năng mềm', 'Ca casting', 'Ngày đăng ký', ...campaignQuestionLabels];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;

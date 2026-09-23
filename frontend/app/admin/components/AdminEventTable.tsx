@@ -7,6 +7,7 @@ import {
   Clock, Users, DollarSign, Image as ImageIcon, Save
 } from "lucide-react";
 import QRScannerModal from "@/app/components/QRScannerModal";
+import { formatVietnamDate, toVietnamDatetimeInput, vietnamInputToIso } from "@/app/utils/date";
 
 export interface ClubEventItem {
   id: string | number;
@@ -131,12 +132,18 @@ export default function AdminEventTable() {
     e.preventDefault();
     if (!editingEvent) return;
 
+    const eventToSave: ClubEventItem = {
+      ...editingEvent,
+      start_time: vietnamInputToIso(editingEvent.start_time),
+      end_time: editingEvent.end_time ? vietnamInputToIso(editingEvent.end_time) : undefined
+    };
+
     setEvents((prev) => {
-      const exists = prev.some((item) => item.id === editingEvent.id);
+      const exists = prev.some((item) => item.id === eventToSave.id);
       if (exists) {
-        return prev.map((item) => (item.id === editingEvent.id ? editingEvent : item));
+        return prev.map((item) => (item.id === eventToSave.id ? eventToSave : item));
       } else {
-        return [editingEvent, ...prev];
+        return [eventToSave, ...prev];
       }
     });
 
@@ -298,18 +305,11 @@ export default function AdminEventTable() {
                     <td className="py-3.5 px-4">
                       <p className="font-bold text-slate-800 flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5 text-primary" />
-                        {new Date(evt.start_time).toLocaleDateString("vi-VN", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric"
-                        })}
+                        {formatVietnamDate(evt.start_time, "date")}
                       </p>
                       <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                         <Clock className="w-3 h-3 text-slate-400" />
-                        {new Date(evt.start_time).toLocaleTimeString("vi-VN", {
-                          hour: "2-digit",
-                          minute: "2-digit"
-                        })}
+                        {formatVietnamDate(evt.start_time, "time")}
                       </p>
                     </td>
 
@@ -500,7 +500,7 @@ export default function AdminEventTable() {
                   <input
                     type="datetime-local"
                     required
-                    value={editingEvent.start_time.slice(0, 16)}
+                    value={toVietnamDatetimeInput(editingEvent.start_time)}
                     onChange={(e) =>
                       setEditingEvent({ ...editingEvent, start_time: e.target.value })
                     }
@@ -512,7 +512,7 @@ export default function AdminEventTable() {
                   <label className="font-bold text-slate-800">Kết thúc (Dự kiến)</label>
                   <input
                     type="datetime-local"
-                    value={editingEvent.end_time ? editingEvent.end_time.slice(0, 16) : ""}
+                    value={toVietnamDatetimeInput(editingEvent.end_time)}
                     onChange={(e) =>
                       setEditingEvent({ ...editingEvent, end_time: e.target.value })
                     }

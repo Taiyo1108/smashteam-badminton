@@ -109,7 +109,7 @@ export default function ApplicantTable({
       "Giới tính",
       "Trường / Học vấn",
       "Trình độ",
-      "Kỹ năng mềm",
+      "Vị trí ứng tuyển",
       "Thời gian Casting",
       "Địa điểm",
       "Ngày nộp đơn",
@@ -251,135 +251,232 @@ export default function ApplicantTable({
             </p>
           </div>
         ) : (
-          <div className="flex-1 overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200">
-                  <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider">
-                    Ứng Viên & Học Vấn
-                  </th>
-                  <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider">
-                    Liên Hệ Zalo / Email
-                  </th>
-                  <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider">
-                    Trình Độ
-                  </th>
-                  <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider">
-                    Ca Thử Sân (Casting)
-                  </th>
-                  <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider text-right">
-                    Thao Tác
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {filteredCandidates.map(c => {
-                  const isCopied = copiedId === c.id;
-                  return (
-                    <tr 
-                      key={c.id} 
-                      className="hover:bg-purple-50/40 transition-colors group"
-                    >
-                      {/* Column 1: Candidate Name & School */}
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-purple-100 text-primary font-black text-sm flex items-center justify-center shrink-0">
-                            {c.full_name ? c.full_name.charAt(0).toUpperCase() : "U"}
-                          </div>
-                          <div>
-                            <p className="font-bold text-sm text-secondary group-hover:text-primary transition-colors">
-                              {c.full_name}
-                            </p>
-                            <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                              {c.gender && <span className="font-semibold text-slate-700">{c.gender} •</span>}
-                              <span>{c.academic_info || "Chưa nhập học vấn"}</span>
-                            </p>
-                          </div>
+          <>
+            {/* MOBILE CARDS VIEW (md:hidden) */}
+            <div className="md:hidden divide-y divide-slate-100 bg-white">
+              {filteredCandidates.map(c => {
+                const isCopied = copiedId === c.id;
+                return (
+                  <div key={c.id} className="p-4 space-y-3 hover:bg-purple-50/20 transition-colors">
+                    {/* Header: Avatar, Name, Level Badge */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-2xl bg-purple-100 text-primary font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                          {c.full_name ? c.full_name.charAt(0).toUpperCase() : "U"}
                         </div>
-                      </td>
-
-                      {/* Column 2: Phone & Email */}
-                      <td className="p-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-secondary">{c.phone_zalo}</span>
-                            <button
-                              onClick={() => copyPhone(c.id, c.phone_zalo)}
-                              className="p-1 text-slate-400 hover:text-primary transition-colors cursor-pointer"
-                              title="Sao chép SĐT Zalo"
-                            >
-                              {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-                          <p className="text-[11px] text-slate-400 truncate max-w-[180px]">
-                            {c.email || "Chưa có email"}
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm text-secondary truncate">
+                            {c.full_name}
+                          </p>
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            {c.gender && <span className="font-semibold text-slate-700">{c.gender} • </span>}
+                            <span>{c.academic_info || "Chưa nhập học vấn"}</span>
                           </p>
                         </div>
-                      </td>
+                      </div>
+                      <span className={`shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getLevelBadgeClass(c.badminton_level)}`}>
+                        {c.badminton_level}
+                      </span>
+                    </div>
 
-                      {/* Column 3: Level Badge */}
-                      <td className="p-4">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ${getLevelBadgeClass(c.badminton_level)}`}>
-                          {c.badminton_level}
-                        </span>
-                      </td>
+                    {/* Contact & Slot Details */}
+                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-2xl text-xs border border-slate-100">
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">SĐT Zalo</p>
+                        <div className="flex items-center gap-1">
+                          <span className="font-mono font-bold text-secondary text-xs truncate">{c.phone_zalo}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyPhone(c.id, c.phone_zalo)}
+                            className="p-1 text-slate-400 hover:text-primary transition-colors cursor-pointer"
+                            title="Sao chép SĐT Zalo"
+                          >
+                            {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
 
-                      {/* Column 4: Casting Slot */}
-                      <td className="p-4">
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Ca thử sân</p>
                         {c.casting_time ? (
-                          <div className="space-y-0.5">
-                            <p className="font-bold text-slate-800 flex items-center gap-1.5">
-                              <Calendar className="w-3.5 h-3.5 text-primary" />
-                              <span>{format(new Date(c.casting_time), "dd/MM/yyyy HH:mm")}</span>
-                            </p>
-                            <p className="text-[11px] text-slate-500 truncate max-w-[180px] flex items-center gap-1">
-                              <MapPin className="w-3 h-3 text-slate-400" />
-                              <span>{c.location || "Sân CLB"}</span>
-                            </p>
-                          </div>
+                          <p className="font-bold text-slate-800 text-[11px] flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-primary shrink-0" />
+                            <span className="truncate">{format(new Date(c.casting_time), "dd/MM HH:mm")}</span>
+                          </p>
                         ) : (
                           <span className="text-[11px] text-slate-400 italic">Chưa chọn ca</span>
                         )}
-                      </td>
+                      </div>
+                    </div>
 
-                      {/* Column 5: Actions */}
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Detail Button */}
-                          <button
-                            onClick={() => onOpenDetail(c)}
-                            className="p-2 text-slate-500 hover:text-primary hover:bg-purple-50 rounded-xl transition-all cursor-pointer"
-                            title="Xem chi tiết hồ sơ"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                    {/* Mobile Action Buttons - Large, Touch-friendly & Safe */}
+                    <div className="flex items-center gap-2 pt-0.5">
+                      {/* NÚT DUYỆT CHÍNH (TO, RÕ RÀNG, DỄ BẤM NHẤT BẰNG NGÓN TAY CÁI) */}
+                      <button
+                        type="button"
+                        onClick={() => onApprove(c)}
+                        className="flex-1 h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.98] text-white rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-emerald-600/30 cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>DUYỆT ỨNG VIÊN</span>
+                      </button>
 
-                          {/* Quick Approve Button */}
-                          <button
-                            onClick={() => onApprove(c)}
-                            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs transition-all flex items-center gap-1 cursor-pointer"
-                            title="Duyệt ứng viên & chấm điểm"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Duyệt</span>
-                          </button>
+                      {/* NÚT CHI TIẾT */}
+                      <button
+                        type="button"
+                        onClick={() => onOpenDetail(c)}
+                        className="h-12 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Eye className="w-4 h-4" />
+                        <span>Xem</span>
+                      </button>
 
-                          {/* Reject / Delete Button */}
-                          <button
-                            onClick={() => onReject(c.id)}
-                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
-                            title="Loại bỏ ứng viên"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      {/* NÚT XÓA: TÁCH BIỆT RÕ RÀNG, VIỀN ĐỎ TRÁNH BẤM NHẦM */}
+                      <button
+                        type="button"
+                        onClick={() => onReject(c.id)}
+                        className="h-12 w-12 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 rounded-xl transition-all flex items-center justify-center shrink-0 cursor-pointer"
+                        title="Loại bỏ ứng viên"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* DESKTOP TABLE VIEW (hidden md:block) */}
+            <div className="hidden md:block flex-1 overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200">
+                    <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                      Ứng Viên & Học Vấn
+                    </th>
+                    <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                      Liên Hệ Zalo / Email
+                    </th>
+                    <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                      Trình Độ
+                    </th>
+                    <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                      Ca Thử Sân (Casting)
+                    </th>
+                    <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-wider text-right">
+                      Thao Tác
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {filteredCandidates.map(c => {
+                    const isCopied = copiedId === c.id;
+                    return (
+                      <tr 
+                        key={c.id} 
+                        className="hover:bg-purple-50/40 transition-colors group"
+                      >
+                        {/* Column 1: Candidate Name & School */}
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-purple-100 text-primary font-black text-sm flex items-center justify-center shrink-0">
+                              {c.full_name ? c.full_name.charAt(0).toUpperCase() : "U"}
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm text-secondary group-hover:text-primary transition-colors">
+                                {c.full_name}
+                              </p>
+                              <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                {c.gender && <span className="font-semibold text-slate-700">{c.gender} •</span>}
+                                <span>{c.academic_info || "Chưa nhập học vấn"}</span>
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Column 2: Phone & Email */}
+                        <td className="p-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-secondary">{c.phone_zalo}</span>
+                              <button
+                                onClick={() => copyPhone(c.id, c.phone_zalo)}
+                                className="p-1 text-slate-400 hover:text-primary transition-colors cursor-pointer"
+                                title="Sao chép SĐT Zalo"
+                              >
+                                {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-slate-400 truncate max-w-[180px]">
+                              {c.email || "Chưa có email"}
+                            </p>
+                          </div>
+                        </td>
+
+                        {/* Column 3: Level Badge */}
+                        <td className="p-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ${getLevelBadgeClass(c.badminton_level)}`}>
+                            {c.badminton_level}
+                          </span>
+                        </td>
+
+                        {/* Column 4: Casting Slot */}
+                        <td className="p-4">
+                          {c.casting_time ? (
+                            <div className="space-y-0.5">
+                              <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-primary" />
+                                <span>{format(new Date(c.casting_time), "dd/MM/yyyy HH:mm")}</span>
+                              </p>
+                              <p className="text-[11px] text-slate-500 truncate max-w-[180px] flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-slate-400" />
+                                <span>{c.location || "Sân CLB"}</span>
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">Chưa chọn ca</span>
+                          )}
+                        </td>
+
+                        {/* Column 5: Actions */}
+                        <td className="p-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {/* Detail Button */}
+                            <button
+                              onClick={() => onOpenDetail(c)}
+                              className="p-2 text-slate-500 hover:text-primary hover:bg-purple-50 rounded-xl transition-all cursor-pointer"
+                              title="Xem chi tiết hồ sơ"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+
+                            {/* Quick Approve Button */}
+                            <button
+                              onClick={() => onApprove(c)}
+                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                              title="Duyệt ứng viên & chấm điểm"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Duyệt</span>
+                            </button>
+
+                            {/* Reject / Delete Button */}
+                            <button
+                              onClick={() => onReject(c.id)}
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-rose-200"
+                              title="Loại bỏ ứng viên"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {/* Table Footer Summary */}

@@ -21,16 +21,8 @@ frontend/.env.local
 .DS_Store
 Thumbs.db
 
-# Database & local data
-backend/pgdata/
-backend/local_pgdata/
-pgdata/
-local_pgdata/
-
-# Uploads
+# Local uploads
 backend/uploads/
-uploads/
 
-# Local skills & tools
-ui-ux-pro-max-skill/
-agent-skills/
+# Temporary scratch
+scratch/
