@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { 
   Calendar, MapPin, ExternalLink, Plus, Edit2, Trash2, 
-  Search, QrCode, Archive, X, Clock, Save
+  Search, QrCode, Archive, X, Clock, Save, DollarSign
 } from "lucide-react";
 import QRScannerModal from "@/app/components/QRScannerModal";
 import { formatVietnamDate, toVietnamDatetimeInput, vietnamInputToIso } from "@/app/utils/date";
@@ -24,6 +24,17 @@ export interface ClubEventItem {
   entry_fee?: number;
   is_featured: boolean; // Hiện trên trang chủ
   status: "active" | "archived";
+}
+
+/**
+ * Chuẩn hóa URL (tự động thêm https:// nếu người dùng quên nhập)
+ */
+function normalizeExternalUrl(url?: string): string {
+  if (!url) return "";
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
 }
 
 export default function AdminEventTable() {
@@ -94,8 +105,23 @@ export default function AdminEventTable() {
   // Scanner Modal State
   const [activeScannerEvent, setActiveScannerEvent] = useState<ClubEventItem | null>(null);
 
+  // Đóng Drawer bằng phím Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isDrawerOpen) {
+        setIsDrawerOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isDrawerOpen]);
+
+  // Đếm số lượng sự kiện theo trạng thái
+  const activeCount = useMemo(() => events.filter((e) => e.status === "active").length, [events]);
+  const archivedCount = useMemo(() => events.filter((e) => e.status === "archived").length, [events]);
+
   // Bật/Tắt hiển thị trên Trang Chủ (Featured Toggle Switch - Đảm bảo chỉ 1 sự kiện duy nhất được ghim)
-  const handleToggleFeatured = (id: string | number) => {
+  const handleToggleFeatured = useCallback((id: string | number) => {
     setEvents((prev) => {
       const target = prev.find((e) => e.id === id);
       if (!target) return prev;
@@ -103,18 +129,27 @@ export default function AdminEventTable() {
 
       return prev.map((e) => {
         if (e.id === id) {
-          return { ...e, is_featured: willBeFeatured };
+          return { 
+            ...e, 
+            is_featured: willBeFeatured,
+            // Nếu được ghim lên trang chủ, tự động kích hoạt lại trạng thái active nếu đang ở archive
+            status: willBeFeatured ? "active" : e.status
+          };
         }
         // Nếu sự kiện mục tiêu được bật featured, tắt cờ ở tất cả các sự kiện khác
         return willBeFeatured ? { ...e, is_featured: false } : e;
       });
     });
-  };
+  }, []);
 
-  // Mở Drawer Tạo hoặc Sửa
-  const handleOpenEdit = (event?: ClubEventItem) => {
+  // Mở Drawer Tạo hoặc Sửa (Chuẩn hóa ngày giờ ngay từ khi mở)
+  const handleOpenEdit = useCallback((event?: ClubEventItem) => {
     if (event) {
-      setEditingEvent({ ...event });
+      setEditingEvent({
+        ...event,
+        start_time: toVietnamDatetimeInput(event.start_time),
+        end_time: event.end_time ? toVietnamDatetimeInput(event.end_time) : ""
+      });
     } else {
       setEditingEvent({
         id: `EVT-${Date.now().toString().slice(-4)}`,
@@ -135,7 +170,7 @@ export default function AdminEventTable() {
       });
     }
     setIsDrawerOpen(true);
-  };
+  }, []);
 
   // Lưu Sự kiện từ Drawer
   const handleSaveDrawer = (e: React.FormEvent) => {
@@ -157,10 +192,14 @@ export default function AdminEventTable() {
       title: editingEvent.title.trim(),
       venue_name: editingEvent.venue_name.trim(),
       venue_address: editingEvent.venue_address.trim(),
+      google_maps_url: normalizeExternalUrl(editingEvent.google_maps_url),
+      banner_url: normalizeExternalUrl(editingEvent.banner_url),
       start_time: vietnamInputToIso(editingEvent.start_time),
       end_time: editingEvent.end_time ? vietnamInputToIso(editingEvent.end_time) : undefined,
       max_slots: Math.max(1, Number(editingEvent.max_slots) || 1),
-      entry_fee: Math.max(0, Number(editingEvent.entry_fee) || 0)
+      entry_fee: Math.max(0, Number(editingEvent.entry_fee) || 0),
+      // Nếu được ghim lên trang chủ thì đảm bảo sự kiện có status active
+      status: editingEvent.is_featured ? "active" : editingEvent.status
     };
 
     setEvents((prev) => {
@@ -182,21 +221,30 @@ export default function AdminEventTable() {
     setEditingEvent(null);
   };
 
-  // Lưu trữ hoặc Kích hoạt lại
-  const handleToggleArchive = (id: string | number) => {
+  // Lưu trữ hoặc Kích hoạt lại (Nếu lưu trữ thì tự động gỡ ghim trang chủ)
+  const handleToggleArchive = useCallback((id: string | number) => {
     setEvents((prev) =>
-      prev.map((e) =>
-        e.id === id ? { ...e, status: e.status === "active" ? "archived" : "active" } : e
-      )
+      prev.map((e) => {
+        if (e.id === id) {
+          const nextStatus = e.status === "active" ? "archived" : "active";
+          return { 
+            ...e, 
+            status: nextStatus,
+            // Sự kiện đưa vào kho lưu trữ không được phép tiếp tục ghim trên trang chủ
+            is_featured: nextStatus === "archived" ? false : e.is_featured
+          };
+        }
+        return e;
+      })
     );
-  };
+  }, []);
 
   // Xóa sự kiện khỏi danh sách
-  const handleDeleteEvent = (id: string | number, title: string) => {
-    if (window.confirm(`Bạn có chắc chắn muốn xóa sự kiện "${title}" không?`)) {
+  const handleDeleteEvent = useCallback((id: string | number, title: string) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn sự kiện "${title}" không?`)) {
       setEvents((prev) => prev.filter((e) => e.id !== id));
     }
-  };
+  }, []);
 
   // Lọc danh sách (Tìm kiếm cả tên, sân và địa chỉ)
   const filteredEvents = useMemo(() => {
@@ -246,7 +294,7 @@ export default function AdminEventTable() {
               : "bg-slate-100 text-slate-600 hover:bg-slate-200"
           }`}
         >
-          Đang & Sắp diễn ra ({events.filter((e) => e.status === "active").length})
+          Đang & Sắp diễn ra ({activeCount})
         </button>
         <button
           type="button"
@@ -257,7 +305,7 @@ export default function AdminEventTable() {
               : "bg-slate-100 text-slate-600 hover:bg-slate-200"
           }`}
         >
-          Kho lưu trữ lịch sử ({events.filter((e) => e.status === "archived").length})
+          Kho lưu trữ lịch sử ({archivedCount})
         </button>
       </div>
 
@@ -337,13 +385,20 @@ export default function AdminEventTable() {
                           <p className="font-extrabold text-slate-900 group-hover:text-primary transition-colors truncate">
                             {evt.title}
                           </p>
-                          <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 mt-1">
-                            {evt.category === "tournament"
-                              ? "Giải Đấu ELO"
-                              : evt.category === "regular_practice"
-                              ? "Sinh Hoạt Định Kỳ"
-                              : "Giao Lưu Mở"}
-                          </span>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                              {evt.category === "tournament"
+                                ? "Giải Đấu ELO"
+                                : evt.category === "regular_practice"
+                                ? "Sinh Hoạt Định Kỳ"
+                                : "Giao Lưu Mở"}
+                            </span>
+                            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                              {evt.entry_fee && evt.entry_fee > 0
+                                ? `${evt.entry_fee.toLocaleString("vi-VN")} đ`
+                                : "Miễn phí"}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -475,8 +530,14 @@ export default function AdminEventTable() {
 
       {/* SLIDE-OVER CRUD DRAWER / MODAL */}
       {isDrawerOpen && editingEvent && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs">
-          <div className="w-full max-w-xl bg-white h-full shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+        <div 
+          onClick={() => setIsDrawerOpen(false)}
+          className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs transition-opacity"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xl bg-white h-full shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-300"
+          >
             {/* Drawer Header */}
             <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2.5">
@@ -542,7 +603,7 @@ export default function AdminEventTable() {
                     min="1"
                     max="512"
                     required
-                    value={editingEvent.max_slots || ""}
+                    value={editingEvent.max_slots !== undefined && editingEvent.max_slots !== null ? editingEvent.max_slots : ""}
                     onChange={(e) =>
                       setEditingEvent({ 
                         ...editingEvent, 
@@ -561,7 +622,7 @@ export default function AdminEventTable() {
                   <input
                     type="datetime-local"
                     required
-                    value={toVietnamDatetimeInput(editingEvent.start_time)}
+                    value={editingEvent.start_time}
                     onChange={(e) =>
                       setEditingEvent({ ...editingEvent, start_time: e.target.value })
                     }
@@ -573,7 +634,7 @@ export default function AdminEventTable() {
                   <label className="font-bold text-slate-800">Kết thúc (Dự kiến)</label>
                   <input
                     type="datetime-local"
-                    value={toVietnamDatetimeInput(editingEvent.end_time)}
+                    value={editingEvent.end_time || ""}
                     onChange={(e) =>
                       setEditingEvent({ ...editingEvent, end_time: e.target.value })
                     }
@@ -619,7 +680,7 @@ export default function AdminEventTable() {
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800">Đường dẫn Google Maps (URL)</label>
                   <input
-                    type="url"
+                    type="text"
                     placeholder="https://maps.app.goo.gl/... hoặc https://maps.google.com/?q=..."
                     value={editingEvent.google_maps_url || ""}
                     onChange={(e) =>
@@ -641,7 +702,7 @@ export default function AdminEventTable() {
                     type="number"
                     min="0"
                     step="10000"
-                    value={editingEvent.entry_fee || ""}
+                    value={editingEvent.entry_fee !== undefined && editingEvent.entry_fee !== null ? editingEvent.entry_fee : ""}
                     onChange={(e) =>
                       setEditingEvent({ 
                         ...editingEvent, 
@@ -655,7 +716,7 @@ export default function AdminEventTable() {
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800">Banner URL ảnh bìa</label>
                   <input
-                    type="url"
+                    type="text"
                     placeholder="https://images.unsplash.com/..."
                     value={editingEvent.banner_url || ""}
                     onChange={(e) =>
