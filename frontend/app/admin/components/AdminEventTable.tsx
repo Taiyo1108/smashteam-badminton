@@ -3,8 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { 
   Calendar, MapPin, ExternalLink, Plus, Edit2, Trash2, 
-  Search, Filter, Check, Eye, QrCode, Archive, Sparkles, X, 
-  Clock, Users, DollarSign, Image as ImageIcon, Save
+  Search, QrCode, Archive, X, Clock, Save
 } from "lucide-react";
 import QRScannerModal from "@/app/components/QRScannerModal";
 import { formatVietnamDate, toVietnamDatetimeInput, vietnamInputToIso } from "@/app/utils/date";
@@ -31,6 +30,7 @@ export default function AdminEventTable() {
   const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [brokenImages, setBrokenImages] = useState<Record<string | number, boolean>>({});
 
   // State danh sách sự kiện
   const [events, setEvents] = useState<ClubEventItem[]>([
@@ -94,11 +94,21 @@ export default function AdminEventTable() {
   // Scanner Modal State
   const [activeScannerEvent, setActiveScannerEvent] = useState<ClubEventItem | null>(null);
 
-  // Bật/Tắt hiển thị trên Trang Chủ (Featured Toggle Switch)
+  // Bật/Tắt hiển thị trên Trang Chủ (Featured Toggle Switch - Đảm bảo chỉ 1 sự kiện duy nhất được ghim)
   const handleToggleFeatured = (id: string | number) => {
-    setEvents((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, is_featured: !e.is_featured } : e))
-    );
+    setEvents((prev) => {
+      const target = prev.find((e) => e.id === id);
+      if (!target) return prev;
+      const willBeFeatured = !target.is_featured;
+
+      return prev.map((e) => {
+        if (e.id === id) {
+          return { ...e, is_featured: willBeFeatured };
+        }
+        // Nếu sự kiện mục tiêu được bật featured, tắt cờ ở tất cả các sự kiện khác
+        return willBeFeatured ? { ...e, is_featured: false } : e;
+      });
+    });
   };
 
   // Mở Drawer Tạo hoặc Sửa
@@ -132,19 +142,40 @@ export default function AdminEventTable() {
     e.preventDefault();
     if (!editingEvent) return;
 
+    // Validate thời gian kết thúc phải diễn ra sau thời gian bắt đầu
+    if (editingEvent.start_time && editingEvent.end_time) {
+      const startMs = new Date(vietnamInputToIso(editingEvent.start_time)).getTime();
+      const endMs = new Date(vietnamInputToIso(editingEvent.end_time)).getTime();
+      if (!isNaN(startMs) && !isNaN(endMs) && endMs <= startMs) {
+        alert("Thời gian kết thúc dự kiến phải diễn ra sau thời gian bắt đầu sự kiện!");
+        return;
+      }
+    }
+
     const eventToSave: ClubEventItem = {
       ...editingEvent,
+      title: editingEvent.title.trim(),
+      venue_name: editingEvent.venue_name.trim(),
+      venue_address: editingEvent.venue_address.trim(),
       start_time: vietnamInputToIso(editingEvent.start_time),
-      end_time: editingEvent.end_time ? vietnamInputToIso(editingEvent.end_time) : undefined
+      end_time: editingEvent.end_time ? vietnamInputToIso(editingEvent.end_time) : undefined,
+      max_slots: Math.max(1, Number(editingEvent.max_slots) || 1),
+      entry_fee: Math.max(0, Number(editingEvent.entry_fee) || 0)
     };
 
     setEvents((prev) => {
       const exists = prev.some((item) => item.id === eventToSave.id);
-      if (exists) {
-        return prev.map((item) => (item.id === eventToSave.id ? eventToSave : item));
-      } else {
-        return [eventToSave, ...prev];
+      let updated = exists
+        ? prev.map((item) => (item.id === eventToSave.id ? eventToSave : item))
+        : [eventToSave, ...prev];
+
+      // Nếu sự kiện này được ghim nổi bật, bỏ ghim các sự kiện khác
+      if (eventToSave.is_featured) {
+        updated = updated.map((item) =>
+          item.id === eventToSave.id ? item : { ...item, is_featured: false }
+        );
       }
+      return updated;
     });
 
     setIsDrawerOpen(false);
@@ -160,13 +191,23 @@ export default function AdminEventTable() {
     );
   };
 
-  // Lọc danh sách
+  // Xóa sự kiện khỏi danh sách
+  const handleDeleteEvent = (id: string | number, title: string) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa sự kiện "${title}" không?`)) {
+      setEvents((prev) => prev.filter((e) => e.id !== id));
+    }
+  };
+
+  // Lọc danh sách (Tìm kiếm cả tên, sân và địa chỉ)
   const filteredEvents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return events.filter((e) => {
       const matchTab = e.status === activeTab;
       const matchSearch =
-        e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.venue_name.toLowerCase().includes(searchQuery.toLowerCase());
+        !q ||
+        (e.title && e.title.toLowerCase().includes(q)) ||
+        (e.venue_name && e.venue_name.toLowerCase().includes(q)) ||
+        (e.venue_address && e.venue_address.toLowerCase().includes(q));
       const matchCat = categoryFilter === "all" || e.category === categoryFilter;
       return matchTab && matchSearch && matchCat;
     });
@@ -267,10 +308,11 @@ export default function AdminEventTable() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredEvents.map((evt) => {
-                const fillPercent = Math.min(
-                  Math.round((evt.registered_count / evt.max_slots) * 100),
-                  100
-                );
+                // Sửa lỗi chia cho 0 hoặc NaN khi max_slots không hợp lệ
+                const maxSlots = Math.max(0, Number(evt.max_slots) || 0);
+                const registeredCount = Math.max(0, Number(evt.registered_count) || 0);
+                const fillPercent = maxSlots > 0 ? Math.min(Math.round((registeredCount / maxSlots) * 100), 100) : 0;
+                const hasValidBanner = evt.banner_url && !brokenImages[evt.id];
 
                 return (
                   <tr key={evt.id} className="hover:bg-purple-50/40 transition-colors group">
@@ -278,8 +320,13 @@ export default function AdminEventTable() {
                     <td className="py-3.5 px-4 max-w-xs">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-xl bg-slate-900 overflow-hidden shrink-0 border border-slate-200">
-                          {evt.banner_url ? (
-                            <img src={evt.banner_url} alt={evt.title} className="w-full h-full object-cover" />
+                          {hasValidBanner ? (
+                            <img 
+                              src={evt.banner_url} 
+                              alt={evt.title} 
+                              className="w-full h-full object-cover" 
+                              onError={() => setBrokenImages((prev) => ({ ...prev, [evt.id]: true }))}
+                            />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center bg-purple-950 text-purple-300">
                               <Calendar className="w-5 h-5" />
@@ -310,6 +357,7 @@ export default function AdminEventTable() {
                       <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                         <Clock className="w-3 h-3 text-slate-400" />
                         {formatVietnamDate(evt.start_time, "time")}
+                        {evt.end_time ? ` - ${formatVietnamDate(evt.end_time, "time")}` : ""}
                       </p>
                     </td>
 
@@ -335,11 +383,11 @@ export default function AdminEventTable() {
                     <td className="py-3.5 px-4 text-center">
                       <div className="inline-block text-center">
                         <span className="font-mono font-bold text-slate-900 text-xs">
-                          {evt.registered_count} / {evt.max_slots}
+                          {registeredCount} / {maxSlots}
                         </span>
                         <div className="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1 mx-auto">
                           <div
-                            className={`h-full rounded-full ${
+                            className={`h-full rounded-full transition-all duration-300 ${
                               fillPercent >= 100 ? "bg-rose-500" : "bg-primary"
                             }`}
                             style={{ width: `${fillPercent}%` }}
@@ -348,7 +396,7 @@ export default function AdminEventTable() {
                       </div>
                     </td>
 
-                    {/* TOGGLE SWITCH: HIỆN TRANG CHỦ (FEATURED) */}
+                    {/* TOGGLE SWITCH: HIỆN TRANG CHỦ (FEATURED - Duy nhất 1 sự kiện) */}
                     <td className="py-3.5 px-4 text-center">
                       <button
                         type="button"
@@ -356,7 +404,7 @@ export default function AdminEventTable() {
                         className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                           evt.is_featured ? "bg-primary shadow-[0_0_10px_rgba(122,34,224,0.6)]" : "bg-slate-300"
                         }`}
-                        title={evt.is_featured ? "Đang ghim Trang Chủ" : "Chưa ghim Trang Chủ"}
+                        title={evt.is_featured ? "Đang ghim Trang Chủ (Bấm để hủy ghim)" : "Bấm để ghim Trang Chủ"}
                       >
                         <span
                           className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
@@ -397,6 +445,16 @@ export default function AdminEventTable() {
                           className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                         >
                           <Archive className="w-4 h-4" />
+                        </button>
+
+                        {/* Nút xóa sự kiện */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteEvent(evt.id, evt.title)}
+                          title="Xóa sự kiện vĩnh viễn"
+                          className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -481,12 +539,15 @@ export default function AdminEventTable() {
                   <label className="font-bold text-slate-800">Giới hạn số slots *</label>
                   <input
                     type="number"
-                    min="4"
-                    max="128"
+                    min="1"
+                    max="512"
                     required
-                    value={editingEvent.max_slots}
+                    value={editingEvent.max_slots || ""}
                     onChange={(e) =>
-                      setEditingEvent({ ...editingEvent, max_slots: Number(e.target.value) })
+                      setEditingEvent({ 
+                        ...editingEvent, 
+                        max_slots: Math.max(1, parseInt(e.target.value, 10) || 1) 
+                      })
                     }
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-primary text-slate-900"
                   />
@@ -580,9 +641,12 @@ export default function AdminEventTable() {
                     type="number"
                     min="0"
                     step="10000"
-                    value={editingEvent.entry_fee || 0}
+                    value={editingEvent.entry_fee || ""}
                     onChange={(e) =>
-                      setEditingEvent({ ...editingEvent, entry_fee: Number(e.target.value) })
+                      setEditingEvent({ 
+                        ...editingEvent, 
+                        entry_fee: Math.max(0, parseInt(e.target.value, 10) || 0) 
+                      })
                     }
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-primary text-slate-900"
                   />
@@ -620,7 +684,7 @@ export default function AdminEventTable() {
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                 <div>
                   <p className="font-bold text-slate-800">Hiển thị trên Trang Chủ (Landing Page)</p>
-                  <p className="text-[11px] text-slate-500">Xuất hiện tại Hero Card nổi bật để thành viên đăng ký nhanh.</p>
+                  <p className="text-[11px] text-slate-500">Xuất hiện tại Hero Card nổi bật để thành viên đăng ký nhanh (chỉ 1 sự kiện duy nhất được ghim).</p>
                 </div>
                 <input
                   type="checkbox"
@@ -664,7 +728,7 @@ export default function AdminEventTable() {
             setEvents((prev) =>
               prev.map((e) =>
                 e.id === activeScannerEvent.id
-                  ? { ...e, registered_count: Math.min(e.max_slots, e.registered_count + 1) }
+                  ? { ...e, registered_count: Math.min(e.max_slots, (e.registered_count || 0) + 1) }
                   : e
               )
             );

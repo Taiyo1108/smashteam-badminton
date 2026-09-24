@@ -77,6 +77,10 @@ export interface MatchSuggestion {
   winRate?: number;
   streak?: number;
 
+  // Calibration flags:
+  hasProvisional?: boolean;
+  isProvisional?: boolean;
+
   // For partner suggestion:
   partner?: Player;
   partnerElo?: number;
