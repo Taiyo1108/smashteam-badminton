@@ -1299,6 +1299,11 @@ export default function MatchDeskPage() {
                           <span className="text-[10px] font-black text-amber-600 font-mono bg-white px-2 py-0.5 rounded border border-amber-200">
                             Elo {s.team2Elo}
                           </span>
+                          {s.hasProvisional && (
+                            <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200" title="Đã hiệu chỉnh ELO tân thủ để đảm bảo cân bằng">
+                              Hiệu chỉnh tân thủ
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 text-[10px] text-slate-500">
                           <span>Chênh lệch: <strong className="text-slate-700">{s.teamGap} ELO</strong></span>
