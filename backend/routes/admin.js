@@ -336,7 +336,19 @@ router.put('/sessions/:id', async (req, res) => {
       ]
     );
 
-    res.json({ success: true, session: result.rows[0] });
+    const updatedSession = result.rows[0];
+
+    // Nếu session được đóng (is_closed = true), tự động kích hoạt phạt Thẻ vàng No-show cho người không điểm danh
+    if (updatedSession && updatedSession.is_closed) {
+      try {
+        const { processNoShowDisciplineForClosedSession } = require('../services/memberManagementService');
+        await processNoShowDisciplineForClosedSession(id, req.user.id);
+      } catch (discErr) {
+        console.error('Error processing no-show discipline for closed session:', discErr);
+      }
+    }
+
+    res.json({ success: true, session: updatedSession });
   } catch (error) {
     console.error('Error updating session:', error);
     res.status(500).json({ error: error.message || 'Lỗi cập nhật buổi tập.' });
@@ -743,6 +755,185 @@ router.delete('/quests/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting quest:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi xóa nhiệm vụ.' });
+  }
+});
+
+// ==========================================
+// MEMBER MANAGEMENT HUB - 360° APIs
+// ==========================================
+
+// GET /api/admin/members/:id/360/overview - Tab 1: Tổng quan 360
+router.get('/members/:id/360/overview', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberOverview(id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member 360 overview:', error);
+    res.status(error.message === 'Thành viên không tồn tại.' ? 404 : 500).json({ error: error.message || 'Lỗi tải tổng quan thành viên.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/attendance - Tab 3: Chuyên cần (Lazy Loaded)
+router.get('/members/:id/360/attendance', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberAttendanceDetails(id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member attendance details:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải thông tin chuyên cần.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/competitive - Tab 4: Thi đấu (Lazy Loaded)
+router.get('/members/:id/360/competitive', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberCompetitiveDetails(id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member competitive details:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải thông số thi đấu.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/gamification - Tab 5: Gamification & Xu (Lazy Loaded)
+router.get('/members/:id/360/gamification', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberGamificationDetails(id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member gamification details:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải dữ liệu gamification.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/timeline - Tab 6: Dòng hoạt động (Lazy Loaded)
+router.get('/members/:id/360/timeline', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberActivityTimeline(id, limit);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member timeline:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải dòng hoạt động.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/audit - Tab 7: Lịch sử kiểm toán (Lazy Loaded)
+router.get('/members/:id/360/audit', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberAuditHistory(id, limit);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member audit history:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải lịch sử kiểm toán.' });
+  }
+});
+
+// PUT /api/admin/members/:id/personal-info - Tab 2: Cập nhật thông tin thành viên (kèm audit log)
+router.put('/members/:id/personal-info', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, ...updates } = req.body;
+    const memberService = require('../services/memberManagementService');
+    const updatedUser = await memberService.updateMemberPersonalInfo({
+      userId: id,
+      adminId: req.user.id,
+      updates,
+      reason: reason || 'Quản trị viên cập nhật hồ sơ thành viên'
+    });
+    res.json({ success: true, message: 'Cập nhật thông tin thành viên thành công!', user: updatedUser });
+  } catch (error) {
+    console.error('Error updating member personal info:', error);
+    res.status(400).json({ error: error.message || 'Lỗi cập nhật thông tin thành viên.' });
+  }
+});
+
+// POST /api/admin/members/:id/coins/adjust - Điều chỉnh số dư Smash Coins (Transaction + Ledger + Audit)
+router.post('/members/:id/coins/adjust', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, reason } = req.body;
+    const changeVal = parseInt(amount, 10);
+    if (isNaN(changeVal) || changeVal === 0) {
+      return res.status(400).json({ error: 'Số xu điều chỉnh phải là số khác 0.' });
+    }
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Bắt buộc nhập lý do điều chỉnh số dư xu.' });
+    }
+    const memberService = require('../services/memberManagementService');
+    const result = await memberService.adjustUserCoins({
+      userId: id,
+      amount: changeVal,
+      source: 'MANUAL_ADMIN',
+      reason: reason.trim(),
+      adminId: req.user.id
+    });
+    res.json({ success: true, message: 'Điều chỉnh số dư xu thành công!', ...result });
+  } catch (error) {
+    console.error('Error adjusting member coins:', error);
+    res.status(400).json({ error: error.message || 'Lỗi điều chỉnh xu.' });
+  }
+});
+
+// POST /api/admin/members/:id/discipline - Phạt kỷ luật (Thẻ vàng, Thẻ đỏ, Cảnh cáo)
+router.post('/members/:id/discipline', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, reason, note, session_id, expires_at } = req.body;
+    if (!['WARNING', 'YELLOW', 'RED'].includes(type)) {
+      return res.status(400).json({ error: 'Loại kỷ luật không hợp lệ (WARNING, YELLOW, RED).' });
+    }
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Bắt buộc nhập lý do xử phạt kỷ luật.' });
+    }
+    const memberService = require('../services/memberManagementService');
+    const record = await memberService.issueDisciplineRecord({
+      userId: id,
+      adminId: req.user.id,
+      type,
+      reason: reason.trim(),
+      note: note || null,
+      sessionId: session_id || null,
+      expiresAt: expires_at || null
+    });
+    res.json({ success: true, message: `Đã phạt ${type === 'YELLOW' ? 'Thẻ vàng' : type === 'RED' ? 'Thẻ đỏ' : 'Cảnh cáo'} thành công!`, record });
+  } catch (error) {
+    console.error('Error issuing discipline record:', error);
+    res.status(400).json({ error: error.message || 'Lỗi xử phạt kỷ luật.' });
+  }
+});
+
+// PUT /api/admin/members/:id/discipline/:recordId/revoke - Gỡ bỏ / Xóa án kỷ luật (kèm lý do)
+router.put('/members/:id/discipline/:recordId/revoke', async (req, res) => {
+  try {
+    const { recordId } = req.params;
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Bắt buộc nhập lý do gỡ kỷ luật / xóa án phạt.' });
+    }
+    const memberService = require('../services/memberManagementService');
+    const record = await memberService.revokeDisciplineRecord({
+      recordId,
+      adminId: req.user.id,
+      reason: reason.trim()
+    });
+    res.json({ success: true, message: 'Đã gỡ án kỷ luật thành công!', record });
+  } catch (error) {
+    console.error('Error revoking discipline record:', error);
+    res.status(400).json({ error: error.message || 'Lỗi gỡ kỷ luật.' });
   }
 });
 

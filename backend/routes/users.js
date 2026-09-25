@@ -193,35 +193,137 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
       extraWhere = ' AND c.campaign_id = $1';
       params.push(campaign_id);
     }
-    const result = await db.query(
-      `SELECT users.id, users.casting_slot_id, users.full_name, users.phone_zalo, users.email, users.badminton_level, users.status, users.is_blocked, 
-              users.hand_preference, users.play_style, users.joined_at, users.soft_skills, users.role,
-              users.elo_singles, users.elo_doubles, 
-              users.matches_singles, users.matches_doubles, 
-              users.streak_singles, users.max_streak_singles, 
-              users.streak_doubles, users.max_streak_doubles, 
-              users.win_singles, users.win_doubles, 
-              users.loss_singles, users.loss_doubles,
-              (users.password_hash IS NOT NULL) AS is_activated
-       FROM users 
-       ${join}
-       WHERE users.role IN ('member', 'admin') AND users.full_name != 'Super Admin' AND users.phone_zalo != '0999999999'${extraWhere}
-       ORDER BY users.full_name ASC`,
-      params
-    );
+    const query = `
+      WITH discipline_summary AS (
+        SELECT 
+          user_id,
+          COUNT(id) FILTER (WHERE type = 'YELLOW' AND status = 'ACTIVE') as active_yellow_cards,
+          COUNT(id) FILTER (WHERE type = 'RED' AND status = 'ACTIVE') as active_red_cards,
+          COUNT(id) FILTER (WHERE type = 'WARNING' AND status = 'ACTIVE') as active_warnings
+        FROM member_discipline_records
+        GROUP BY user_id
+      ),
+      attendance_summary AS (
+        SELECT 
+          user_id,
+          COUNT(id) as total_reservations,
+          COUNT(id) FILTER (WHERE status IN ('CHECKED_IN', 'CHECKED_OUT', 'MISSING_CHECKOUT', 'going')) as attended_count,
+          COUNT(id) FILTER (WHERE status = 'NO_SHOW') as no_show_count,
+          COUNT(id) FILTER (WHERE is_late_cancellation = true OR (status = 'CANCELLED' AND is_late_cancellation = true)) as late_cancel_count,
+          COUNT(id) FILTER (WHERE status = 'MISSING_CHECKOUT') as missing_checkout_count,
+          MAX(checked_in_at) as last_attendance_date
+        FROM attendances
+        GROUP BY user_id
+      )
+      SELECT 
+        users.id, users.casting_slot_id, users.full_name, users.nickname, users.phone_zalo, users.email, 
+        users.badminton_level, users.academic_info, users.status, users.is_blocked, 
+        users.hand_preference, users.play_style, users.joined_at, users.soft_skills, users.role,
+        users.avatar_url, users.tags, users.level, users.xp, users.smash_coins, users.last_active_date,
+        users.elo_singles, users.elo_doubles, 
+        users.matches_singles, users.matches_doubles, 
+        users.streak_singles, users.max_streak_singles, 
+        users.streak_doubles, users.max_streak_doubles, 
+        users.win_singles, users.win_doubles, 
+        users.loss_singles, users.loss_doubles,
+        (users.password_hash IS NOT NULL) AS is_activated,
+        COALESCE(disc.active_yellow_cards, 0) as active_yellow_cards,
+        COALESCE(disc.active_red_cards, 0) as active_red_cards,
+        COALESCE(disc.active_warnings, 0) as active_warnings,
+        COALESCE(att.total_reservations, 0) as total_reservations,
+        COALESCE(att.attended_count, 0) as attended_count,
+        COALESCE(att.no_show_count, 0) as no_show_count,
+        COALESCE(att.late_cancel_count, 0) as late_cancel_count,
+        COALESCE(att.missing_checkout_count, 0) as missing_checkout_count,
+        att.last_attendance_date
+      FROM users
+      ${join}
+      LEFT JOIN discipline_summary disc ON users.id = disc.user_id
+      LEFT JOIN attendance_summary att ON users.id = att.user_id
+      WHERE users.role IN ('member', 'admin') AND users.full_name != 'Super Admin' AND users.phone_zalo != '0999999999'${extraWhere}
+      ORDER BY users.full_name ASC
+    `;
+
+    const result = await db.query(query, params);
+
     const rankedMembers = result.rows.map(m => {
       const eloSingles = m.elo_singles ?? 1000;
       const eloDoubles = m.elo_doubles ?? 1000;
+      
+      const noShowCount = parseInt(m.no_show_count, 10) || 0;
+      const lateCancelCount = parseInt(m.late_cancel_count, 10) || 0;
+      const yellowCards = parseInt(m.active_yellow_cards, 10) || 0;
+      const redCards = parseInt(m.active_red_cards, 10) || 0;
+      const missingCheckoutCount = parseInt(m.missing_checkout_count, 10) || 0;
+      const attendedCount = parseInt(m.attended_count, 10) || 0;
+      const totalReservations = parseInt(m.total_reservations, 10) || 0;
+
+      // Derived reliability score formula
+      const rawScore = 100 
+        - (noShowCount * 20) 
+        - (lateCancelCount * 10) 
+        - (yellowCards * 15) 
+        - (redCards * 40) 
+        - (missingCheckoutCount * 5) 
+        + (attendedCount * 2);
+
+      const boundedScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+
+      let reliabilityLabel = 'Xuất sắc';
+      let reliabilityLevel = 'excellent';
+      let reliabilityColor = 'emerald';
+      if (boundedScore >= 90) {
+        reliabilityLabel = 'Xuất sắc';
+        reliabilityLevel = 'excellent';
+        reliabilityColor = 'emerald';
+      } else if (boundedScore >= 75) {
+        reliabilityLabel = 'Tốt';
+        reliabilityLevel = 'good';
+        reliabilityColor = 'blue';
+      } else if (boundedScore >= 50) {
+        reliabilityLabel = 'Trung bình';
+        reliabilityLevel = 'fair';
+        reliabilityColor = 'amber';
+      } else {
+        reliabilityLabel = 'Nguy cơ';
+        reliabilityLevel = 'risk';
+        reliabilityColor = 'rose';
+      }
+
+      const attendanceRate = totalReservations > 0 
+        ? Math.round((attendedCount / totalReservations) * 100) 
+        : 100;
+
+      const lastActive = m.last_attendance_date || m.last_active_date || m.joined_at || null;
+
       return {
         ...m,
         is_activated: Boolean(m.is_activated),
+        tags: Array.isArray(m.tags) ? m.tags : [],
+        smash_coins: m.smash_coins || 0,
+        level: m.level || 1,
+        xp: m.xp || 0,
         elo_singles: eloSingles,
         elo_doubles: eloDoubles,
         rank_singles: getRankName(eloSingles),
         rank_doubles: getRankName(eloDoubles),
-        rank_name: getRankName(Math.max(eloSingles, eloDoubles))
+        rank_name: getRankName(Math.max(eloSingles, eloDoubles)),
+        active_yellow_cards: yellowCards,
+        active_red_cards: redCards,
+        total_reservations: totalReservations,
+        attended_count: attendedCount,
+        no_show_count: noShowCount,
+        late_cancel_count: lateCancelCount,
+        missing_checkout_count: missingCheckoutCount,
+        attendance_rate: attendanceRate,
+        reliability_score: boundedScore,
+        reliability_label: reliabilityLabel,
+        reliability_level: reliabilityLevel,
+        reliability_color: reliabilityColor,
+        last_active: lastActive
       };
     });
+
     res.json(rankedMembers);
   } catch (error) {
     console.error('Error fetching members:', error);
@@ -333,27 +435,28 @@ router.get('/stats', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/users/:id - Xóa/Loại bỏ user vĩnh viễn (Requires Admin)
+// DELETE /api/users/:id - Xóa hoặc Lưu trữ (Archive) tài khoản an toàn (Requires Admin)
 router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    const reason = req.body?.reason || req.query?.reason || 'Quản trị viên thực hiện xóa/lưu trữ';
 
     // Chặn tự xóa chính mình
     if (id === req.user.id) {
       return res.status(400).json({ error: 'Bạn không thể tự xóa tài khoản của chính mình!' });
     }
 
-    const result = await db.query(
-      "DELETE FROM users WHERE id = $1 RETURNING id, full_name, role",
-      [id]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Không tìm thấy tài khoản người dùng.' });
-    }
-    res.json({ success: true, message: 'Đã xóa tài khoản vĩnh viễn khỏi hệ thống.', user: result.rows[0] });
+    const { safeArchiveOrDeleteMember } = require('../services/memberManagementService');
+    const result = await safeArchiveOrDeleteMember({
+      userId: id,
+      adminId: req.user.id,
+      reason
+    });
+
+    res.json({ success: true, ...result });
   } catch (error) {
-    console.error('Error deleting user:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error deleting/archiving user:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 
