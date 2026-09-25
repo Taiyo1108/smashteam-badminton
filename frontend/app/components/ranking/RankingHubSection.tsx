@@ -13,7 +13,7 @@ import EloExplainModal from "./EloExplainModal";
 
 export default function RankingHubSection() {
   const [mode, setMode] = useState<'singles' | 'doubles'>('doubles');
-  const [filter, setFilter] = useState<'all' | 'official' | 'provisional'>('all');
+  const [filter, setFilter] = useState<'all' | 'official' | 'provisional'>('official');
   const [searchQuery, setSearchQuery] = useState('');
   const [hubData, setHubData] = useState<RankingHubResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,18 +138,8 @@ export default function RankingHubSection() {
             </button>
           </div>
 
-          {/* Filter Switcher: All vs Official vs Provisional */}
+          {/* Filter Switcher: Official (Default) vs All vs Provisional */}
           <div className="flex p-1 bg-purple-50/60 rounded-2xl border border-purple-100">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
-                filter === 'all'
-                  ? "bg-primary text-white shadow-xs"
-                  : "text-purple-700 hover:text-purple-950"
-              }`}
-            >
-              Tất cả ({hubData?.totalPlayers || 0})
-            </button>
             <button
               onClick={() => setFilter('official')}
               className={`px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
@@ -161,6 +151,16 @@ export default function RankingHubSection() {
               Chính thức ({hubData?.establishedCount || 0})
             </button>
             <button
+              onClick={() => setFilter('all')}
+              className={`px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
+                filter === 'all'
+                  ? "bg-primary text-white shadow-xs"
+                  : "text-purple-700 hover:text-purple-950"
+              }`}
+            >
+              Tất cả ({hubData?.totalPlayers || 0})
+            </button>
+            <button
               onClick={() => setFilter('provisional')}
               className={`px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
                 filter === 'provisional'
@@ -168,7 +168,7 @@ export default function RankingHubSection() {
                   : "text-purple-700 hover:text-purple-950"
               }`}
             >
-              Tạm thời ({hubData?.provisionalCount || 0})
+              Chờ xếp hạng ({hubData?.provisionalCount || 0})
             </button>
           </div>
         </div>

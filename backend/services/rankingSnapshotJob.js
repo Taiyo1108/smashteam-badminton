@@ -83,10 +83,12 @@ async function takeWeeklyRankingSnapshot(options = {}) {
     );
 
     let insertedOrUpdated = 0;
+    let officialRankCounter = 1;
 
     for (let i = 0; i < membersRes.rows.length; i++) {
       const player = membersRes.rows[i];
-      const rank = i + 1;
+      const isEstablished = Number(player.matches) >= 3;
+      const rank = isEstablished ? officialRankCounter++ : null;
 
       await db.query(
         `INSERT INTO ranking_snapshots (

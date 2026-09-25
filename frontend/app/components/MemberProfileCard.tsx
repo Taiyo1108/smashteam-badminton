@@ -5,7 +5,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import { 
   Trophy, QrCode, Award, Shield, Calendar, User, 
   Sparkles, CheckCircle2, AlertCircle, X, Download, 
-  Activity, GraduationCap, Flame, Star, ChevronRight
+  Activity, GraduationCap, Flame, Star, ChevronRight, ZoomIn
 } from "lucide-react";
 
 export type ClubTitleBadge = 
@@ -114,6 +114,7 @@ export default function MemberProfileCard({
   member?: MemberProfileData;
 }) {
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isAvatarZoomed, setIsAvatarZoomed] = useState(false);
   const [checkinStatus, setCheckinStatus] = useState(member.today_checkin_status);
 
   // Chuỗi mã QR định danh chuẩn cho Ban Tổ Chức quét
@@ -130,14 +131,21 @@ export default function MemberProfileCard({
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
           {/* CỘT TRÁI (4 CỘT): AVATAR & ĐỊNH DANH CÁ NHÂN */}
           <div className="lg:col-span-4 flex flex-col items-center text-center space-y-3 pb-6 lg:pb-0 border-b lg:border-b-0 lg:border-r border-white/10 lg:pr-6">
-            {/* Avatar với Ring Tím Neon */}
-            <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full p-1 bg-gradient-to-r from-primary via-purple-400 to-pink-500 shadow-[0_0_25px_rgba(122,34,224,0.5)]">
-              <div className="w-full h-full rounded-full bg-[#0C0A1A] flex items-center justify-center font-black text-3xl sm:text-4xl text-purple-200 overflow-hidden">
+            {/* Avatar với Ring Tím Neon - Click to Zoom */}
+            <div 
+              onClick={() => setIsAvatarZoomed(true)}
+              className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full p-1 bg-gradient-to-r from-primary via-purple-400 to-pink-500 shadow-[0_0_25px_rgba(122,34,224,0.5)] cursor-pointer group hover:scale-105 transition-transform"
+              title="Nhấn để phóng to ảnh đại diện"
+            >
+              <div className="w-full h-full rounded-full bg-[#0C0A1A] flex items-center justify-center font-black text-3xl sm:text-4xl text-purple-200 overflow-hidden relative">
                 {member.avatar_url ? (
                   <img src={member.avatar_url} alt={member.full_name} className="w-full h-full object-cover" />
                 ) : (
                   member.full_name.charAt(0)
                 )}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                  <ZoomIn className="w-6 h-6" />
+                </div>
               </div>
               <span className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-[#0C0A1A] flex items-center justify-center text-[10px] font-bold text-white shadow-xs">
                 ✓
@@ -175,13 +183,13 @@ export default function MemberProfileCard({
             </button>
           </div>
 
-          {/* CỘT PHẢI (8 CỘT): TRÌNH ĐỘ, DANH HIỆU & THÀNH TÍCH CLB */}
+          {/* CỘT PHẢI (8 CỘT): DANH HIỆU & THÀNH TÍCH CLB */}
           <div className="lg:col-span-8 space-y-6">
             {/* THÔNG TIN CHUYÊN MÔN & ĐIỂM ELO */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-center">
-                <p className="text-[10px] uppercase font-bold text-slate-400">Trình độ</p>
-                <p className="font-black text-sm text-purple-300 mt-1">{member.badminton_level}</p>
+                <p className="text-[10px] uppercase font-bold text-slate-400">Số trận đấu</p>
+                <p className="font-black text-sm text-purple-300 mt-1">{member.total_matches} trận</p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-center">
@@ -332,6 +340,52 @@ export default function MemberProfileCard({
             >
               <Download className="w-4 h-4" /> Tải ảnh thẻ QR
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal: Phóng to Avatar */}
+      {isAvatarZoomed && (
+        <div 
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in"
+          onClick={() => setIsAvatarZoomed(false)}
+        >
+          <div 
+            className="relative max-w-sm sm:max-w-md w-full bg-slate-900 border border-purple-500/30 rounded-3xl p-6 shadow-2xl flex flex-col items-center space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setIsAvatarZoomed(false)}
+              className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-white z-10"
+              aria-label="Đóng ảnh"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-64 h-64 sm:w-80 sm:h-80 rounded-2xl overflow-hidden bg-slate-950 border-2 border-white/20 shadow-inner flex items-center justify-center">
+              {member.avatar_url ? (
+                <img 
+                  src={member.avatar_url} 
+                  alt={member.full_name} 
+                  className="w-full h-full object-cover" 
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-tr from-purple-800 to-indigo-700 flex items-center justify-center text-white text-6xl font-black">
+                  {member.full_name.charAt(0)}
+                </div>
+              )}
+            </div>
+
+            <div className="text-center">
+              <h4 className="text-lg font-black text-white">
+                {member.full_name}
+              </h4>
+              {member.nickname && (
+                <p className="text-xs text-purple-300 font-medium">
+                  @{member.nickname}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}

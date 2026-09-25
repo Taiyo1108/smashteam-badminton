@@ -11,7 +11,7 @@ export interface RankedUser {
 }
 
 export interface RankedPlayer {
-  rank: number;
+  rank: number | null;
   movement: 'UP' | 'DOWN' | 'SAME' | 'NEW';
   rankChange: number;
   previousRank: number | null;
@@ -36,7 +36,7 @@ export interface RankedPlayer {
   targetPlayer: {
     id: string;
     name: string;
-    rank: number;
+    rank: number | null;
     elo: number;
   } | null;
   gapCopy: string;

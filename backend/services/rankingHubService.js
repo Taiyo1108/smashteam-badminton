@@ -14,14 +14,14 @@ const MIN_MATCHES_FOR_ESTABLISHED_RANK = 3;
 /**
  * Get comprehensive Ranking Hub payload
  * @param {object} params
- * @param {'singles'|'doubles'} [params.mode='singles']
- * @param {'all'|'official'|'provisional'} [params.filter='all']
+ * @param {'singles'|'doubles'} [params.mode='doubles']
+ * @param {'all'|'official'|'provisional'} [params.filter='official']
  * @param {string|null} [params.currentUserId=null]
  * @returns {Promise<object>}
  */
-async function getRankingHubData({ mode = 'doubles', filter = 'all', currentUserId = null }) {
+async function getRankingHubData({ mode = 'doubles', filter = 'official', currentUserId = null }) {
   const currentMode = mode === 'singles' ? 'singles' : 'doubles';
-  const currentFilter = ['all', 'official', 'provisional'].includes(filter) ? filter : 'all';
+  const currentFilter = ['all', 'official', 'provisional'].includes(filter) ? filter : 'official';
 
   // 1. Fetch current active Season
   const seasonRes = await db.query(
@@ -92,20 +92,32 @@ async function getRankingHubData({ mode = 'doubles', filter = 'all', currentUser
        id ASC`
   );
 
-  // 4. Process all ranked players and calculate Movement & Gap
-  const allRankedPlayers = [];
-  for (let i = 0; i < membersRes.rows.length; i++) {
-    const p = membersRes.rows[i];
+  // 4. Separate Established (>= 3 matches) and Provisional (< 3 matches) players
+  // Strict rule: Ranks (#1, #2, ...) are calculated ONLY based on the official leaderboard.
+  // Players with < 3 matches are unranked (rank: null, "Vô hạng").
+  const establishedRows = [];
+  const provisionalRows = [];
+
+  membersRes.rows.forEach(row => {
+    if (Number(row.matches) >= MIN_MATCHES_FOR_ESTABLISHED_RANK) {
+      establishedRows.push(row);
+    } else {
+      provisionalRows.push(row);
+    }
+  });
+
+  // Process Established Players (Official Rank #1, #2, ... #N)
+  const establishedPlayers = establishedRows.map((p, i) => {
     const rank = i + 1;
     const tier = getTierByElo(p.elo);
 
-    // Movement calculation
+    // Movement calculation vs weekly snapshot
     let movement = 'NEW';
     let rankChange = 0;
     let previousRank = null;
 
     const baseline = baselineMap.get(p.id);
-    if (baseline) {
+    if (baseline && baseline.rank != null) {
       previousRank = baseline.rank;
       rankChange = previousRank - rank;
       if (rankChange > 0) movement = 'UP';
@@ -113,9 +125,7 @@ async function getRankingHubData({ mode = 'doubles', filter = 'all', currentUser
       else movement = 'SAME';
     }
 
-    const isProvisional = Number(p.matches) < MIN_MATCHES_FOR_ESTABLISHED_RANK;
-
-    allRankedPlayers.push({
+    return {
       rank,
       movement,
       rankChange,
@@ -144,24 +154,24 @@ async function getRankingHubData({ mode = 'doubles', filter = 'all', currentUser
       winRate: Number(Number(p.win_rate).toFixed(1)),
       streak: Number(p.streak),
       maxStreak: Number(p.max_streak),
-      isProvisional,
+      isProvisional: false,
       provisionalThreshold: MIN_MATCHES_FOR_ESTABLISHED_RANK,
-      // Gap to next player will be calculated in next step
+      isTopOne: false,
       gapToNext: 0,
       targetPlayer: null,
       gapCopy: ''
-    });
-  }
+    };
+  });
 
-  // 5. Calculate Gap to Next Player for every position
-  for (let i = 0; i < allRankedPlayers.length; i++) {
-    const current = allRankedPlayers[i];
+  // Calculate Gap to Next Player within Established Players
+  for (let i = 0; i < establishedPlayers.length; i++) {
+    const current = establishedPlayers[i];
     if (i === 0) {
       current.gapToNext = 0;
       current.isTopOne = true;
       current.gapCopy = 'Đang dẫn đầu bảng';
     } else {
-      const playerAbove = allRankedPlayers[i - 1];
+      const playerAbove = establishedPlayers[i - 1];
       const gap = Math.max(0, playerAbove.elo - current.elo);
       current.gapToNext = gap;
       current.isTopOne = false;
@@ -177,38 +187,81 @@ async function getRankingHubData({ mode = 'doubles', filter = 'all', currentUser
     }
   }
 
-  // 6. Championship Podium:
+  // Process Provisional Players (Unranked: rank = null)
+  const provisionalPlayers = provisionalRows.map(p => {
+    const tier = getTierByElo(p.elo);
+    const matches = Number(p.matches);
+    const neededMatches = Math.max(1, MIN_MATCHES_FOR_ESTABLISHED_RANK - matches);
+
+    return {
+      rank: null,
+      movement: 'NEW',
+      rankChange: 0,
+      previousRank: null,
+      user: {
+        id: p.id,
+        full_name: p.full_name,
+        nickname: p.nickname,
+        avatar_url: p.avatar_url,
+        selected_avatar_frame: p.selected_avatar_frame,
+        selected_title: p.selected_title,
+        badminton_level: p.badminton_level,
+        role: p.role,
+        academic_info: p.academic_info
+      },
+      elo: Number(p.elo),
+      peakElo: Math.max(Number(p.peak_elo), Number(p.elo)),
+      tier: tier.name,
+      tierLabel: tier.label,
+      badgeClass: tier.badgeClass,
+      glowClass: tier.glowClass,
+      borderClass: tier.borderClass,
+      matches,
+      wins: Number(p.wins),
+      losses: Number(p.losses),
+      winRate: Number(Number(p.win_rate).toFixed(1)),
+      streak: Number(p.streak),
+      maxStreak: Number(p.max_streak),
+      isProvisional: true,
+      provisionalThreshold: MIN_MATCHES_FOR_ESTABLISHED_RANK,
+      isTopOne: false,
+      gapToNext: 0,
+      targetPlayer: null,
+      gapCopy: `Cần đấu thêm ${neededMatches} trận để có thứ hạng`
+    };
+  });
+
+  // Combined players list: Official ranked players first, followed by unranked provisional players
+  const allRankedPlayers = [...establishedPlayers, ...provisionalPlayers];
+
+  // 5. Championship Podium:
   // Must ONLY take Top 3 Established players for 'all' and 'official'.
   // For 'provisional' filter, podium is empty (shows provisional banner).
   let podium = [];
   if (currentFilter !== 'provisional') {
-    const establishedPlayers = allRankedPlayers.filter(p => !p.isProvisional);
     podium = establishedPlayers.slice(0, 3);
   }
 
-  // 7. Calculate 4 Spotlight Categories from 100% Real Data
+  // 6. Calculate 4 Spotlight Categories from 100% Real Data
   const spotlight = await calculateSpotlight({
     mode: currentMode,
     allPlayers: allRankedPlayers
   });
 
-  // 8. Apply Filter for Table Rankings
-  let filteredRankings = allRankedPlayers;
-  if (currentFilter === 'official') {
-    filteredRankings = allRankedPlayers.filter(p => !p.isProvisional);
+  // 7. Apply Filter for Table Rankings
+  let filteredRankings = establishedPlayers;
+  if (currentFilter === 'all') {
+    filteredRankings = allRankedPlayers;
   } else if (currentFilter === 'provisional') {
-    filteredRankings = allRankedPlayers.filter(p => p.isProvisional);
+    filteredRankings = provisionalPlayers;
   }
 
-  // 9. Extract My Position if user is authenticated
+  // 8. Extract My Position if user is authenticated
   let myPosition = null;
   if (currentUserId) {
-    const myIndex = allRankedPlayers.findIndex(p => String(p.user?.id) === String(currentUserId));
-    if (myIndex !== -1) {
-      const myItem = allRankedPlayers[myIndex];
-      myPosition = {
-        ...myItem
-      };
+    const myItem = allRankedPlayers.find(p => String(p.user?.id) === String(currentUserId));
+    if (myItem) {
+      myPosition = { ...myItem };
     } else {
       // User is authenticated but not in the active ranked list (e.g. newly created or special account)
       try {
@@ -220,7 +273,7 @@ async function getRankingHubData({ mode = 'doubles', filter = 'all', currentUser
           const u = userRes.rows[0];
           const tier = getTierByElo(1000);
           myPosition = {
-            rank: allRankedPlayers.length + 1,
+            rank: null,
             movement: 'NEW',
             rankChange: 0,
             previousRank: null,
@@ -243,7 +296,7 @@ async function getRankingHubData({ mode = 'doubles', filter = 'all', currentUser
             isTopOne: false,
             gapToNext: 0,
             targetPlayer: null,
-            gapCopy: 'Chưa có trận đấu chính thức'
+            gapCopy: `Cần đấu thêm ${MIN_MATCHES_FOR_ESTABLISHED_RANK} trận để có thứ hạng`
           };
         }
       } catch (err) {
@@ -292,8 +345,8 @@ async function calculateSpotlight({ mode, allPlayers }) {
     subLabel: `Đang có chuỗi bất bại thể thức ${mode === 'doubles' ? 'Đôi' : 'Đơn'}`
   } : null;
 
-  // 2. CLIMBER: Highest positive rankChange vs weekly snapshot
-  const climberCandidates = allPlayers.filter(p => p.rankChange > 0);
+  // 2. CLIMBER: Highest positive rankChange vs weekly snapshot (established players only)
+  const climberCandidates = allPlayers.filter(p => p.rankChange > 0 && !p.isProvisional && p.rank !== null);
   climberCandidates.sort((a, b) => b.rankChange - a.rankChange || b.elo - a.elo);
   const climber = climberCandidates.length > 0 ? {
     user: climberCandidates[0].user,

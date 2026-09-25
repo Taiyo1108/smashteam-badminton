@@ -24,10 +24,16 @@ export default function MyPositionBar({
         {/* Left: Position & Movement */}
         <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
           <div className="flex flex-col items-center justify-center shrink-0 w-11 h-11 rounded-xl bg-purple-600/30 border border-purple-400/40 text-center">
-            <span className="text-[10px] uppercase font-bold text-purple-200">Hạng</span>
-            <span className="text-base font-black text-white leading-none tabular-nums">
-              #{myPosition.rank}
-            </span>
+            <span className="text-[9px] uppercase font-bold text-purple-200">Hạng</span>
+            {myPosition.isProvisional || !myPosition.rank ? (
+              <span className="text-[10px] font-black text-amber-300 leading-tight">
+                Vô hạng
+              </span>
+            ) : (
+              <span className="text-base font-black text-white leading-none tabular-nums">
+                #{myPosition.rank}
+              </span>
+            )}
           </div>
 
           <div className="min-w-0 flex-1">
@@ -35,25 +41,33 @@ export default function MyPositionBar({
               <span className="font-bold text-sm text-white truncate">
                 Vị trí của bạn
               </span>
-              {myPosition.movement === 'UP' && (
-                <span className="inline-flex items-center text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-500/40">
-                  <TrendingUp className="w-3 h-3 mr-0.5" />+{myPosition.rankChange}
+              {myPosition.isProvisional || !myPosition.rank ? (
+                <span className="inline-flex items-center text-[10px] font-bold text-amber-300 bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-500/40">
+                  Chờ xếp hạng ({myPosition.matches}/3)
                 </span>
-              )}
-              {myPosition.movement === 'DOWN' && (
-                <span className="inline-flex items-center text-[10px] font-bold text-rose-400 bg-rose-950/80 px-1.5 py-0.2 rounded border border-rose-500/40">
-                  <TrendingDown className="w-3 h-3 mr-0.5" />{myPosition.rankChange}
-                </span>
-              )}
-              {myPosition.movement === 'NEW' && (
-                <span className="inline-flex items-center text-[10px] font-bold text-indigo-300 bg-indigo-950/80 px-1.5 py-0.2 rounded border border-indigo-500/40">
-                  <Sparkles className="w-2.5 h-2.5 mr-0.5" />Mới
-                </span>
-              )}
-              {myPosition.movement === 'SAME' && (
-                <span className="inline-flex items-center text-[10px] font-medium text-slate-400">
-                  <Minus className="w-2.5 h-2.5 mr-0.5" />Giữ hạng
-                </span>
+              ) : (
+                <>
+                  {myPosition.movement === 'UP' && (
+                    <span className="inline-flex items-center text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-500/40">
+                      <TrendingUp className="w-3 h-3 mr-0.5" />+{myPosition.rankChange}
+                    </span>
+                  )}
+                  {myPosition.movement === 'DOWN' && (
+                    <span className="inline-flex items-center text-[10px] font-bold text-rose-400 bg-rose-950/80 px-1.5 py-0.2 rounded border border-rose-500/40">
+                      <TrendingDown className="w-3 h-3 mr-0.5" />{myPosition.rankChange}
+                    </span>
+                  )}
+                  {myPosition.movement === 'NEW' && (
+                    <span className="inline-flex items-center text-[10px] font-bold text-indigo-300 bg-indigo-950/80 px-1.5 py-0.2 rounded border border-indigo-500/40">
+                      <Sparkles className="w-2.5 h-2.5 mr-0.5" />Mới
+                    </span>
+                  )}
+                  {myPosition.movement === 'SAME' && (
+                    <span className="inline-flex items-center text-[10px] font-medium text-slate-400">
+                      <Minus className="w-2.5 h-2.5 mr-0.5" />Giữ hạng
+                    </span>
+                  )}
+                </>
               )}
             </div>
 

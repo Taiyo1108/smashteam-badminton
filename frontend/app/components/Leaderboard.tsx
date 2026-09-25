@@ -359,7 +359,6 @@ export default function Leaderboard() {
                         <p className="font-bold text-slate-900 group-hover:text-primary transition-colors text-sm">
                           {player.full_name}
                         </p>
-                        <span className="text-[10px] text-slate-400">{player.badminton_level}</span>
                       </div>
                     </div>
                   </td>
