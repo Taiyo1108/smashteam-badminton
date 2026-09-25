@@ -105,6 +105,7 @@ async function calculateReliabilityScore(userId, client = db) {
       lateCancelCount,
       missingCheckoutCount,
       attendedValidCount,
+      attendedCount: attendedValidCount,
       activeYellowCards,
       activeRedCards,
       activeWarnings
@@ -203,73 +204,111 @@ async function getMemberOverview(userId) {
     [userId]
   );
 
-  return {
-    member: {
-      id: u.id,
-      full_name: u.full_name,
-      nickname: u.nickname,
-      phone_zalo: u.phone_zalo,
-      email: u.email,
-      academic_info: u.academic_info,
-      gender: u.gender,
-      avatar_url: u.avatar_url,
-      badminton_level: u.badminton_level,
-      soft_skills: typeof u.soft_skills === 'string' ? JSON.parse(u.soft_skills) : (u.soft_skills || []),
-      tags: u.tags || [],
-      role: u.role,
-      status: u.status || 'active',
-      is_blocked: Boolean(u.is_blocked),
-      is_activated: Boolean(u.is_activated),
-      joined_at: u.joined_at || u.created_at,
-      created_at: u.created_at,
-      deleted_at: u.deleted_at,
-      campaign: u.campaign_name ? { id: u.campaign_id, name: u.campaign_name } : null
+  const memberObj = {
+    id: u.id,
+    full_name: u.full_name,
+    fullName: u.full_name,
+    nickname: u.nickname,
+    phone_zalo: u.phone_zalo,
+    phoneZalo: u.phone_zalo,
+    email: u.email,
+    academic_info: u.academic_info,
+    academicInfo: u.academic_info,
+    gender: u.gender,
+    avatar_url: u.avatar_url,
+    avatarUrl: u.avatar_url,
+    badminton_level: u.badminton_level,
+    badmintonLevel: u.badminton_level,
+    hand_preference: u.hand_preference || 'right',
+    handPreference: u.hand_preference || 'right',
+    play_style: u.play_style || 'Công thủ toàn diện',
+    playStyle: u.play_style || 'Công thủ toàn diện',
+    soft_skills: typeof u.soft_skills === 'string' ? JSON.parse(u.soft_skills) : (u.soft_skills || []),
+    softSkills: typeof u.soft_skills === 'string' ? JSON.parse(u.soft_skills) : (u.soft_skills || []),
+    tags: u.tags || [],
+    role: u.role,
+    status: u.status || 'active',
+    is_blocked: Boolean(u.is_blocked),
+    isBlocked: Boolean(u.is_blocked),
+    is_activated: Boolean(u.is_activated),
+    isActivated: Boolean(u.is_activated),
+    joined_at: u.joined_at || u.created_at,
+    joinedAt: u.joined_at || u.created_at,
+    created_at: u.created_at,
+    createdAt: u.created_at,
+    deleted_at: u.deleted_at,
+    deletedAt: u.deleted_at,
+    level: u.level || 1,
+    xp: u.xp || 0,
+    smashCoins: u.smash_coins || 0,
+    smash_coins: u.smash_coins || 0,
+    campaign: u.campaign_name ? { id: u.campaign_id, name: u.campaign_name } : null
+  };
+
+  const competitiveSummary = {
+    singles: {
+      elo: u.elo_singles,
+      peakElo: Math.max(u.peak_elo_singles, u.elo_singles),
+      rank: getRankName(u.elo_singles),
+      matches: u.matches_singles,
+      wins: u.win_singles,
+      losses: u.loss_singles,
+      winRate: Number(Number(u.win_rate_singles).toFixed(1)),
+      streak: u.streak_singles,
+      maxStreak: u.max_streak_singles
     },
-    competitive: {
-      singles: {
-        elo: u.elo_singles,
-        peakElo: Math.max(u.peak_elo_singles, u.elo_singles),
-        rank: getRankName(u.elo_singles),
-        matches: u.matches_singles,
-        wins: u.win_singles,
-        losses: u.loss_singles,
-        winRate: Number(Number(u.win_rate_singles).toFixed(1)),
-        streak: u.streak_singles,
-        maxStreak: u.max_streak_singles
-      },
-      doubles: {
-        elo: u.elo_doubles,
-        peakElo: Math.max(u.peak_elo_doubles, u.elo_doubles),
-        rank: getRankName(u.elo_doubles),
-        matches: u.matches_doubles,
-        wins: u.win_doubles,
-        losses: u.loss_doubles,
-        winRate: Number(Number(u.win_rate_doubles).toFixed(1)),
-        streak: u.streak_doubles,
-        maxStreak: u.max_streak_doubles
-      }
-    },
-    gamification: {
-      level: u.level,
-      xp: u.xp,
-      smashCoins: u.smash_coins,
-      selectedAvatarFrame: u.selected_avatar_frame,
-      selectedTitle: u.selected_title
-    },
-    reliability,
-    discipline: {
-      yellowCards,
-      redCards,
-      warnings,
-      activeRecords: discRes.rows
-    },
-    attendance: {
-      rate: attendanceRate,
-      attendedCount,
-      noShowCount,
-      lateCancelCount,
-      recent: recentAttRes.rows
+    doubles: {
+      elo: u.elo_doubles,
+      peakElo: Math.max(u.peak_elo_doubles, u.elo_doubles),
+      rank: getRankName(u.elo_doubles),
+      matches: u.matches_doubles,
+      wins: u.win_doubles,
+      losses: u.loss_doubles,
+      winRate: Number(Number(u.win_rate_doubles).toFixed(1)),
+      streak: u.streak_doubles,
+      maxStreak: u.max_streak_doubles
     }
+  };
+
+  const gamificationSummary = {
+    level: u.level || 1,
+    xp: u.xp || 0,
+    smashCoins: u.smash_coins || 0,
+    selectedAvatarFrame: u.selected_avatar_frame,
+    selectedTitle: u.selected_title
+  };
+
+  const disciplineSummary = {
+    yellowCards,
+    activeYellowCards: yellowCards,
+    redCards,
+    activeRedCards: redCards,
+    warnings,
+    activeWarnings: warnings,
+    activeRecords: discRes.rows
+  };
+
+  const attendanceSummary = {
+    rate: attendanceRate,
+    attendanceRate,
+    attendedCount,
+    noShowCount,
+    lateCancelCount,
+    totalReservations: totalRelevant,
+    recent: recentAttRes.rows
+  };
+
+  return {
+    member: memberObj,
+    user: memberObj,
+    competitive: competitiveSummary,
+    competitiveSummary,
+    gamification: gamificationSummary,
+    reliability,
+    discipline: disciplineSummary,
+    disciplineSummary,
+    attendance: attendanceSummary,
+    attendanceSummary
   };
 }
 
@@ -575,6 +614,9 @@ async function getMemberGamificationDetails(userId) {
     [userId]
   );
 
+  const completedQuestsCount = questsRes.rows.filter(q => q.is_completed || q.status === 'completed').length;
+  const activeQuestsCount = questsRes.rows.filter(q => !q.is_completed && q.status !== 'completed').length;
+
   return {
     level: u.level || 1,
     xp: u.xp || 0,
@@ -586,8 +628,18 @@ async function getMemberGamificationDetails(userId) {
       selectedAvatarFrame: u.selected_avatar_frame,
       selectedTitle: u.selected_title
     },
-    inventory: invRes.rows,
-    quests: questsRes.rows,
+    inventory: {
+      selectedTitle: u.selected_title,
+      selectedAvatarFrame: u.selected_avatar_frame,
+      items: invRes.rows
+    },
+    inventoryList: invRes.rows,
+    quests: {
+      completedQuestsCount,
+      activeQuestsCount,
+      list: questsRes.rows
+    },
+    questsList: questsRes.rows,
     coinTransactions: coinTxRes.rows
   };
 }
@@ -763,7 +815,10 @@ async function getMemberActivityTimeline(userId) {
   // Sort descending by timestamp
   events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-  const sortedEvents = events.slice(0, 100);
+  const sortedEvents = events.slice(0, 100).map((ev, idx) => ({
+    id: ev.id || `${ev.type}_${idx}_${new Date(ev.timestamp).getTime()}`,
+    ...ev
+  }));
   return {
     timeline: sortedEvents,
     events: sortedEvents

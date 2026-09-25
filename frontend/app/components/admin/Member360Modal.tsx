@@ -82,6 +82,7 @@ export default function Member360Modal({
   const [loadingGamification, setLoadingGamification] = useState(false);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loadingAudit, setLoadingAudit] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   // Forms / Actions state
   const [profileForm, setProfileForm] = useState<any>({});
@@ -108,7 +109,9 @@ export default function Member360Modal({
   const [isRevoking, setIsRevoking] = useState(false);
 
   const getAuthToken = () => {
-    return typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+    return typeof window !== "undefined"
+      ? (localStorage.getItem("admin_token") || localStorage.getItem("token"))
+      : null;
   };
 
   // 1. Fetch Overview (Always loaded first)
@@ -116,6 +119,7 @@ export default function Member360Modal({
     if (!memberId) return;
     try {
       setLoadingOverview(true);
+      setOverviewError(null);
       const token = getAuthToken();
       const res = await fetch(`${API_URL}/api/admin/members/${memberId}/360/overview`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -123,23 +127,26 @@ export default function Member360Modal({
       const data = await res.json();
       if (res.ok && data.data) {
         setOverviewData(data.data);
-        const u = data.data.user;
+        const u = data.data.user || data.data.member || {};
         setProfileForm({
-          full_name: u.fullName || "",
+          full_name: u.fullName || u.full_name || "",
           nickname: u.nickname || "",
-          phone_zalo: u.phoneZalo || "",
+          phone_zalo: u.phoneZalo || u.phone_zalo || "",
           email: u.email || "",
-          academic_info: u.academicInfo || "",
+          academic_info: u.academicInfo || u.academic_info || "",
           gender: u.gender || "male",
-          badminton_level: u.badmintonLevel || "Trung bình",
-          hand_preference: u.handPreference || "right",
-          play_style: u.playStyle || "Công thủ toàn diện",
-          soft_skills: Array.isArray(u.softSkills) ? u.softSkills : [],
+          badminton_level: u.badmintonLevel || u.badminton_level || "Trung bình",
+          hand_preference: u.handPreference || u.hand_preference || "right",
+          play_style: u.playStyle || u.play_style || "Công thủ toàn diện",
+          soft_skills: Array.isArray(u.softSkills || u.soft_skills) ? (u.softSkills || u.soft_skills) : [],
           tags: Array.isArray(u.tags) ? u.tags : []
         });
+      } else {
+        setOverviewError(data.error || `Không thể tải hồ sơ thành viên (Mã lỗi ${res.status}).`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error fetching overview:", err);
+      setOverviewError(err.message || "Lỗi kết nối máy chủ khi tải hồ sơ.");
     } finally {
       setLoadingOverview(false);
     }
@@ -442,9 +449,12 @@ export default function Member360Modal({
 
   if (!isOpen) return null;
 
-  const user = overviewData?.user;
+  const user = overviewData?.user || overviewData?.member;
   const reliability = overviewData?.reliability;
-  const disciplineSummary = overviewData?.disciplineSummary;
+  const disciplineSummary = overviewData?.disciplineSummary || overviewData?.discipline;
+  const competitiveSummary = overviewData?.competitiveSummary || overviewData?.competitive;
+  const attendanceSummary = overviewData?.attendanceSummary || overviewData?.attendance;
+  const gamification = overviewData?.gamification;
 
   // Reliability colors
   const getReliabilityColorClass = (level: string) => {
@@ -481,19 +491,30 @@ export default function Member360Modal({
               <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
               <span className="text-sm font-medium text-slate-300">Đang tải hồ sơ 360°...</span>
             </div>
+          ) : overviewError ? (
+            <div className="flex flex-col items-center gap-2 py-4 justify-center text-center">
+              <AlertTriangle className="w-8 h-8 text-rose-400" />
+              <p className="text-sm font-semibold text-rose-300">{overviewError}</p>
+              <button
+                onClick={fetchOverview}
+                className="mt-2 px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold transition-colors"
+              >
+                Thử lại
+              </button>
+            </div>
           ) : user ? (
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 {/* Avatar with fallback */}
                 <div className="relative">
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white text-2xl font-black shadow-md border-2 border-white/20 overflow-hidden">
-                    {user.avatarUrl ? (
-                      <img src={user.avatarUrl} alt={user.fullName} className="w-full h-full object-cover" />
+                    {user.avatarUrl || user.avatar_url ? (
+                      <img src={user.avatarUrl || user.avatar_url} alt={user.fullName || user.full_name} className="w-full h-full object-cover" />
                     ) : (
-                      user.fullName.charAt(0)
+                      (user.fullName || user.full_name || "M").charAt(0)
                     )}
                   </div>
-                  {user.isBlocked && (
+                  {(user.isBlocked ?? user.is_blocked) && (
                     <span className="absolute -bottom-1 -right-1 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-white">
                       Khóa
                     </span>
@@ -502,7 +523,7 @@ export default function Member360Modal({
 
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-xl sm:text-2xl font-black tracking-tight">{user.fullName}</h2>
+                    <h2 className="text-xl sm:text-2xl font-black tracking-tight">{user.fullName || user.full_name}</h2>
                     {user.nickname && (
                       <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white/10 text-purple-200">
                         ({user.nickname})
@@ -518,7 +539,7 @@ export default function Member360Modal({
                   <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-300 flex-wrap">
                     <span className="flex items-center gap-1 font-mono">
                       <Phone className="w-3.5 h-3.5 text-slate-400" />
-                      {user.phoneZalo}
+                      {user.phoneZalo || user.phone_zalo}
                     </span>
                     {user.email && (
                       <span className="flex items-center gap-1">
@@ -528,7 +549,7 @@ export default function Member360Modal({
                     )}
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      Gia nhập: {formatVietnamDate(user.joinedAt || user.createdAt)}
+                      Gia nhập: {formatVietnamDate(user.joinedAt || user.joined_at || user.createdAt || user.created_at)}
                     </span>
                   </div>
 
@@ -715,7 +736,7 @@ export default function Member360Modal({
                         <Coins className="w-3.5 h-3.5 text-amber-500" /> Smash Coins
                       </p>
                       <p className="text-2xl font-black text-slate-900 mt-1 font-mono">
-                        {overviewData.user.smashCoins.toLocaleString()}
+                        {(gamification?.smashCoins ?? user?.smashCoins ?? user?.smash_coins ?? 0).toLocaleString()}
                       </p>
                       <button
                         onClick={() => setShowCoinModal(true)}
@@ -730,9 +751,9 @@ export default function Member360Modal({
                         <Flame className="w-3.5 h-3.5 text-orange-500" /> Cấp độ & XP
                       </p>
                       <p className="text-2xl font-black text-slate-900 mt-1">
-                        Level {overviewData.user.level}
+                        Level {user?.level ?? gamification?.level ?? 1}
                       </p>
-                      <p className="text-[11px] text-slate-500 mt-1">{overviewData.user.xp} XP tích lũy</p>
+                      <p className="text-[11px] text-slate-500 mt-1">{user?.xp ?? gamification?.xp ?? 0} XP tích lũy</p>
                     </div>
 
                     <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl">
@@ -740,10 +761,10 @@ export default function Member360Modal({
                         <Award className="w-3.5 h-3.5 text-indigo-500" /> ELO Cao nhất
                       </p>
                       <p className="text-2xl font-black text-slate-900 mt-1 font-mono">
-                        {Math.max(overviewData.competitiveSummary.singles.elo, overviewData.competitiveSummary.doubles.elo)}
+                        {Math.max(competitiveSummary?.singles?.elo || 1000, competitiveSummary?.doubles?.elo || 1000)}
                       </p>
                       <p className="text-[11px] text-slate-500 mt-1">
-                        {overviewData.competitiveSummary.singles.rank} / {overviewData.competitiveSummary.doubles.rank}
+                        {competitiveSummary?.singles?.rank || "Bronze"} / {competitiveSummary?.doubles?.rank || "Bronze"}
                       </p>
                     </div>
 
@@ -752,90 +773,92 @@ export default function Member360Modal({
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Tỉ lệ chuyên cần
                       </p>
                       <p className="text-2xl font-black text-slate-900 mt-1">
-                        {overviewData.attendanceSummary.attendanceRate}%
+                        {attendanceSummary?.attendanceRate ?? attendanceSummary?.rate ?? 100}%
                       </p>
                       <p className="text-[11px] text-slate-500 mt-1">
-                        {overviewData.attendanceSummary.attendedCount} / {overviewData.attendanceSummary.totalReservations} buổi
+                        {attendanceSummary?.attendedCount ?? 0} / {attendanceSummary?.totalReservations ?? attendanceSummary?.totalSessionsTracked ?? 0} buổi
                       </p>
                     </div>
                   </div>
 
                   {/* Reliability Score Breakdown Card */}
-                  <div className="bg-gradient-to-br from-slate-50 to-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-base font-black text-slate-900 flex items-center gap-2">
-                          <Activity className="w-4 h-4 text-purple-600" />
-                          Chỉ số Uy tín Hoạt động (Reliability Score)
-                        </h4>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Điểm số tự động phái sinh từ hành vi tham gia, điểm danh, no-show và kỷ luật thực tế (0 - 100).
-                        </p>
+                  {reliability && (
+                    <div className="bg-gradient-to-br from-slate-50 to-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-base font-black text-slate-900 flex items-center gap-2">
+                            <Activity className="w-4 h-4 text-purple-600" />
+                            Chỉ số Uy tín Hoạt động (Reliability Score)
+                          </h4>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Điểm số tự động phái sinh từ hành vi tham gia, điểm danh, no-show và kỷ luật thực tế (0 - 100).
+                          </p>
+                        </div>
+                        <span className={`text-xs font-black px-3 py-1 rounded-full border ${getReliabilityColorClass(reliability.level)}`}>
+                          {reliability.label} ({reliability.score}/100)
+                        </span>
                       </div>
-                      <span className={`text-xs font-black px-3 py-1 rounded-full border ${getReliabilityColorClass(reliability.level)}`}>
-                        {reliability.label} ({reliability.score}/100)
-                      </span>
+
+                      {/* Progress Bar */}
+                      <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-500 ${
+                            reliability.level === "excellent"
+                              ? "bg-emerald-500"
+                              : reliability.level === "good"
+                              ? "bg-blue-500"
+                              : reliability.level === "fair"
+                              ? "bg-amber-500"
+                              : "bg-rose-500"
+                          }`}
+                          style={{ width: `${reliability.score}%` }}
+                        />
+                      </div>
+
+                      {/* Breakdown Items */}
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 text-xs">
+                        <div className="bg-white p-3 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-medium">Buổi hoàn thành</span>
+                          <span className="font-bold text-slate-800 text-sm mt-0.5 block">
+                            +{((reliability.breakdown?.attendedCount ?? reliability.breakdown?.attendedValidCount ?? 0) * 2)}đ
+                          </span>
+                          <span className="text-[10px] text-slate-400">({reliability.breakdown?.attendedCount ?? reliability.breakdown?.attendedValidCount ?? 0} buổi)</span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-medium">Vắng không báo (No-show)</span>
+                          <span className="font-bold text-rose-600 text-sm mt-0.5 block">
+                            -{((reliability.breakdown?.noShowCount ?? 0) * 20)}đ
+                          </span>
+                          <span className="text-[10px] text-slate-400">({reliability.breakdown?.noShowCount ?? 0} lần)</span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-medium">Hủy chỗ sát giờ</span>
+                          <span className="font-bold text-amber-600 text-sm mt-0.5 block">
+                            -{((reliability.breakdown?.lateCancelCount ?? 0) * 10)}đ
+                          </span>
+                          <span className="text-[10px] text-slate-400">({reliability.breakdown?.lateCancelCount ?? 0} lần)</span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-medium">Thẻ vàng hiệu lực</span>
+                          <span className="font-bold text-amber-600 text-sm mt-0.5 block">
+                            -{((reliability.breakdown?.activeYellowCards ?? 0) * 15)}đ
+                          </span>
+                          <span className="text-[10px] text-slate-400">({reliability.breakdown?.activeYellowCards ?? 0} thẻ)</span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-medium">Thẻ đỏ hiệu lực</span>
+                          <span className="font-bold text-rose-600 text-sm mt-0.5 block">
+                            -{((reliability.breakdown?.activeRedCards ?? 0) * 40)}đ
+                          </span>
+                          <span className="text-[10px] text-slate-400">({reliability.breakdown?.activeRedCards ?? 0} thẻ)</span>
+                        </div>
+                      </div>
                     </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-500 ${
-                          reliability.level === "excellent"
-                            ? "bg-emerald-500"
-                            : reliability.level === "good"
-                            ? "bg-blue-500"
-                            : reliability.level === "fair"
-                            ? "bg-amber-500"
-                            : "bg-rose-500"
-                        }`}
-                        style={{ width: `${reliability.score}%` }}
-                      />
-                    </div>
-
-                    {/* Breakdown Items */}
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 text-xs">
-                      <div className="bg-white p-3 rounded-xl border border-slate-100">
-                        <span className="text-slate-400 block font-medium">Buổi hoàn thành</span>
-                        <span className="font-bold text-slate-800 text-sm mt-0.5 block">
-                          +{reliability.breakdown.attendedCount * 2}đ
-                        </span>
-                        <span className="text-[10px] text-slate-400">({reliability.breakdown.attendedCount} buổi)</span>
-                      </div>
-
-                      <div className="bg-white p-3 rounded-xl border border-slate-100">
-                        <span className="text-slate-400 block font-medium">Vắng không báo (No-show)</span>
-                        <span className="font-bold text-rose-600 text-sm mt-0.5 block">
-                          -{reliability.breakdown.noShowCount * 20}đ
-                        </span>
-                        <span className="text-[10px] text-slate-400">({reliability.breakdown.noShowCount} lần)</span>
-                      </div>
-
-                      <div className="bg-white p-3 rounded-xl border border-slate-100">
-                        <span className="text-slate-400 block font-medium">Hủy chỗ sát giờ</span>
-                        <span className="font-bold text-amber-600 text-sm mt-0.5 block">
-                          -{reliability.breakdown.lateCancelCount * 10}đ
-                        </span>
-                        <span className="text-[10px] text-slate-400">({reliability.breakdown.lateCancelCount} lần)</span>
-                      </div>
-
-                      <div className="bg-white p-3 rounded-xl border border-slate-100">
-                        <span className="text-slate-400 block font-medium">Thẻ vàng hiệu lực</span>
-                        <span className="font-bold text-amber-600 text-sm mt-0.5 block">
-                          -{reliability.breakdown.activeYellowCards * 15}đ
-                        </span>
-                        <span className="text-[10px] text-slate-400">({reliability.breakdown.activeYellowCards} thẻ)</span>
-                      </div>
-
-                      <div className="bg-white p-3 rounded-xl border border-slate-100">
-                        <span className="text-slate-400 block font-medium">Thẻ đỏ hiệu lực</span>
-                        <span className="font-bold text-rose-600 text-sm mt-0.5 block">
-                          -{reliability.breakdown.activeRedCards * 40}đ
-                        </span>
-                        <span className="text-[10px] text-slate-400">({reliability.breakdown.activeRedCards} thẻ)</span>
-                      </div>
-                    </div>
-                  </div>
+                  )}
 
                   {/* Actions & Next Steps */}
                   <div className="flex items-center gap-3 pt-2">
@@ -1442,85 +1465,102 @@ export default function Member360Modal({
                   </div>
 
                   {/* Level, Inventory & Quests Strip */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                      <p className="text-xs font-bold text-slate-500 uppercase">Cấp độ hiện tại</p>
-                      <p className="text-xl font-black text-slate-900 mt-1">Level {gamificationData.level}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{gamificationData.xp} XP kinh nghiệm</p>
-                    </div>
+                  {(() => {
+                    const inv = Array.isArray(gamificationData.inventory)
+                      ? { selectedTitle: null, selectedAvatarFrame: null }
+                      : (gamificationData.inventory || {});
+                    const qst = Array.isArray(gamificationData.quests)
+                      ? {
+                          completedQuestsCount: gamificationData.quests.filter((q: any) => q.is_completed || q.status === 'completed').length,
+                          activeQuestsCount: gamificationData.quests.filter((q: any) => !q.is_completed && q.status !== 'completed').length
+                        }
+                      : (gamificationData.quests || {});
+                    const txList = Array.isArray(gamificationData.coinTransactions) ? gamificationData.coinTransactions : [];
 
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                      <p className="text-xs font-bold text-slate-500 uppercase">Danh hiệu & Khung đại diện</p>
-                      <p className="text-sm font-bold text-purple-700 mt-1">
-                        {gamificationData.inventory.selectedTitle || "Chưa chọn danh hiệu"}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {gamificationData.inventory.selectedAvatarFrame || "Khung tiêu chuẩn"}
-                      </p>
-                    </div>
+                    return (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            <p className="text-xs font-bold text-slate-500 uppercase">Cấp độ hiện tại</p>
+                            <p className="text-xl font-black text-slate-900 mt-1">Level {gamificationData.level || 1}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">{gamificationData.xp || 0} XP kinh nghiệm</p>
+                          </div>
 
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                      <p className="text-xs font-bold text-slate-500 uppercase">Nhiệm vụ (Quests)</p>
-                      <p className="text-xl font-black text-emerald-600 mt-1">
-                        {gamificationData.quests.completedQuestsCount} <span className="text-xs font-normal text-slate-500">hoàn thành</span>
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {gamificationData.quests.activeQuestsCount} nhiệm vụ đang mở
-                      </p>
-                    </div>
-                  </div>
+                          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            <p className="text-xs font-bold text-slate-500 uppercase">Danh hiệu & Khung đại diện</p>
+                            <p className="text-sm font-bold text-purple-700 mt-1">
+                              {inv.selectedTitle || user?.selectedTitle || user?.selected_title || "Chưa chọn danh hiệu"}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {inv.selectedAvatarFrame || user?.selectedAvatarFrame || user?.selected_avatar_frame || "Khung tiêu chuẩn"}
+                            </p>
+                          </div>
 
-                  {/* Coin Transaction Ledger Table */}
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-                    <div className="p-3.5 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex justify-between items-center">
-                      <span>Sổ cái lịch sử giao dịch Xu ({gamificationData.coinTransactions.length})</span>
-                      <button
-                        onClick={fetchGamification}
-                        className="text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium"
-                      >
-                        <RefreshCw className="w-3 h-3" /> Làm mới
-                      </button>
-                    </div>
+                          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            <p className="text-xs font-bold text-slate-500 uppercase">Nhiệm vụ (Quests)</p>
+                            <p className="text-xl font-black text-emerald-600 mt-1">
+                              {qst.completedQuestsCount || 0} <span className="text-xs font-normal text-slate-500">hoàn thành</span>
+                            </p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {qst.activeQuestsCount || 0} nhiệm vụ đang mở
+                            </p>
+                          </div>
+                        </div>
 
-                    {gamificationData.coinTransactions.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-slate-400">Chưa có giao dịch xu nào trong sổ cái.</div>
-                    ) : (
-                      <div className="max-h-72 overflow-y-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-50/80 sticky top-0 border-b border-slate-100 text-slate-500 uppercase font-bold text-[10px]">
-                            <tr>
-                              <th className="p-3">Thời gian</th>
-                              <th className="p-3">Số lượng</th>
-                              <th className="p-3">Nguồn</th>
-                              <th className="p-3">Lý do</th>
-                              <th className="p-3 text-right">Số dư sau GD</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {gamificationData.coinTransactions.map((tx: any) => (
-                              <tr key={tx.id} className="hover:bg-slate-50/60">
-                                <td className="p-3 font-mono text-[11px] text-slate-500">
-                                  {formatVietnamDate(tx.createdAt)}
-                                </td>
-                                <td className="p-3 font-mono font-bold">
-                                  {tx.amount > 0 ? (
-                                    <span className="text-emerald-600 font-black">+{tx.amount}</span>
-                                  ) : (
-                                    <span className="text-rose-600 font-black">{tx.amount}</span>
-                                  )}
-                                </td>
-                                <td className="p-3 text-slate-600 font-semibold">{tx.source}</td>
-                                <td className="p-3 text-slate-700">{tx.reason}</td>
-                                <td className="p-3 text-right font-mono text-slate-900 font-bold">
-                                  {tx.balanceAfter !== null ? tx.balanceAfter.toLocaleString() : "--"}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
+                        {/* Coin Transaction Ledger Table */}
+                        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                          <div className="p-3.5 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex justify-between items-center">
+                            <span>Sổ cái lịch sử giao dịch Xu ({txList.length})</span>
+                            <button
+                              onClick={fetchGamification}
+                              className="text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium"
+                            >
+                              <RefreshCw className="w-3 h-3" /> Làm mới
+                            </button>
+                          </div>
+
+                          {txList.length === 0 ? (
+                            <div className="p-8 text-center text-xs text-slate-400">Chưa có giao dịch xu nào trong sổ cái.</div>
+                          ) : (
+                            <div className="max-h-72 overflow-y-auto">
+                              <table className="w-full text-left text-xs">
+                                <thead className="bg-slate-50/80 sticky top-0 border-b border-slate-100 text-slate-500 uppercase font-bold text-[10px]">
+                                  <tr>
+                                    <th className="p-3">Thời gian</th>
+                                    <th className="p-3">Số lượng</th>
+                                    <th className="p-3">Nguồn</th>
+                                    <th className="p-3">Lý do</th>
+                                    <th className="p-3 text-right">Số dư sau GD</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {txList.map((tx: any) => (
+                                    <tr key={tx.id} className="hover:bg-slate-50/60">
+                                      <td className="p-3 font-mono text-[11px] text-slate-500">
+                                        {formatVietnamDate(tx.createdAt || tx.created_at)}
+                                      </td>
+                                      <td className="p-3 font-mono font-bold">
+                                        {tx.amount > 0 ? (
+                                          <span className="text-emerald-600 font-black">+{tx.amount}</span>
+                                        ) : (
+                                          <span className="text-rose-600 font-black">{tx.amount}</span>
+                                        )}
+                                      </td>
+                                      <td className="p-3 text-slate-600 font-semibold">{tx.source}</td>
+                                      <td className="p-3 text-slate-700">{tx.reason || "--"}</td>
+                                      <td className="p-3 text-right font-mono text-slate-900 font-bold">
+                                        {(tx.balanceAfter ?? tx.balance_after ?? 0).toLocaleString()}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </>
               ) : null}
             </div>
@@ -1546,27 +1586,32 @@ export default function Member360Modal({
                   <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
                   <p className="text-sm font-medium">Đang tải dòng hoạt động...</p>
                 </div>
-              ) : timelineData && timelineData.timeline.length > 0 ? (
-                <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-                  {timelineData.timeline.map((item: any) => (
-                    <div key={item.id} className="relative group">
-                      {/* Timeline Dot */}
-                      <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full bg-slate-900 border-2 border-white ring-2 ring-slate-100" />
-                      <div className="bg-slate-50 hover:bg-slate-100/80 p-3.5 rounded-2xl border border-slate-200 transition-colors">
-                        <div className="flex items-center justify-between text-xs mb-1">
-                          <span className="font-bold text-slate-800">{item.title}</span>
-                          <span className="text-[11px] font-mono text-slate-400">
-                            {formatVietnamDate(item.timestamp)}
-                          </span>
+              ) : (() => {
+                const timelineList = Array.isArray(timelineData)
+                  ? timelineData
+                  : (timelineData?.timeline || timelineData?.events || []);
+                return timelineList.length > 0 ? (
+                  <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                    {timelineList.map((item: any, idx: number) => (
+                      <div key={item.id || `${item.type}-${idx}-${item.timestamp}`} className="relative group">
+                        {/* Timeline Dot */}
+                        <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full bg-slate-900 border-2 border-white ring-2 ring-slate-100" />
+                        <div className="bg-slate-50 hover:bg-slate-100/80 p-3.5 rounded-2xl border border-slate-200 transition-colors">
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="font-bold text-slate-800">{item.title}</span>
+                            <span className="text-[11px] font-mono text-slate-400">
+                              {formatVietnamDate(item.timestamp)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600">{item.description}</p>
                         </div>
-                        <p className="text-xs text-slate-600">{item.description}</p>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-12 text-center text-xs text-slate-400">Chưa ghi nhận hoạt động nào gần đây.</div>
-              )}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-12 text-center text-xs text-slate-400">Chưa ghi nhận hoạt động nào gần đây.</div>
+                );
+              })()}
             </div>
           )}
 
@@ -1581,139 +1626,146 @@ export default function Member360Modal({
                   <p className="text-sm font-medium">Đang tải kiểm toán & kỷ luật...</p>
                 </div>
               ) : auditData ? (
-                <>
-                  {/* Discipline Records Section */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
-                        <ShieldAlert className="w-4 h-4 text-rose-600" />
-                        Danh sách thẻ phạt kỷ luật ({auditData.disciplineRecords.length})
-                      </h4>
-                      <button
-                        onClick={() => setShowDisciplineModal(true)}
-                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition-colors flex items-center gap-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Phạt thẻ mới
-                      </button>
-                    </div>
+                (() => {
+                  const discRecords = Array.isArray(auditData.disciplineRecords) ? auditData.disciplineRecords : [];
+                  const auditLogs = Array.isArray(auditData.auditLogs) ? auditData.auditLogs : [];
 
-                    {auditData.disciplineRecords.length === 0 ? (
-                      <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center text-xs text-slate-400">
-                        Thành viên chưa từng bị phạt kỷ luật nào.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-2.5">
-                        {auditData.disciplineRecords.map((r: any) => (
-                          <div
-                            key={r.id}
-                            className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                              r.status === "ACTIVE"
-                                ? r.type === "RED"
-                                  ? "bg-rose-50/70 border-rose-200 text-rose-900"
-                                  : "bg-amber-50/70 border-amber-200 text-amber-900"
-                                : "bg-slate-50 border-slate-200 text-slate-600 opacity-75"
-                            }`}
+                  return (
+                    <>
+                      {/* Discipline Records Section */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                            <ShieldAlert className="w-4 h-4 text-rose-600" />
+                            Danh sách thẻ phạt kỷ luật ({discRecords.length})
+                          </h4>
+                          <button
+                            onClick={() => setShowDisciplineModal(true)}
+                            className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition-colors flex items-center gap-1"
                           >
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span
-                                  className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                    r.type === "RED"
-                                      ? "bg-rose-600 text-white"
-                                      : r.type === "YELLOW"
-                                      ? "bg-amber-500 text-white"
-                                      : "bg-slate-600 text-white"
-                                  }`}
-                                >
-                                  {r.type === "RED" ? "Thẻ đỏ" : r.type === "YELLOW" ? "Thẻ vàng" : "Cảnh cáo"}
-                                </span>
-                                <span className="font-bold text-xs">{r.reason}</span>
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  ({formatVietnamDate(r.createdAt)})
-                                </span>
-                              </div>
-                              {r.note && <p className="text-xs text-slate-600 mt-1 italic">Ghi chú: {r.note}</p>}
-                              {r.revokedReason && (
-                                <p className="text-xs text-emerald-700 mt-1 font-semibold">
-                                  Đã gỡ án phạt: {r.revokedReason} (Bởi {r.revokedByAdminName})
-                                </p>
-                              )}
-                            </div>
+                            <Plus className="w-3.5 h-3.5" />
+                            Phạt thẻ mới
+                          </button>
+                        </div>
 
-                            {r.status === "ACTIVE" && (
-                              <button
-                                onClick={() => setRevokeTargetRecord(r)}
-                                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-colors shadow-2xs whitespace-nowrap self-start sm:self-center"
-                              >
-                                Gỡ án phạt
-                              </button>
-                            )}
+                        {discRecords.length === 0 ? (
+                          <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center text-xs text-slate-400">
+                            Thành viên chưa từng bị phạt kỷ luật nào.
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Audit Logs Table */}
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs mt-6">
-                    <div className="p-3.5 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex justify-between items-center">
-                      <span className="flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-purple-600" />
-                        Nhật ký kiểm toán thay đổi dữ liệu ({auditData.auditLogs.length})
-                      </span>
-                      <button
-                        onClick={fetchAudit}
-                        className="text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium text-xs"
-                      >
-                        <RefreshCw className="w-3 h-3" /> Làm mới
-                      </button>
-                    </div>
-
-                    {auditData.auditLogs.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-slate-400">Chưa có nhật ký kiểm toán nào.</div>
-                    ) : (
-                      <div className="max-h-72 overflow-y-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-50/80 sticky top-0 border-b border-slate-100 text-slate-500 uppercase font-bold text-[10px]">
-                            <tr>
-                              <th className="p-3">Thời gian</th>
-                              <th className="p-3">Loại hành động</th>
-                              <th className="p-3">Thay đổi</th>
-                              <th className="p-3">Lý do</th>
-                              <th className="p-3 text-right">Admin</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {auditData.auditLogs.map((log: any) => (
-                              <tr key={log.id} className="hover:bg-slate-50/60">
-                                <td className="p-3 font-mono text-[11px] text-slate-500">
-                                  {formatVietnamDate(log.createdAt)}
-                                </td>
-                                <td className="p-3 font-bold text-slate-800">{log.actionType}</td>
-                                <td className="p-3 text-slate-600 font-mono text-[11px]">
-                                  {log.fieldName ? (
-                                    <>
-                                      <span className="font-semibold">{log.fieldName}:</span>{" "}
-                                      <span className="line-through text-slate-400">{String(log.oldValue ?? "")}</span>{" "}
-                                      &rarr; <span className="text-purple-700">{String(log.newValue ?? "")}</span>
-                                    </>
-                                  ) : (
-                                    "--"
+                        ) : (
+                          <div className="grid grid-cols-1 gap-2.5">
+                            {discRecords.map((r: any) => (
+                              <div
+                                key={r.id}
+                                className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                  r.status === "ACTIVE"
+                                    ? r.type === "RED"
+                                      ? "bg-rose-50/70 border-rose-200 text-rose-900"
+                                      : "bg-amber-50/70 border-amber-200 text-amber-900"
+                                    : "bg-slate-50 border-slate-200 text-slate-600 opacity-75"
+                                }`}
+                              >
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span
+                                      className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                        r.type === "RED"
+                                          ? "bg-rose-600 text-white"
+                                          : r.type === "YELLOW"
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-slate-600 text-white"
+                                      }`}
+                                    >
+                                      {r.type === "RED" ? "Thẻ đỏ" : r.type === "YELLOW" ? "Thẻ vàng" : "Cảnh cáo"}
+                                    </span>
+                                    <span className="font-bold text-xs">{r.reason}</span>
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      ({formatVietnamDate(r.createdAt || r.created_at || r.issuedAt || r.issued_at)})
+                                    </span>
+                                  </div>
+                                  {r.note && <p className="text-xs text-slate-600 mt-1 italic">Ghi chú: {r.note}</p>}
+                                  {r.revokedReason && (
+                                    <p className="text-xs text-emerald-700 mt-1 font-semibold">
+                                      Đã gỡ án phạt: {r.revokedReason} (Bởi {r.revokedByAdminName || r.revoked_by_admin_name || "Admin"})
+                                    </p>
                                   )}
-                                </td>
-                                <td className="p-3 text-slate-700">{log.reason || "--"}</td>
-                                <td className="p-3 text-right font-semibold text-slate-800">
-                                  {log.adminName || "System"}
-                                </td>
-                              </tr>
+                                </div>
+
+                                {r.status === "ACTIVE" && (
+                                  <button
+                                    onClick={() => setRevokeTargetRecord(r)}
+                                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-colors shadow-2xs whitespace-nowrap self-start sm:self-center"
+                                  >
+                                    Gỡ án phạt
+                                  </button>
+                                )}
+                              </div>
                             ))}
-                          </tbody>
-                        </table>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </>
+
+                      {/* Audit Logs Table */}
+                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs mt-6">
+                        <div className="p-3.5 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex justify-between items-center">
+                          <span className="flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-purple-600" />
+                            Nhật ký kiểm toán thay đổi dữ liệu ({auditLogs.length})
+                          </span>
+                          <button
+                            onClick={fetchAudit}
+                            className="text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium text-xs"
+                          >
+                            <RefreshCw className="w-3 h-3" /> Làm mới
+                          </button>
+                        </div>
+
+                        {auditLogs.length === 0 ? (
+                          <div className="p-8 text-center text-xs text-slate-400">Chưa có nhật ký kiểm toán nào.</div>
+                        ) : (
+                          <div className="max-h-72 overflow-y-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-50/80 sticky top-0 border-b border-slate-100 text-slate-500 uppercase font-bold text-[10px]">
+                                <tr>
+                                  <th className="p-3">Thời gian</th>
+                                  <th className="p-3">Loại hành động</th>
+                                  <th className="p-3">Thay đổi</th>
+                                  <th className="p-3">Lý do</th>
+                                  <th className="p-3 text-right">Admin</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {auditLogs.map((log: any) => (
+                                  <tr key={log.id} className="hover:bg-slate-50/60">
+                                    <td className="p-3 font-mono text-[11px] text-slate-500">
+                                      {formatVietnamDate(log.createdAt || log.created_at)}
+                                    </td>
+                                    <td className="p-3 font-bold text-slate-800">{log.actionType || log.action_type}</td>
+                                    <td className="p-3 text-slate-600 font-mono text-[11px]">
+                                      {log.fieldName || log.field_name ? (
+                                        <>
+                                          <span className="font-semibold">{log.fieldName || log.field_name}:</span>{" "}
+                                          <span className="line-through text-slate-400">{String(log.oldValue ?? log.old_value ?? "")}</span>{" "}
+                                          &rarr; <span className="text-purple-700">{String(log.newValue ?? log.new_value ?? "")}</span>
+                                        </>
+                                      ) : (
+                                        "--"
+                                      )}
+                                    </td>
+                                    <td className="p-3 text-slate-700">{log.reason || "--"}</td>
+                                    <td className="p-3 text-right font-semibold text-slate-800">
+                                      {log.adminName || log.admin_name || "System"}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()
               ) : null}
             </div>
           )}
