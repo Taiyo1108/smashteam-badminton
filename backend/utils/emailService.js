@@ -196,6 +196,100 @@ function renderBroadcastEmail({ heading, body, ctaText, ctaLink, footerText } = 
 }
 
 /**
+ * Ghi log email đã gửi vào bảng sent_emails_log
+ */
+async function logSentEmail({ recipient_email, subject, email_type = 'broadcast', status = 'sent', resend_id = null, broadcast_log_id = null, error_message = null }) {
+  try {
+    await pool.query(`
+      INSERT INTO sent_emails_log (recipient_email, subject, email_type, status, resend_id, broadcast_log_id, error_message, sent_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+    `, [recipient_email, subject, email_type, status, resend_id, broadcast_log_id, error_message]);
+  } catch (err) {
+    console.error('[EmailService] Lỗi khi ghi nhật ký email:', err);
+  }
+}
+
+/**
+ * Ghi log email hàng loạt vào bảng sent_emails_log
+ */
+async function logSentEmailsBatch(rows) {
+  if (!rows || rows.length === 0) return;
+  try {
+    const values = [];
+    const params = [];
+    let p = 1;
+    for (const r of rows) {
+      values.push(`($${p}, $${p+1}, $${p+2}, $${p+3}, $${p+4}, $${p+5}, $${p+6}, CURRENT_TIMESTAMP)`);
+      params.push(
+        r.recipient_email,
+        r.subject || '',
+        r.email_type || 'broadcast',
+        r.status || 'sent',
+        r.resend_id || null,
+        r.broadcast_log_id || null,
+        r.error_message || null
+      );
+      p += 7;
+    }
+    await pool.query(`
+      INSERT INTO sent_emails_log (recipient_email, subject, email_type, status, resend_id, broadcast_log_id, error_message, sent_at)
+      VALUES ${values.join(', ')}
+    `, params);
+  } catch (err) {
+    console.error('[EmailService] Lỗi khi ghi batch nhật ký email:', err);
+  }
+}
+
+/**
+ * Lấy số lượng email đã gửi và số lượng còn lại trong ngày / tháng
+ * - Hạn mức Resend Free: 100 email/ngày, 3000 email/tháng
+ * - Đảm bảo tính toán chính xác theo cả chu kỳ reset của Resend (00:00 UTC) và múi giờ Việt Nam
+ */
+async function getEmailQuota() {
+  try {
+    const res = await pool.query(`
+      SELECT
+        COUNT(CASE WHEN sent_at >= DATE_TRUNC('day', CURRENT_TIMESTAMP AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' THEN 1 END)::int as sent_today_utc,
+        COUNT(CASE WHEN sent_at >= DATE_TRUNC('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh' THEN 1 END)::int as sent_today_vn,
+        COUNT(CASE WHEN sent_at >= DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' THEN 1 END)::int as sent_month_utc,
+        COUNT(CASE WHEN sent_at >= DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh' THEN 1 END)::int as sent_month_vn
+      FROM sent_emails_log
+      WHERE status = 'sent';
+    `);
+
+    const row = res.rows[0] || {};
+    // Lấy giá trị an toàn nhất giữa UTC và VN để bảo đảm không chạm trần Resend
+    const sentToday = Math.max(row.sent_today_utc || 0, row.sent_today_vn || 0);
+    const sentMonth = Math.max(row.sent_month_utc || 0, row.sent_month_vn || 0);
+
+    const DAILY_LIMIT = 100;
+    const MONTHLY_LIMIT = 3000;
+
+    return {
+      daily: {
+        limit: DAILY_LIMIT,
+        sent: sentToday,
+        remaining: Math.max(0, DAILY_LIMIT - sentToday),
+        percent: Math.min(100, Math.round((sentToday / DAILY_LIMIT) * 100))
+      },
+      monthly: {
+        limit: MONTHLY_LIMIT,
+        sent: sentMonth,
+        remaining: Math.max(0, MONTHLY_LIMIT - sentMonth),
+        percent: Math.min(100, Math.round((sentMonth / MONTHLY_LIMIT) * 100))
+      },
+      timestamp: new Date().toISOString()
+    };
+  } catch (err) {
+    console.error('[EmailService] Lỗi khi tính quota email:', err);
+    return {
+      daily: { limit: 100, sent: 0, remaining: 100, percent: 0 },
+      monthly: { limit: 3000, sent: 0, remaining: 3000, percent: 0 }
+    };
+  }
+}
+
+/**
  * Gửi email chào mừng/trúng tuyển cho 1 ứng viên
  */
 const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
@@ -224,9 +318,24 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
 
     if (error) {
       console.error('[EmailService] Lỗi Resend khi gửi welcome email:', error);
+      await logSentEmail({
+        recipient_email: toEmail,
+        subject,
+        email_type: 'welcome',
+        status: 'failed',
+        error_message: error.message
+      });
       return;
     }
-    console.log(`[EmailService] Gửi welcome email thành công! ID: ${data.id}`);
+
+    await logSentEmail({
+      recipient_email: toEmail,
+      subject,
+      email_type: 'welcome',
+      status: 'sent',
+      resend_id: data?.id || null
+    });
+    console.log(`[EmailService] Gửi welcome email thành công! ID: ${data?.id}`);
   } catch (error) {
     console.error('[EmailService] Lỗi hệ thống khi gửi welcome email:', error);
   }
@@ -249,8 +358,23 @@ const sendTestEmail = async ({ toEmail, subject, htmlContent }) => {
   });
 
   if (error) {
+    await logSentEmail({
+      recipient_email: toEmail,
+      subject: testSubject,
+      email_type: 'test',
+      status: 'failed',
+      error_message: error.message
+    });
     throw new Error(error.message || 'Lỗi từ Resend API khi gửi thử nghiệm.');
   }
+
+  await logSentEmail({
+    recipient_email: toEmail,
+    subject: testSubject,
+    email_type: 'test',
+    status: 'sent',
+    resend_id: data?.id || null
+  });
 
   return { success: true, id: data.id };
 };
@@ -261,8 +385,9 @@ const sendTestEmail = async ({ toEmail, subject, htmlContent }) => {
  * - Sử dụng resend.batch.send() chính thức tránh 429 Too Many Requests
  * - Giãn cách 600ms giữa các mẻ
  * - Báo cáo tiến độ qua callback onBatchProgress
+ * - Ghi nhật ký đầy đủ từng email gửi thành công vào sent_emails_log
  */
-const sendBroadcastEmails = async ({ recipientList, subject, htmlContent, onBatchProgress }) => {
+const sendBroadcastEmails = async ({ recipientList, subject, htmlContent, broadcastLogId = null, onBatchProgress }) => {
   const resend = getResendClient();
   if (!resend) throw new Error('Chưa cấu hình khóa RESEND_API_KEY trong hệ thống.');
   if (!recipientList || recipientList.length === 0) {
@@ -307,18 +432,35 @@ const sendBroadcastEmails = async ({ recipientList, subject, htmlContent, onBatc
             console.error(`[EmailService] Lỗi mẻ batch ${i / BATCH_SIZE + 1}:`, error);
             failedCount += validBatchEmails.length;
             errors.push({ batchIndex: i, error: error.message });
+            await logSentEmailsBatch(validBatchEmails.map(targetEmail => ({
+              recipient_email: targetEmail,
+              subject,
+              email_type: 'broadcast',
+              status: 'failed',
+              broadcast_log_id: broadcastLogId,
+              error_message: error.message
+            })));
           } else {
             const batchSuccessCount = (data && data.data && Array.isArray(data.data))
               ? data.data.length
               : validBatchEmails.length;
             successCount += batchSuccessCount;
+
+            await logSentEmailsBatch(validBatchEmails.map((targetEmail, idx) => ({
+              recipient_email: targetEmail,
+              subject,
+              email_type: 'broadcast',
+              status: 'sent',
+              resend_id: data?.data?.[idx]?.id || null,
+              broadcast_log_id: broadcastLogId
+            })));
           }
         } else {
           // Dự phòng nếu không có batch.send: gửi song song nội bộ batch
           await Promise.all(
             validBatchEmails.map(async (email) => {
               try {
-                const { error } = await resend.emails.send({
+                const { data, error } = await resend.emails.send({
                   from: getFromEmail(),
                   to: [email],
                   subject,
@@ -327,12 +469,36 @@ const sendBroadcastEmails = async ({ recipientList, subject, htmlContent, onBatc
                 if (error) {
                   failedCount++;
                   errors.push({ email, error: error.message });
+                  await logSentEmail({
+                    recipient_email: email,
+                    subject,
+                    email_type: 'broadcast',
+                    status: 'failed',
+                    broadcast_log_id: broadcastLogId,
+                    error_message: error.message
+                  });
                 } else {
                   successCount++;
+                  await logSentEmail({
+                    recipient_email: email,
+                    subject,
+                    email_type: 'broadcast',
+                    status: 'sent',
+                    resend_id: data?.id || null,
+                    broadcast_log_id: broadcastLogId
+                  });
                 }
               } catch (err) {
                 failedCount++;
                 errors.push({ email, error: err.message });
+                await logSentEmail({
+                  recipient_email: email,
+                  subject,
+                  email_type: 'broadcast',
+                  status: 'failed',
+                  broadcast_log_id: broadcastLogId,
+                  error_message: err.message
+                });
               }
             })
           );
@@ -379,5 +545,8 @@ module.exports = {
   renderBroadcastEmail,
   sendWelcomeEmail,
   sendTestEmail,
-  sendBroadcastEmails
+  sendBroadcastEmails,
+  getEmailQuota,
+  logSentEmail,
+  logSentEmailsBatch
 };

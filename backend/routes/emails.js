@@ -8,12 +8,73 @@ const {
   renderWelcomeEmail,
   renderBroadcastEmail,
   sendTestEmail,
-  sendBroadcastEmails
+  sendBroadcastEmails,
+  getEmailQuota
 } = require('../utils/emailService');
 
 // Yêu cầu xác thực quyền Admin cho toàn bộ phân hệ Email
 router.use(authenticateToken);
 router.use(isAdmin);
+
+/**
+ * GET /api/admin/emails/quota
+ * Lấy hạn mức và số lượng email đã gửi / còn lại trong ngày và trong tháng (Resend API)
+ */
+router.get('/quota', async (req, res) => {
+  try {
+    const quota = await getEmailQuota();
+    res.json(quota);
+  } catch (error) {
+    console.error('[Emails Route] Lỗi lấy quota email:', error);
+    res.status(500).json({ error: 'Không thể tính toán hạn mức email.' });
+  }
+});
+
+/**
+ * GET /api/admin/emails/selectable-recipients
+ * Lấy danh sách thành viên/ứng viên có email để chọn gửi thư cụ thể
+ */
+router.get('/selectable-recipients', async (req, res) => {
+  try {
+    const { search, role, campaign_id } = req.query;
+
+    let query = `
+      SELECT DISTINCT u.id, u.full_name, u.email, u.role, u.phone_zalo, u.badminton_level, u.avatar_url, u.status
+      FROM users u
+      LEFT JOIN casting_slots s ON u.casting_slot_id = s.id
+      WHERE u.email IS NOT NULL AND u.email != '' AND u.email LIKE '%@%'
+    `;
+    const params = [];
+    let p = 1;
+
+    if (role && role !== 'all') {
+      query += ` AND u.role = $${p++}`;
+      params.push(role);
+    }
+
+    if (campaign_id && campaign_id !== 'all') {
+      query += ` AND s.campaign_id = $${p++}`;
+      params.push(campaign_id);
+    }
+
+    if (search && search.trim()) {
+      query += ` AND (u.full_name ILIKE $${p} OR u.email ILIKE $${p} OR u.phone_zalo ILIKE $${p})`;
+      params.push(`%${search.trim()}%`);
+      p++;
+    }
+
+    query += ` ORDER BY u.role ASC, u.full_name ASC LIMIT 500`;
+
+    const result = await db.query(query, params);
+    res.json({
+      total: result.rows.length,
+      users: result.rows
+    });
+  } catch (error) {
+    console.error('[Emails Route] Lỗi lấy danh sách người nhận:', error);
+    res.status(500).json({ error: 'Không thể tải danh sách người nhận.' });
+  }
+});
 
 /**
  * GET /api/admin/emails/template/welcome
@@ -162,27 +223,34 @@ router.post('/send-test', async (req, res) => {
  */
 router.get('/recipients-count', async (req, res) => {
   try {
-    const { target_audience, campaign_id } = req.query;
+    const { target_audience, campaign_id, user_ids } = req.query;
 
     let query = '';
     let params = [];
 
     if (target_audience === 'all_members') {
-      query = `SELECT COUNT(*) as count FROM users WHERE role = 'member' AND email IS NOT NULL AND email != ''`;
+      query = `SELECT COUNT(*) as count FROM users WHERE role = 'member' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
     } else if (target_audience === 'all_candidates') {
-      query = `SELECT COUNT(*) as count FROM users WHERE role = 'candidate' AND email IS NOT NULL AND email != ''`;
+      query = `SELECT COUNT(*) as count FROM users WHERE role = 'candidate' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
     } else if (target_audience === 'all_users') {
-      query = `SELECT COUNT(*) as count FROM users WHERE email IS NOT NULL AND email != ''`;
+      query = `SELECT COUNT(*) as count FROM users WHERE email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
+    } else if (target_audience === 'specific_users') {
+      const parsedIds = user_ids ? user_ids.split(',').map(s => s.trim()).filter(Boolean) : [];
+      if (parsedIds.length === 0) {
+        return res.json({ count: 0 });
+      }
+      query = `SELECT COUNT(*) as count FROM users WHERE id = ANY($1::uuid[]) AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
+      params = [parsedIds];
     } else if (target_audience === 'by_campaign' && campaign_id) {
       query = `
         SELECT COUNT(*) as count 
         FROM users u 
         JOIN casting_slots s ON u.casting_slot_id = s.id 
-        WHERE s.campaign_id = $1 AND u.email IS NOT NULL AND u.email != ''
+        WHERE s.campaign_id = $1 AND u.email IS NOT NULL AND u.email != '' AND u.email LIKE '%@%'
       `;
       params = [campaign_id];
     } else {
-      query = `SELECT COUNT(*) as count FROM users WHERE role = 'member' AND email IS NOT NULL AND email != ''`;
+      query = `SELECT COUNT(*) as count FROM users WHERE role = 'member' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
     }
 
     const result = await db.query(query, params);
@@ -205,6 +273,7 @@ router.post('/broadcast', async (req, res) => {
       target_audience,
       target_label,
       campaign_id,
+      selected_user_ids,
       subject,
       heading,
       body,
@@ -222,21 +291,27 @@ router.post('/broadcast', async (req, res) => {
     let params = [];
 
     if (target_audience === 'all_members') {
-      query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'member' AND email IS NOT NULL AND email != ''`;
+      query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'member' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
     } else if (target_audience === 'all_candidates') {
-      query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'candidate' AND email IS NOT NULL AND email != ''`;
+      query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'candidate' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
     } else if (target_audience === 'all_users') {
-      query = `SELECT DISTINCT email, full_name FROM users WHERE email IS NOT NULL AND email != ''`;
+      query = `SELECT DISTINCT email, full_name FROM users WHERE email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
+    } else if (target_audience === 'specific_users') {
+      if (!selected_user_ids || !Array.isArray(selected_user_ids) || selected_user_ids.length === 0) {
+        return res.status(400).json({ error: 'Vui lòng chọn ít nhất một người nhận từ danh sách.' });
+      }
+      query = `SELECT DISTINCT email, full_name FROM users WHERE id = ANY($1::uuid[]) AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
+      params = [selected_user_ids];
     } else if (target_audience === 'by_campaign' && campaign_id) {
       query = `
         SELECT DISTINCT u.email, u.full_name 
         FROM users u 
         JOIN casting_slots s ON u.casting_slot_id = s.id 
-        WHERE s.campaign_id = $1 AND u.email IS NOT NULL AND u.email != ''
+        WHERE s.campaign_id = $1 AND u.email IS NOT NULL AND u.email != '' AND u.email LIKE '%@%'
       `;
       params = [campaign_id];
     } else {
-      query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'member' AND email IS NOT NULL AND email != ''`;
+      query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'member' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
     }
 
     const usersResult = await db.query(query, params);
@@ -244,6 +319,14 @@ router.post('/broadcast', async (req, res) => {
 
     if (recipientList.length === 0) {
       return res.status(400).json({ error: 'Không tìm thấy người nhận nào có email hợp lệ trong nhóm đã chọn.' });
+    }
+
+    // Kiểm tra quota Resend trước khi tiếp nhận
+    const currentQuota = await getEmailQuota();
+    if (recipientList.length > currentQuota.daily.remaining) {
+      return res.status(400).json({
+        error: `Số lượng người nhận (${recipientList.length}) vượt quá hạn mức email có thể gửi hôm nay (${currentQuota.daily.remaining} mail còn lại). Hạn mức Resend là 100 mail/ngày.`
+      });
     }
 
     // 2. Tạo HTML thông báo chuẩn hóa kèm Anti-Spam Footer
@@ -258,7 +341,7 @@ router.post('/broadcast', async (req, res) => {
     const safeSubject = subject.trim();
     const safeHeading = heading.trim();
     const safeBody = body.trim();
-    const finalTargetLabel = target_label || target_audience;
+    const finalTargetLabel = target_label || (target_audience === 'specific_users' ? `Tự chọn (${recipientList.length} người)` : target_audience);
 
     // 3. Tạo ngay bản ghi trong email_broadcast_logs với trạng thái 'processing'
     const initialLogResult = await db.query(`
@@ -299,6 +382,7 @@ router.post('/broadcast', async (req, res) => {
           recipientList,
           subject: safeSubject,
           htmlContent,
+          broadcastLogId: broadcastId,
           onBatchProgress: async ({ successCount, failedCount, isCompleted }) => {
             try {
               await db.query(`

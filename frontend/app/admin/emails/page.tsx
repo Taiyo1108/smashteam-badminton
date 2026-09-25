@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import { 
   Mail, Send, Sparkles, Check, AlertCircle, Loader2, RefreshCw, 
   Eye, CheckCircle2, Users, History, ArrowRight, RotateCcw, ExternalLink,
-  ShieldCheck, HelpCircle, X
+  ShieldCheck, HelpCircle, X, UserCheck, Search, Filter, CheckSquare, Square,
+  Info
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { formatVietnamDate } from "@/app/utils/date";
@@ -17,6 +18,18 @@ export default function AdminEmailsPage() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
+
+  // ==========================================
+  // STATE HẠN MỨC GỬI EMAIL (RESEND QUOTA)
+  // ==========================================
+  const [quota, setQuota] = useState<{
+    daily: { limit: number; sent: number; remaining: number; percent: number };
+    monthly: { limit: number; sent: number; remaining: number; percent: number };
+  }>({
+    daily: { limit: 100, sent: 0, remaining: 100, percent: 0 },
+    monthly: { limit: 3000, sent: 0, remaining: 3000, percent: 0 }
+  });
+  const [isLoadingQuota, setIsLoadingQuota] = useState(false);
 
   // ==========================================
   // STATE TAB 1: MẪU EMAIL TRÚNG TUYỂN
@@ -38,10 +51,17 @@ export default function AdminEmailsPage() {
   // STATE TAB 2: GỬI MAIL HÀNG LOẠT (BROADCAST)
   // ==========================================
   const [campaignsList, setCampaignsList] = useState<any[]>([]);
-  const [broadcastTarget, setBroadcastTarget] = useState<"all_members" | "all_candidates" | "all_users" | "by_campaign">("all_members");
+  const [broadcastTarget, setBroadcastTarget] = useState<"all_members" | "all_candidates" | "all_users" | "by_campaign" | "specific_users">("all_members");
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
   const [recipientsCount, setRecipientsCount] = useState<number>(0);
   const [isLoadingCount, setIsLoadingCount] = useState(false);
+
+  // Chế độ chọn người nhận cụ thể (Specific Users)
+  const [selectableUsers, setSelectableUsers] = useState<any[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [isLoadingSelectable, setIsLoadingSelectable] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<"all" | "member" | "candidate" | "admin">("all");
 
   const [broadcastForm, setBroadcastForm] = useState({
     subject: "🏸 [SmashTeam] Thông báo giải đấu & lịch sinh hoạt mới nhất",
@@ -69,6 +89,44 @@ export default function AdminEmailsPage() {
   // ==========================================
   const [broadcastLogs, setBroadcastLogs] = useState<any[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  // Tải thông tin hạn mức email (Resend Quota: 100/ngày, 3000/tháng)
+  const fetchQuota = async () => {
+    setIsLoadingQuota(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/emails/quota`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQuota(data);
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải quota:", err);
+    } finally {
+      setIsLoadingQuota(false);
+    }
+  };
+
+  // Tải danh sách người nhận hợp lệ để chọn cụ thể
+  const fetchSelectableUsers = async () => {
+    setIsLoadingSelectable(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/emails/selectable-recipients`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectableUsers(data.users || []);
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải danh sách người nhận:", err);
+    } finally {
+      setIsLoadingSelectable(false);
+    }
+  };
 
   // Load welcome template
   const fetchWelcomeTemplate = async () => {
@@ -109,6 +167,11 @@ export default function AdminEmailsPage() {
 
   // Load recipients count
   const fetchRecipientsCount = async () => {
+    if (broadcastTarget === "specific_users") {
+      setRecipientsCount(selectedUserIds.length);
+      return;
+    }
+
     setIsLoadingCount(true);
     try {
       const token = localStorage.getItem("admin_token");
@@ -147,17 +210,24 @@ export default function AdminEmailsPage() {
   };
 
   useEffect(() => {
+    fetchQuota();
     fetchWelcomeTemplate();
     fetchCampaigns();
+    fetchSelectableUsers();
   }, []);
 
   useEffect(() => {
-    fetchRecipientsCount();
-  }, [broadcastTarget, selectedCampaignId]);
+    if (broadcastTarget === "specific_users") {
+      setRecipientsCount(selectedUserIds.length);
+    } else {
+      fetchRecipientsCount();
+    }
+  }, [broadcastTarget, selectedCampaignId, selectedUserIds]);
 
   useEffect(() => {
     if (activeTab === "history") {
       fetchBroadcastLogs();
+      fetchQuota();
     }
   }, [activeTab]);
 
@@ -310,6 +380,7 @@ export default function AdminEmailsPage() {
       if (res.ok) {
         setShowTestModal(false);
         showToast(`Đã gửi thư thử nghiệm thành công tới ${testEmail}!`);
+        fetchQuota();
       } else {
         alert(data.error || "Gửi thư thử nghiệm thất bại.");
       }
@@ -328,6 +399,7 @@ export default function AdminEmailsPage() {
     let targetLabel = "Tất cả thành viên chính thức";
     if (broadcastTarget === "all_candidates") targetLabel = "Toàn bộ ứng viên Casting";
     else if (broadcastTarget === "all_users") targetLabel = "Toàn bộ người dùng";
+    else if (broadcastTarget === "specific_users") targetLabel = `Tự chọn (${selectedUserIds.length} người)`;
     else if (broadcastTarget === "by_campaign") {
       const c = campaignsList.find(item => item.id === selectedCampaignId);
       targetLabel = c ? `Đợt: ${c.name}` : "Đợt tuyển chọn";
@@ -345,6 +417,7 @@ export default function AdminEmailsPage() {
           target_audience: broadcastTarget,
           target_label: targetLabel,
           campaign_id: selectedCampaignId,
+          selected_user_ids: broadcastTarget === "specific_users" ? selectedUserIds : undefined,
           subject: broadcastForm.subject,
           heading: broadcastForm.heading,
           body: broadcastForm.body,
@@ -358,6 +431,7 @@ export default function AdminEmailsPage() {
       if (res.ok) {
         showToast(data.message || "Đã gửi thông báo hàng loạt thành công!");
         fetchBroadcastLogs();
+        fetchQuota();
         setActiveTab("history");
       } else {
         showToast(data.error || "Gửi email hàng loạt thất bại.", "error");
@@ -383,8 +457,8 @@ export default function AdminEmailsPage() {
         </div>
       )}
 
-      {/* HEADER SECTION */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* HEADER SECTION & GÓC HIỂN THỊ HẠN MỨC GỬI EMAIL (RESEND QUOTA) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-secondary tracking-tight flex items-center gap-2.5">
             <Mail className="w-6 h-6 text-primary" />
@@ -395,16 +469,76 @@ export default function AdminEmailsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* GÓC NHỎ HIỂN THỊ HẠN MỨC GỬI EMAIL CHÍNH XÁC */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl px-3.5 py-2 shadow-xs flex items-center gap-3 text-xs">
+            {/* Hạn mức ngày: 100 mail/ngày */}
+            <div className="flex items-center gap-2">
+              <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                quota.daily.remaining <= 10 
+                  ? "bg-rose-500 animate-ping" 
+                  : quota.daily.remaining <= 30 
+                  ? "bg-amber-500" 
+                  : "bg-emerald-500"
+              }`} />
+              <div className="leading-tight">
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                  <span>Hôm nay</span>
+                  <span className="text-[9px] text-slate-400 font-normal">({quota.daily.sent}/100)</span>
+                </div>
+                <div className="font-extrabold text-secondary flex items-baseline gap-1">
+                  <span className={`text-xs ${
+                    quota.daily.remaining <= 10 
+                      ? "text-rose-600 font-black" 
+                      : quota.daily.remaining <= 30 
+                      ? "text-amber-600" 
+                      : "text-emerald-600"
+                  }`}>
+                    {quota.daily.remaining}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-normal">mail có thể gửi</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-7 w-px bg-slate-200" />
+
+            {/* Hạn mức tháng: 3.000 mail/tháng */}
+            <div className="flex items-center gap-2">
+              <div className="leading-tight">
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                  <span>Tháng này</span>
+                  <span className="text-[9px] text-slate-400 font-normal">({quota.monthly.sent}/3.000)</span>
+                </div>
+                <div className="font-extrabold text-secondary flex items-baseline gap-1">
+                  <span className="text-xs text-primary font-black">
+                    {quota.monthly.remaining.toLocaleString("vi-VN")}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-normal">mail có thể gửi</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Nút làm mới Quota */}
+            <button
+              type="button"
+              onClick={fetchQuota}
+              title="Làm mới số liệu hạn mức"
+              className="p-1 text-slate-400 hover:text-primary hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingQuota ? "animate-spin text-primary" : ""}`} />
+            </button>
+          </div>
+
           <button
             onClick={() => {
               setTestType(activeTab === "broadcast" ? "broadcast" : "welcome");
               setShowTestModal(true);
             }}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-primary border border-purple-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-primary border border-purple-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>Gửi Email Thử Nghiệm</span>
+            <span>Gửi Thử Nghiệm</span>
           </button>
         </div>
       </div>
@@ -669,19 +803,25 @@ export default function AdminEmailsPage() {
                   1. Chọn Nhóm Người Nhận (Target Audience) *
                 </label>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {[
-                    { id: "all_members", label: "Tất cả Thành viên chính thức", desc: "Người đã được duyệt vào CLB" },
-                    { id: "all_candidates", label: "Toàn bộ Ứng viên Casting", desc: "Tất cả hồ sơ ứng tuyển" },
-                    { id: "by_campaign", label: "Theo Đợt Tuyển Quân Cụ Thể", desc: "Lọc theo từng chiến dịch" },
-                    { id: "all_users", label: "Tất cả người dùng trong hệ thống", desc: "Gửi đến mọi tài khoản có email" }
+                    { id: "all_members", label: "Tất cả Thành viên", desc: "Người đã được duyệt vào CLB" },
+                    { id: "all_candidates", label: "Toàn bộ Ứng viên", desc: "Tất cả hồ sơ ứng tuyển" },
+                    { id: "by_campaign", label: "Theo Đợt Tuyển Quân", desc: "Lọc theo từng chiến dịch" },
+                    { id: "all_users", label: "Tất cả người dùng", desc: "Mọi tài khoản có email" },
+                    { id: "specific_users", label: "🎯 Chọn người nhận cụ thể", desc: "Tùy chọn đích danh từng người" }
                   ].map((opt) => (
                     <div
                       key={opt.id}
-                      onClick={() => setBroadcastTarget(opt.id as any)}
+                      onClick={() => {
+                        setBroadcastTarget(opt.id as any);
+                        if (opt.id === "specific_users" && selectableUsers.length === 0) {
+                          fetchSelectableUsers();
+                        }
+                      }}
                       className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
                         broadcastTarget === opt.id
-                          ? "bg-primary/5 border-primary shadow-xs"
+                          ? "bg-primary/5 border-primary shadow-xs ring-1 ring-primary/20"
                           : "bg-white border-slate-200 hover:border-slate-300"
                       }`}
                     >
@@ -709,9 +849,221 @@ export default function AdminEmailsPage() {
                   </div>
                 )}
 
+                {/* GIAO DIỆN CHỌN NGƯỜI NHẬN CỤ THỂ (SPECIFIC USERS SELECTOR) */}
+                {broadcastTarget === "specific_users" && (
+                  <div className="pt-3 border-t border-slate-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <label className="font-bold text-slate-700 flex items-center gap-1.5 text-xs">
+                        <UserCheck className="w-4 h-4 text-primary" />
+                        <span>Danh Sách Người Nhận Đã Chọn ({selectedUserIds.length})</span>
+                      </label>
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const idsToAdd = selectableUsers
+                              .filter(u => userRoleFilter === "all" || u.role === userRoleFilter)
+                              .filter(u => {
+                                if (!userSearchQuery.trim()) return true;
+                                const q = userSearchQuery.toLowerCase();
+                                return (u.full_name || "").toLowerCase().includes(q) || 
+                                       (u.email || "").toLowerCase().includes(q) || 
+                                       (u.phone_zalo || "").toLowerCase().includes(q);
+                              })
+                              .map(u => u.id);
+                            setSelectedUserIds(prev => Array.from(new Set([...prev, ...idsToAdd])));
+                          }}
+                          className="text-primary hover:underline font-bold cursor-pointer"
+                        >
+                          + Chọn tất cả đang lọc
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserIds([])}
+                          className="text-slate-500 hover:text-rose-600 font-medium cursor-pointer"
+                        >
+                          Bỏ chọn tất cả
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Chips hiển thị những người đã chọn */}
+                    {selectedUserIds.length > 0 && (
+                      <div className="p-2.5 bg-purple-50/60 border border-purple-100 rounded-xl space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-primary">
+                          <span>Đã chọn ({selectedUserIds.length} người nhận):</span>
+                          {selectedUserIds.length > 15 && (
+                            <span className="text-slate-400 font-normal">Hiển thị 15 người đầu tiên</span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                          {selectableUsers
+                            .filter(u => selectedUserIds.includes(u.id))
+                            .slice(0, 15)
+                            .map(u => (
+                              <span
+                                key={u.id}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-purple-200 rounded-lg text-[10px] font-bold text-secondary shadow-2xs"
+                              >
+                                <span>{u.full_name}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedUserIds(prev => prev.filter(id => id !== u.id));
+                                  }}
+                                  className="text-slate-400 hover:text-rose-500 p-0.5 rounded cursor-pointer"
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </span>
+                            ))}
+                          {selectedUserIds.length > 15 && (
+                            <span className="inline-flex items-center px-2 py-0.5 bg-purple-100/80 rounded-lg text-[10px] font-bold text-primary">
+                              +{selectedUserIds.length - 15} người khác
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Khung tìm kiếm & bộ lọc vai trò */}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
+                        <input
+                          type="text"
+                          value={userSearchQuery}
+                          onChange={(e) => setUserSearchQuery(e.target.value)}
+                          placeholder="Tìm theo tên, email hoặc số điện thoại..."
+                          className="w-full pl-8 pr-7 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:border-primary text-xs"
+                        />
+                        {userSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setUserSearchQuery("")}
+                            className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Bộ lọc vai trò */}
+                      <div className="flex bg-slate-200/70 p-1 rounded-xl gap-1 shrink-0">
+                        {[
+                          { id: "all", label: "Tất cả" },
+                          { id: "member", label: "Thành viên" },
+                          { id: "candidate", label: "Ứng viên" },
+                          { id: "admin", label: "Admin" }
+                        ].map((rf) => (
+                          <button
+                            key={rf.id}
+                            type="button"
+                            onClick={() => setUserRoleFilter(rf.id as any)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                              userRoleFilter === rf.id
+                                ? "bg-white text-secondary shadow-xs font-black"
+                                : "text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            {rf.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Danh sách người nhận cuộn */}
+                    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-64 overflow-y-auto divide-y divide-slate-100">
+                      {isLoadingSelectable ? (
+                        <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                          <span>Đang nạp danh sách người nhận...</span>
+                        </div>
+                      ) : selectableUsers.length === 0 ? (
+                        <div className="py-8 text-center text-slate-400 text-xs">
+                          Không tìm thấy người dùng nào có địa chỉ email hợp lệ.
+                        </div>
+                      ) : (
+                        (() => {
+                          const filtered = selectableUsers
+                            .filter(u => userRoleFilter === "all" || u.role === userRoleFilter)
+                            .filter(u => {
+                              if (!userSearchQuery.trim()) return true;
+                              const q = userSearchQuery.toLowerCase();
+                              return (u.full_name || "").toLowerCase().includes(q) || 
+                                     (u.email || "").toLowerCase().includes(q) ||
+                                     (u.phone_zalo || "").toLowerCase().includes(q);
+                            });
+
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="py-6 text-center text-slate-400 text-xs">
+                                Không có kết quả nào khớp với "{userSearchQuery}".
+                              </div>
+                            );
+                          }
+
+                          return filtered.map((u) => {
+                            const isSelected = selectedUserIds.includes(u.id);
+                            return (
+                              <div
+                                key={u.id}
+                                onClick={() => {
+                                  setSelectedUserIds(prev => 
+                                    prev.includes(u.id) ? prev.filter(x => x !== u.id) : [...prev, u.id]
+                                  );
+                                }}
+                                className={`p-2.5 px-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                                  isSelected ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-slate-50"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className={`w-4 h-4 rounded-md flex items-center justify-center border transition-all ${
+                                    isSelected 
+                                      ? "bg-primary border-primary text-white" 
+                                      : "border-slate-300 bg-white"
+                                  }`}>
+                                    {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <span className="font-bold text-secondary text-xs truncate">{u.full_name}</span>
+                                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase shrink-0 ${
+                                        u.role === 'admin' 
+                                          ? 'bg-amber-100 text-amber-800' 
+                                          : u.role === 'candidate' 
+                                          ? 'bg-purple-100 text-purple-800' 
+                                          : 'bg-blue-100 text-blue-800'
+                                      }`}>
+                                        {u.role === 'admin' ? 'Admin' : u.role === 'candidate' ? 'Ứng viên' : 'Thành viên'}
+                                      </span>
+                                    </div>
+                                    <span className="text-[11px] font-mono text-purple-600 block truncate">
+                                      {u.email}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {u.badminton_level && (
+                                  <span className="text-[10px] text-slate-400 shrink-0 hidden sm:inline">
+                                    {u.badminton_level}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Badge đếm số lượng người nhận */}
                 <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 text-[11px]">
-                  <span className="text-slate-500 font-medium">Số lượng hòm thư hợp lệ:</span>
+                  <span className="text-slate-500 font-medium">Số lượng hòm thư sẽ nhận thư:</span>
                   <div className="flex items-center gap-1.5 font-bold">
                     {isLoadingCount ? (
                       <span className="flex items-center gap-1 text-slate-400">
@@ -719,11 +1071,24 @@ export default function AdminEmailsPage() {
                       </span>
                     ) : (
                       <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-black text-xs">
-                        ✓ {recipientsCount} người nhận
+                        ✓ {recipientsCount} người nhận {broadcastTarget === "specific_users" ? "(Đã chọn)" : ""}
                       </span>
                     )}
                   </div>
                 </div>
+
+                {/* Cảnh báo vượt quá hạn mức Resend trong ngày */}
+                {recipientsCount > quota.daily.remaining && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-xs text-rose-800 mt-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Cảnh báo: Vượt quá hạn mức gửi hôm nay!</p>
+                      <p className="text-[11px] text-rose-700 mt-0.5">
+                        Số lượng người nhận (<strong>{recipientsCount}</strong>) vượt quá hạn mức Resend còn lại hôm nay (<strong>{quota.daily.remaining}</strong> mail). Vui lòng giảm bớt người nhận hoặc chờ reset hạn mức vào 00:00 UTC (07:00 sáng VN).
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Tiêu đề thư (Subject) */}
@@ -814,7 +1179,7 @@ export default function AdminEmailsPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={isSendingBroadcast || recipientsCount === 0}
+                  disabled={isSendingBroadcast || recipientsCount === 0 || recipientsCount > quota.daily.remaining}
                   onClick={() => setShowConfirmModal(true)}
                   className="px-6 py-2.5 bg-primary hover:bg-primary-hover active:scale-95 text-white font-bold rounded-xl transition-all shadow-md shadow-primary/30 flex items-center gap-2 cursor-pointer text-xs disabled:opacity-50"
                 >
@@ -1019,9 +1384,34 @@ export default function AdminEmailsPage() {
             <div>
               <h3 className="text-lg font-black text-secondary">Xác Nhận Phát Sóng Email Hàng Loạt?</h3>
               <p className="text-xs text-slate-600 mt-1">
-                Bạn sắp gửi thông báo này tới <strong className="text-primary font-black text-sm">{recipientsCount}</strong> hòm thư điện tử. Sau khi bấm xác nhận, hệ thống sẽ tiến hành gửi tự động và không thể thu hồi.
+                Bạn sắp gửi thông báo này tới <strong className="text-primary font-black text-sm">{recipientsCount}</strong> hòm thư điện tử {
+                  broadcastTarget === "specific_users" ? "(chọn đích danh theo danh sách)" :
+                  broadcastTarget === "all_members" ? "(tất cả thành viên chính thức)" :
+                  broadcastTarget === "all_candidates" ? "(toàn bộ ứng viên)" :
+                  broadcastTarget === "all_users" ? "(toàn bộ người dùng)" : "(theo đợt tuyển quân)"
+                }. Sau khi bấm xác nhận, hệ thống sẽ tiến hành gửi tự động và không thể thu hồi.
               </p>
             </div>
+
+            {/* Chi tiết danh sách người nhận nếu chọn specific_users */}
+            {broadcastTarget === "specific_users" && selectedUserIds.length > 0 && (
+              <div className="p-3 bg-purple-50/70 border border-purple-200/80 rounded-2xl space-y-1.5 text-xs">
+                <div className="flex items-center justify-between font-bold text-primary text-[11px]">
+                  <span>Danh sách người nhận ({selectedUserIds.length}):</span>
+                  {selectedUserIds.length > 8 && <span className="text-slate-400 font-normal">Cuộn để xem hết</span>}
+                </div>
+                <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                  {selectableUsers
+                    .filter(u => selectedUserIds.includes(u.id))
+                    .map(u => (
+                      <div key={u.id} className="flex items-center justify-between py-0.5 border-b border-purple-100/50 text-[11px]">
+                        <span className="font-semibold text-secondary">{u.full_name}</span>
+                        <span className="font-mono text-purple-600 text-[10px]">{u.email}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
 
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-1 text-slate-700">
               <p><strong>Tiêu đề:</strong> {broadcastForm.subject}</p>
