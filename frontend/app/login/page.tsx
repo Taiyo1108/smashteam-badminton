@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Lock, Phone, ArrowRight, Eye, EyeOff, ArrowLeft } from "lucide-react";
@@ -13,6 +13,16 @@ export default function UnifiedLogin() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const phoneParam = searchParams.get("phone");
+      if (phoneParam) {
+        setPhone(phoneParam);
+      }
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,7 +104,15 @@ export default function UnifiedLogin() {
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Mật khẩu</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-bold text-slate-700">Mật khẩu</label>
+              <Link
+                href="/reset-password"
+                className="text-xs font-semibold text-primary hover:text-primary-hover hover:underline transition-colors"
+              >
+                Quên mật khẩu?
+              </Link>
+            </div>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Lock className="h-5 w-5 text-slate-400" />
@@ -128,6 +146,12 @@ export default function UnifiedLogin() {
         </form>
 
         <div className="text-center mt-6 pt-4 border-t border-slate-100 flex flex-col gap-3">
+          <Link
+            href="/reset-password"
+            className="text-sm font-medium text-slate-600 hover:text-primary transition-colors"
+          >
+            Quên mật khẩu? <span className="font-semibold text-primary">Khôi phục bằng mã OTP email</span>
+          </Link>
           <Link
             href="/claim-account"
             className="text-sm font-semibold text-primary hover:text-primary-hover transition-colors"

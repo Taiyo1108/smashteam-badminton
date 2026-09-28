@@ -537,6 +537,118 @@ const sendBroadcastEmails = async ({ recipientList, subject, htmlContent, broadc
   };
 };
 
+/**
+ * Gửi email chứa mã OTP và link đặt lại mật khẩu cho thành viên
+ */
+const sendPasswordResetEmail = async (toEmail, userName, otpCode, resetUrl) => {
+  try {
+    if (!toEmail) return false;
+    const resend = getResendClient();
+    if (!resend) {
+      console.warn('[EmailService] Bỏ qua gửi email do chưa cấu hình RESEND_API_KEY.');
+      return false;
+    }
+
+    const hostUrl = getFrontendUrl();
+    const finalResetUrl = resetUrl || `${hostUrl}/reset-password?token=${otpCode}`;
+
+    const subject = '🏸 [SmashTeam] Mã xác nhận đặt lại mật khẩu của bạn';
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 20px; background-color: #06050c; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="background-color: #0c0a1a; padding: 40px 24px; text-align: center; color: #f8fafc; border-radius: 20px; max-width: 580px; margin: 0 auto; border: 1px solid #7A22E0; box-shadow: 0 10px 30px rgba(122, 34, 224, 0.25);">
+          
+          <!-- Header Brand -->
+          <div style="margin-bottom: 24px;">
+            <span style="display: inline-block; background: linear-gradient(135deg, #7A22E0, #9D4EDD); color: #ffffff; padding: 6px 18px; border-radius: 50px; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;">
+              SMASHTEAM BADMINTON
+            </span>
+          </div>
+
+          <h1 style="color: #ffffff; font-size: 24px; font-weight: 900; margin: 0 0 16px 0; line-height: 1.3;">
+            Yêu Cầu Đặt Lại Mật Khẩu 🔐
+          </h1>
+          
+          <div style="font-size: 14px; line-height: 1.7; color: #e2e8f0; text-align: left; background: rgba(255,255,255,0.03); padding: 22px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 24px;">
+            <p style="margin: 0 0 12px 0;">Xin chào <strong>${userName || 'Thành viên'}</strong>,</p>
+            <p style="margin: 0 0 12px 0;">Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản SmashTeam liên kết với địa chỉ email này.</p>
+            <p style="margin: 0;">Dưới đây là mã xác thực OTP của bạn (mã có hiệu lực trong vòng <strong>15 phút</strong>):</p>
+          </div>
+
+          <!-- OTP Box -->
+          <div style="background: rgba(122, 34, 224, 0.15); border: 2px dashed #9D4EDD; border-radius: 14px; padding: 22px; text-align: center; margin: 25px 0;">
+            <p style="margin: 0 0 8px 0; font-size: 12px; color: #cbd5e1; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">
+              MÃ XÁC NHẬN OTP
+            </p>
+            <div style="font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #ffffff; font-family: 'Courier New', Courier, monospace;">
+              ${otpCode}
+            </div>
+            <p style="margin: 8px 0 0 0; font-size: 11px; color: #a855f7;">
+              (Hiệu lực trong 15 phút - Tuyệt đối không chia sẻ mã này với ai)
+            </p>
+          </div>
+
+          <!-- Direct Link CTA -->
+          <div style="margin: 30px 0;">
+            <a href="${finalResetUrl}" style="background: linear-gradient(135deg, #7A22E0, #9D4EDD); color: #ffffff; padding: 14px 34px; text-decoration: none; border-radius: 50px; font-weight: 800; font-size: 13px; display: inline-block; box-shadow: 0 4px 20px rgba(122, 34, 224, 0.5); letter-spacing: 0.5px; text-transform: uppercase;">
+              ĐẶT LẠI MẬT KHẨU NGAY &rarr;
+            </a>
+          </div>
+
+          <p style="font-size: 12px; color: #94a3b8; line-height: 1.6; margin: 20px 0 0 0; text-align: left;">
+            Nếu nút bấm trên không mở được, bạn có thể dán liên kết sau vào trình duyệt:<br/>
+            <a href="${finalResetUrl}" style="color: #c084fc; word-break: break-all; font-size: 11px;">${finalResetUrl}</a>
+          </p>
+
+          <p style="font-size: 11px; color: #64748b; margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 18px; line-height: 1.6;">
+            Nếu bạn không yêu cầu đặt lại mật khẩu, xin vui lòng bỏ qua email này. Tài khoản của bạn vẫn được bảo vệ an toàn.<br/>
+            Email tự động từ hệ thống SmashTeam Badminton Club.
+          </p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    console.log(`[EmailService] Bắt đầu gửi email đặt lại mật khẩu tới: ${toEmail}...`);
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
+      to: [toEmail],
+      subject,
+      html
+    });
+
+    if (error) {
+      console.error('[EmailService] Lỗi Resend khi gửi reset email:', error);
+      await logSentEmail({
+        recipient_email: toEmail,
+        subject,
+        email_type: 'password_reset',
+        status: 'failed',
+        error_message: error.message
+      });
+      return false;
+    }
+
+    console.log(`[EmailService] Gửi email đặt lại mật khẩu thành công tới ${toEmail} (Resend ID: ${data?.id})`);
+    await logSentEmail({
+      recipient_email: toEmail,
+      subject,
+      email_type: 'password_reset',
+      status: 'sent',
+      resend_id: data?.id
+    });
+    return true;
+  } catch (err) {
+    console.error('[EmailService] Ngoại lệ khi gửi email reset mật khẩu:', err);
+    return false;
+  }
+};
+
 module.exports = {
   DEFAULT_WELCOME_TEMPLATE,
   getWelcomeTemplate,
@@ -546,6 +658,7 @@ module.exports = {
   sendWelcomeEmail,
   sendTestEmail,
   sendBroadcastEmails,
+  sendPasswordResetEmail,
   getEmailQuota,
   logSentEmail,
   logSentEmailsBatch

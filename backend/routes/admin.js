@@ -937,4 +937,83 @@ router.put('/members/:id/discipline/:recordId/revoke', async (req, res) => {
   }
 });
 
+// POST /api/admin/members/:id/reset-password - Admin cấp lại mật khẩu hoặc gửi email reset
+router.post('/members/:id/reset-password', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { mode, custom_password } = req.body; // mode: 'direct' | 'send_email'
+
+    const userRes = await db.query('SELECT id, full_name, phone_zalo, email, role, is_blocked FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy thành viên.' });
+    }
+    const user = userRes.rows[0];
+
+    if (mode === 'send_email') {
+      if (!user.email) {
+        return res.status(400).json({ error: 'Thành viên này chưa có địa chỉ email trong hồ sơ.' });
+      }
+      const crypto = require('crypto');
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+      await db.query(
+        'UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL',
+        [user.id]
+      );
+      await db.query(
+        `INSERT INTO password_reset_tokens (user_id, token, otp_code, expires_at) VALUES ($1, $2, $3, $4)`,
+        [user.id, resetToken, otpCode, expiresAt]
+      );
+
+      const { sendPasswordResetEmail } = require('../utils/emailService');
+      const frontendUrl = process.env.FRONTEND_URL || 'https://smashteam.id.vn';
+      const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+      const sent = await sendPasswordResetEmail(user.email, user.full_name, otpCode, resetUrl);
+
+      if (!sent) {
+        return res.status(500).json({ error: 'Lỗi khi gửi email đặt lại mật khẩu.' });
+      }
+
+      return res.json({
+        success: true,
+        message: `Đã gửi email khôi phục mật khẩu (kèm mã OTP & link) tới ${user.email}.`
+      });
+    } else {
+      // Direct set password
+      const bcrypt = require('bcrypt');
+      let newPass = custom_password;
+      if (!newPass || newPass.trim().length === 0) {
+        const randNum = Math.floor(1000 + Math.random() * 9000);
+        newPass = `Smash@${randNum}`;
+      } else {
+        newPass = newPass.trim();
+        if (newPass.length < 6) {
+          return res.status(400).json({ error: 'Mật khẩu phải có tối thiểu 6 ký tự.' });
+        }
+      }
+
+      const saltRounds = 10;
+      const passwordHash = await bcrypt.hash(newPass, saltRounds);
+
+      await db.query('BEGIN');
+      await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, user.id]);
+      await db.query('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+      await db.query('COMMIT');
+
+      return res.json({
+        success: true,
+        message: `Đã cấp lại mật khẩu thành công cho ${user.full_name}!`,
+        new_password: newPass
+      });
+    }
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => {});
+    console.error('Error admin reset password:', error);
+    res.status(500).json({ error: 'Lỗi máy chủ khi đặt lại mật khẩu.' });
+  }
+});
+
 module.exports = router;
+

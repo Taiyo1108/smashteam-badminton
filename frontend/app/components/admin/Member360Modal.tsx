@@ -31,7 +31,9 @@ import {
   Loader2,
   ArrowUpRight,
   ArrowDownRight,
-  FileText
+  FileText,
+  KeyRound,
+  Copy
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { formatVietnamDate } from "@/app/utils/date";
@@ -107,6 +109,14 @@ export default function Member360Modal({
   const [revokeTargetRecord, setRevokeTargetRecord] = useState<any>(null);
   const [revokeReason, setRevokeReason] = useState("");
   const [isRevoking, setIsRevoking] = useState(false);
+
+  // Admin reset password action
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [resetPassMode, setResetPassMode] = useState<"send_email" | "direct">("send_email");
+  const [customPassword, setCustomPassword] = useState("");
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [resetPassResult, setResetPassResult] = useState<{ message: string; new_password?: string } | null>(null);
+  const [copiedPass, setCopiedPass] = useState(false);
 
   const getAuthToken = () => {
     return typeof window !== "undefined"
@@ -444,6 +454,42 @@ export default function Member360Modal({
       alert(err.message || "Lỗi mạng.");
     } finally {
       setIsRevoking(false);
+    }
+  };
+
+  const handleAdminResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!memberId) return;
+    setIsResettingPassword(true);
+    setResetPassResult(null);
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`${API_URL}/api/admin/members/${memberId}/reset-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          mode: resetPassMode,
+          custom_password: resetPassMode === "direct" ? customPassword : undefined
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setResetPassResult({
+          message: data.message,
+          new_password: data.new_password
+        });
+        fetchAudit();
+        fetchTimeline();
+      } else {
+        alert(data.error || "Lỗi khi đặt lại mật khẩu.");
+      }
+    } catch (err: any) {
+      alert(err.message || "Lỗi kết nối khi đặt lại mật khẩu.");
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -1071,6 +1117,33 @@ export default function Member360Modal({
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Account Security & Password Reset */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-purple-600" />
+                    Bảo mật & Cấp lại mật khẩu
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Gửi email chứa mã OTP và link reset, hoặc cấp trực tiếp mật khẩu mới cho thành viên.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetPassMode(user?.email ? "send_email" : "direct");
+                    setCustomPassword("");
+                    setResetPassResult(null);
+                    setCopiedPass(false);
+                    setShowResetPasswordModal(true);
+                  }}
+                  className="px-3.5 py-2 bg-white hover:bg-purple-50 text-purple-700 font-bold text-xs rounded-xl border border-purple-200 transition-colors flex items-center gap-1.5 shadow-2xs"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  Đặt lại mật khẩu
+                </button>
               </div>
 
               {/* Reason for change (Audit Trail Requirement) */}
@@ -2007,6 +2080,156 @@ export default function Member360Modal({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* SUB-MODAL 4: ADMIN RESET PASSWORD */}
+        {/* ========================================================= */}
+        {showResetPasswordModal && (
+          <div className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-100 space-y-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                    <KeyRound className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base text-slate-900">Đặt lại mật khẩu</h3>
+                    <p className="text-[11px] text-slate-500">{user?.fullName || user?.full_name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowResetPasswordModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {resetPassResult ? (
+                <div className="space-y-3 py-2">
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>{resetPassResult.message}</div>
+                  </div>
+
+                  {resetPassResult.new_password && (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        Mật khẩu mới đã tạo:
+                      </p>
+                      <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-300 font-mono font-bold text-base text-purple-700">
+                        <span>{resetPassResult.new_password}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (resetPassResult.new_password) {
+                              navigator.clipboard.writeText(resetPassResult.new_password);
+                              setCopiedPass(true);
+                              setTimeout(() => setCopiedPass(false), 2000);
+                            }
+                          }}
+                          className="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md flex items-center gap-1 font-sans"
+                        >
+                          {copiedPass ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copiedPass ? "Đã chép" : "Sao chép"}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Hãy sao chép và gửi mật khẩu này cho thành viên đăng nhập.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowResetPasswordModal(false)}
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleAdminResetPassword} className="space-y-4">
+                  {/* Mode selector */}
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setResetPassMode("send_email")}
+                      disabled={!user?.email}
+                      className={`py-2 text-xs font-bold rounded-lg transition-all flex flex-col items-center gap-0.5 ${
+                        resetPassMode === "send_email"
+                          ? "bg-white text-purple-700 shadow-xs"
+                          : user?.email
+                          ? "text-slate-600 hover:text-slate-900"
+                          : "text-slate-400 cursor-not-allowed"
+                      }`}
+                    >
+                      <span>Gửi email xác thực</span>
+                      <span className="text-[10px] font-normal opacity-75">
+                        {user?.email ? "OTP qua email" : "(Chưa có email)"}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setResetPassMode("direct")}
+                      className={`py-2 text-xs font-bold rounded-lg transition-all flex flex-col items-center gap-0.5 ${
+                        resetPassMode === "direct"
+                          ? "bg-white text-purple-700 shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      <span>Cấp trực tiếp</span>
+                      <span className="text-[10px] font-normal opacity-75">Admin đặt mật khẩu</span>
+                    </button>
+                  </div>
+
+                  {resetPassMode === "send_email" ? (
+                    <div className="text-xs text-slate-600 bg-purple-50/50 p-3 rounded-xl border border-purple-100 leading-relaxed">
+                      Hệ thống sẽ gửi email chứa <strong className="text-purple-900">mã OTP 6 số</strong> và đường link khôi phục bảo mật tới: <strong className="text-slate-900 font-mono">{user?.email}</strong>.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-slate-700 uppercase">
+                        Mật khẩu mới (Để trống để tự tạo ngẫu nhiên)
+                      </label>
+                      <input
+                        type="text"
+                        value={customPassword}
+                        onChange={e => setCustomPassword(e.target.value)}
+                        placeholder="Để trống tự sinh: Smash@xxxx"
+                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-600 outline-none font-mono"
+                      />
+                      <p className="text-[11px] text-slate-400">
+                        Nếu nhập thủ công, tối thiểu 6 ký tự.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowResetPasswordModal(false)}
+                      className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isResettingPassword}
+                      className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isResettingPassword && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      {resetPassMode === "send_email" ? "Gửi email OTP" : "Cập nhật mật khẩu"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         )}
