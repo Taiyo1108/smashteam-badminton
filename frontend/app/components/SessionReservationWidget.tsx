@@ -77,6 +77,10 @@ export default function SessionReservationWidget({
   const [lateCancelReason, setLateCancelReason] = useState("");
   const [isSubmittingLateCancel, setIsSubmittingLateCancel] = useState(false);
 
+  // Early Checkout Modal (Rời buổi tập sớm)
+  const [isEarlyCheckoutModalOpen, setIsEarlyCheckoutModalOpen] = useState(false);
+  const [isSubmittingEarlyCheckout, setIsSubmittingEarlyCheckout] = useState(false);
+
   // Waitlist offer countdown timer
   const [offerTimeRemaining, setOfferTimeRemaining] = useState<string | null>(null);
 
@@ -316,6 +320,34 @@ export default function SessionReservationWidget({
     }
   };
 
+  // Handler: Early Checkout (Check-out rời sân sớm từ trang cá nhân)
+  const handleEarlyCheckout = async () => {
+    setIsSubmittingEarlyCheckout(true);
+    try {
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/sessions/${session.id}/checkout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || "Bạn đã check-out và rời buổi tập thành công!");
+        setIsEarlyCheckoutModalOpen(false);
+        if (onActionSuccess) onActionSuccess();
+      } else {
+        showToast(data.error || "Không thể thực hiện Check-out lúc này.", "error");
+      }
+    } catch (e) {
+      showToast("Lỗi kết nối máy chủ.", "error");
+    } finally {
+      setIsSubmittingEarlyCheckout(false);
+    }
+  };
+
   const isReserved = attStatus === "RESERVED" || attStatus === "CONFIRMED";
   const isCheckedIn = attStatus === "CHECKED_IN";
   const isCheckedOut = attStatus === "CHECKED_OUT";
@@ -490,12 +522,14 @@ export default function SessionReservationWidget({
               Check-in lúc {checkedInAt ? formatVietnamDate(checkedInAt, "time") : "hôm nay"}. Sẵn sàng ra sân ghép trận!
             </span>
             <div className="flex items-center gap-2 shrink-0">
-              <Link href={`/check-in?session_id=${session.id}&mode=checkout`}>
-                <button className="px-3.5 py-1.5 rounded-lg bg-emerald-400 text-slate-950 text-xs font-black hover:bg-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow">
-                  <LogOut className="w-3.5 h-3.5" />
-                  Quét QR Check-out
-                </button>
-              </Link>
+              <button
+                onClick={() => setIsEarlyCheckoutModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-lg bg-amber-400 text-slate-950 text-xs font-black hover:bg-amber-300 transition-all flex items-center gap-1.5 cursor-pointer shadow active:scale-95"
+                title="Bấm để rời buổi tập sớm và loại khỏi danh sách xếp trận"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Rời buổi tập sớm
+              </button>
               <Link href="/admin/matches">
                 <button className="px-3 py-1.5 rounded-lg bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition-all">
                   Xem Bàn Đấu
@@ -508,7 +542,9 @@ export default function SessionReservationWidget({
             <div className="flex items-center gap-2.5">
               <CheckCircle2 className="w-5 h-5 text-teal-400 shrink-0" />
               <div>
-                <p className="font-bold text-white text-sm">Buổi tập hoàn thành (Đã Check-out)</p>
+                <p className="font-bold text-white text-sm">
+                  Buổi tập hoàn thành {checkoutStatus === "early" ? "(Rời sân sớm)" : "(Check-out đúng giờ)"}
+                </p>
                 <p className="text-[11px] text-teal-300/80 mt-0.5">
                   {checkedInAt ? `Vào: ${formatVietnamDate(checkedInAt, "time")}` : ""} 
                   {checkedOutAt ? ` • Ra: ${formatVietnamDate(checkedOutAt, "time")}` : ""} 
@@ -523,18 +559,18 @@ export default function SessionReservationWidget({
             </Link>
           </div>
         ) : isMissingCheckout ? (
-          <div className="w-full p-4 rounded-xl bg-amber-950/60 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="w-full p-4 rounded-xl bg-teal-950/60 border border-teal-500/30 text-teal-200 text-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-teal-400 shrink-0" />
               <div>
-                <p className="font-bold text-amber-300 text-sm">Đã kết thúc buổi tập (Quên Check-out)</p>
-                <p className="text-[11px] text-amber-200/80 mt-0.5">
-                  Hệ thống tự động ghi nhận hoàn thành buổi tập{typeof durationMinutes === "number" && durationMinutes > 0 ? ` (~${durationMinutes} phút)` : ""}.
+                <p className="font-bold text-white text-sm">Buổi tập hoàn thành (Check-out đúng giờ)</p>
+                <p className="text-[11px] text-teal-300/80 mt-0.5">
+                  Hệ thống tự động ghi nhận bạn hoàn thành buổi tập{typeof durationMinutes === "number" && durationMinutes > 0 ? ` (~${durationMinutes} phút)` : ""}.
                 </p>
               </div>
             </div>
             <Link href="/profile">
-              <button className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black transition-all cursor-pointer shadow">
+              <button className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow">
                 Xem Lịch Sử
               </button>
             </Link>
@@ -684,6 +720,71 @@ export default function SessionReservationWidget({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* EARLY CHECKOUT CONFIRMATION MODAL */}
+      {isEarlyCheckoutModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 text-white space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <LogOut className="w-4 h-4" />
+                </div>
+                <h3 className="font-black text-base text-white">Rời buổi tập sớm (Check-out)</h3>
+              </div>
+              <button
+                onClick={() => setIsEarlyCheckoutModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-300 leading-relaxed bg-slate-800/60 p-4 rounded-xl border border-slate-700/60">
+              <p className="font-semibold text-white">
+                Bạn đã chơi xong và muốn check-out về sớm?
+              </p>
+              <p>
+                • Hệ thống sẽ ghi nhận thời lượng tham gia buổi tập từ lúc bạn check-in đến thời điểm hiện tại.
+              </p>
+              <p className="text-amber-300 font-medium">
+                • Bạn sẽ được tự động loại khỏi danh sách xếp trận (Match Desk) để ban tổ chức không xếp bạn vào các lượt đấu tiếp theo.
+              </p>
+              <p className="text-slate-400 text-[11px] pt-1 border-t border-slate-700/50">
+                💡 Lưu ý: Nếu bạn ở lại chơi đến hết giờ buổi tập, hệ thống sẽ mặc định tự động hoàn tất check-out đúng giờ cho bạn mà không cần thao tác gì.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsEarlyCheckoutModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+              >
+                Ở lại chơi tiếp
+              </button>
+              <button
+                type="button"
+                onClick={handleEarlyCheckout}
+                disabled={isSubmittingEarlyCheckout}
+                className="px-5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-all shadow-md active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isSubmittingEarlyCheckout ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang xử lý...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Xác nhận Rời sân</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -732,7 +732,7 @@ async function processQrCheckIn({
 }
 
 /**
- * Thành viên hoặc Admin thực hiện CHECK-OUT buổi tập
+ * Thành viên (rời sớm từ trang cá nhân) hoặc Admin thực hiện CHECK-OUT buổi tập
  */
 async function processQrCheckOut({
   sessionId,
@@ -751,9 +751,7 @@ async function processQrCheckOut({
       `SELECT s.*, 
               s.date_time::text AS date_time_str,
               s.session_start::text AS session_start_str,
-              s.session_end::text AS session_end_str,
-              s.checkout_open_at::text AS checkout_open_at_str,
-              s.checkout_close_at::text AS checkout_close_at_str
+              s.session_end::text AS session_end_str
        FROM sessions s
        WHERE s.id = $1::uuid
        FOR UPDATE;`,
@@ -776,48 +774,12 @@ async function processQrCheckOut({
     );
 
     if (activeMatchRes.rows.length > 0) {
-      throw new Error('Thành viên này đang có trận đấu chưa kết thúc trên sân (Match Desk). Vui lòng hoàn thành hoặc hủy trận đấu trước khi Check-out.');
+      throw new Error('Bạn đang có trận đấu chưa kết thúc trên sân (Match Desk). Vui lòng hoàn thành hoặc báo Admin/Trọng tài kết thúc trận trước khi Check-out.');
     }
 
     const isAdmin = Boolean(adminId);
 
-    // 3. Xác thực QR token Check-out (nếu client gọi bằng mã QR)
-    const rawCode = (clientTokenOrCode || '').trim().toUpperCase();
-    if (rawCode && !isAdmin) {
-      const matchCheckoutSecret = session.qr_checkout_secret_token && rawCode === session.qr_checkout_secret_token.toUpperCase();
-      const matchCheckinSecret = session.qr_secret_token && rawCode === session.qr_secret_token.toUpperCase();
-      const matchCheckinQr = session.qr_code && rawCode === session.qr_code.toUpperCase();
-
-      if (matchCheckinSecret || matchCheckinQr) {
-        throw new Error('Mã này là mã QR Check-in (Vào sân), không phải mã QR Check-out (Rời sân). Vui lòng quét đúng mã QR Check-out của sân.');
-      }
-
-      if (!matchCheckoutSecret && !session.qr_checkout_secret_token?.toUpperCase().includes(rawCode)) {
-        throw new Error('Mã QR Check-out không khớp với buổi tập này hoặc không hợp lệ.');
-      }
-    } else if (!isAdmin) {
-      throw new Error('Bạn cần phải quét mã QR tại sân để Check-out.');
-    }
-
-    // 4. Kiểm tra khung giờ check-out (Time Window)
-    const now = new Date();
-    const tStart = session.session_start ? new Date(session.session_start) : new Date(session.date_time);
-    const tEnd = session.session_end ? new Date(session.session_end) : new Date(tStart.getTime() + 2 * 3600000);
-    const checkoutOpen = session.checkout_open_at ? new Date(session.checkout_open_at) : new Date(tStart.getTime() + 30 * 60000);
-    const checkoutClose = session.checkout_close_at ? new Date(session.checkout_close_at) : new Date(tEnd.getTime() + 60 * 60000);
-
-    if (!isAdmin && now < checkoutOpen) {
-      throw new Error(
-        `Cổng Check-out mở từ ${checkoutOpen.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày ${checkoutOpen.toLocaleDateString('vi-VN')}. Bạn chưa thể Check-out lúc này.`
-      );
-    }
-    if (!isAdmin && now > checkoutClose) {
-      throw new Error(
-        `Cổng Check-out của buổi tập đã đóng lúc ${checkoutClose.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}.`
-      );
-    }
-
-    // 5. Kiểm tra trạng thái attendance của user
+    // 3. Kiểm tra trạng thái attendance của user
     const attRes = await client.query(
       `SELECT * FROM attendances WHERE session_id = $1::uuid AND user_id = $2::uuid FOR UPDATE;`,
       [sessionId, userId]
@@ -845,7 +807,7 @@ async function processQrCheckOut({
 
     // Nếu chưa từng Check-in
     if (att.status === 'RESERVED' || att.status === 'CONFIRMED') {
-      throw new Error('Bạn chưa quét mã Check-in tại sân nên không thể thực hiện Check-out.');
+      throw new Error('Bạn chưa Check-in tại sân nên không thể thực hiện Check-out.');
     }
 
     if (att.status === 'CANCELLED' || att.status === 'NO_SHOW') {
@@ -857,25 +819,25 @@ async function processQrCheckOut({
       throw new Error(`Trạng thái hiện tại (${att.status}) không hợp lệ để Check-out.`);
     }
 
-    // 6. Thực hiện check-out
+    // 4. Thực hiện check-out: Cập nhật status thành CHECKED_OUT (tự động loại khỏi danh sách xếp trận)
     const effectiveOutTime = checkoutTime ? new Date(checkoutTime) : new Date();
     const checkInTime = att.checked_in_at ? new Date(att.checked_in_at) : new Date(att.created_at);
     const durationMinutes = Math.max(1, Math.round((effectiveOutTime.getTime() - checkInTime.getTime()) / 60000));
-    const method = isAdmin ? 'admin' : (rawCode ? 'qr' : 'manual');
+    const method = isAdmin ? 'admin' : 'profile_early';
 
     await client.query(
       `UPDATE attendances
        SET status = 'CHECKED_OUT',
            checked_out_at = $1,
            checkout_method = $2,
-           checkout_status = 'completed',
+           checkout_status = 'early',
            duration_minutes = $3,
            updated_at = CURRENT_TIMESTAMP
        WHERE session_id = $4::uuid AND user_id = $5::uuid;`,
       [effectiveOutTime, method, durationMinutes, sessionId, userId]
     );
 
-    // 7. Ghi audit log nếu admin can thiệp
+    // 5. Ghi audit log nếu admin can thiệp
     if (isAdmin) {
       await client.query(
         `INSERT INTO session_audit_logs (
@@ -889,11 +851,13 @@ async function processQrCheckOut({
 
     return {
       success: true,
-      message: 'Check-out thành công! Cảm ơn bạn đã tham gia buổi tập.',
+      message: isAdmin 
+        ? 'Admin đã ghi nhận Check-out thành công cho thành viên.' 
+        : 'Check-out thành công! Bạn đã rời buổi tập và được tự động loại khỏi danh sách xếp trận.',
       checked_in_at: checkInTime,
       checked_out_at: effectiveOutTime,
       duration_minutes: durationMinutes,
-      checkout_status: 'completed',
+      checkout_status: 'early',
       method
     };
   } catch (error) {
@@ -1068,6 +1032,7 @@ module.exports = {
   claimWaitlistOffer,
   processQrCheckIn,
   processQrCheckOut,
+  processCheckOut: processQrCheckOut,
   adminApproveLateCancel,
   adminRejectLateCancel,
   getAdminSessionDashboard

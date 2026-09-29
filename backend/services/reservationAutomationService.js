@@ -163,7 +163,8 @@ async function processNoShows() {
 }
 
 /**
- * Tự động chuyển các attendance CHECKED_IN thành MISSING_CHECKOUT sau khi buổi tập kết thúc
+ * Tự động Check-out đúng giờ cho các thành viên còn lại trên sân khi buổi tập kết thúc
+ * (Đối với các thành viên check-out đúng giờ thì mặc định rời sân đúng giờ luôn không cần check out)
  */
 async function processMissingCheckouts() {
   const client = await db.connect();
@@ -175,22 +176,24 @@ async function processMissingCheckouts() {
          AND (missing_checkout_processed IS FALSE OR missing_checkout_processed IS NULL);`
     );
 
-    let missingCount = 0;
+    let completedCount = 0;
 
     for (const session of endedSessions.rows) {
       await client.query('BEGIN');
 
       const sEnd = session.session_end ? new Date(session.session_end) : new Date();
 
+      // Thành viên ở lại đến hết buổi tập được mặc định rời sân đúng giờ (CHECKED_OUT, completed)
       const updateRes = await client.query(
         `UPDATE attendances
-         SET status = 'MISSING_CHECKOUT',
-             checkout_status = 'missing',
-             checkout_method = 'auto',
+         SET status = 'CHECKED_OUT',
+             checked_out_at = $1,
+             checkout_status = 'completed',
+             checkout_method = 'auto_ontime',
              duration_minutes = GREATEST(1, ROUND(EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(checked_in_at, created_at))) / 60)),
              updated_at = CURRENT_TIMESTAMP
          WHERE session_id = $2::uuid 
-           AND status = 'CHECKED_IN';`,
+           AND status IN ('CHECKED_IN', 'going');`,
         [sEnd, session.id]
       );
 
@@ -200,12 +203,12 @@ async function processMissingCheckouts() {
       );
 
       await client.query('COMMIT');
-      missingCount += updateRes.rowCount;
+      completedCount += updateRes.rowCount;
     }
 
-    return missingCount;
+    return completedCount;
   } catch (error) {
-    console.error('[Automation] Error processing missing checkouts:', error);
+    console.error('[Automation] Error processing on-time checkouts:', error);
     return 0;
   } finally {
     client.release();

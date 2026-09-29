@@ -96,7 +96,6 @@ export default function AdminSessionsPage() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
-  const [copiedCheckoutUrl, setCopiedCheckoutUrl] = useState(false);
 
   // Fetch list of sessions
   const fetchSessions = async (historyMode = false, preserveSelectedId?: string) => {
@@ -551,17 +550,15 @@ export default function AdminSessionsPage() {
   };
 
   // QR & Link helpers
-  // QR & Link helpers
-  const downloadQRCode = (type: "checkin" | "checkout" = "checkin") => {
+  const downloadQRCode = () => {
     if (!selectedSession) return;
-    const canvasId = type === "checkout" ? "session-checkout-qr-canvas" : "session-qr-canvas";
-    const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
+    const canvas = document.getElementById("session-qr-canvas") as HTMLCanvasElement;
     if (!canvas) return;
 
     const url = canvas.toDataURL("image/png");
     const link = document.createElement("a");
     link.href = url;
-    link.download = `QR-${type === "checkout" ? "Checkout" : "Checkin"}-${selectedSession.title.replace(/\s+/g, "-")}.png`;
+    link.download = `QR-Checkin-${selectedSession.title.replace(/\s+/g, "-")}.png`;
     link.click();
   };
 
@@ -575,18 +572,6 @@ export default function AdminSessionsPage() {
     navigator.clipboard.writeText(qrCheckinUrl);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 2500);
-  };
-
-  const qrCheckoutSecretToken = selectedSession?.qr_checkout_secret_token || "";
-  const qrCheckoutUrl = selectedSession && typeof window !== "undefined"
-    ? `${window.location.origin}/check-in?session_id=${selectedSession.id}&token=${qrCheckoutSecretToken}&mode=checkout`
-    : "";
-
-  const copyQrCheckoutUrl = () => {
-    if (!qrCheckoutUrl) return;
-    navigator.clipboard.writeText(qrCheckoutUrl);
-    setCopiedCheckoutUrl(true);
-    setTimeout(() => setCopiedCheckoutUrl(false), 2500);
   };
 
   // Filter attendees
@@ -1227,15 +1212,15 @@ export default function AdminSessionsPage() {
               {/* TAB CONTENT: QR CODE & PUBLIC DISPLAY */}
               {activeTab === "qr" && (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* QR 1: CHECK-IN */}
-                    <div className="p-5 border border-slate-200 rounded-3xl bg-slate-50 text-center space-y-4 shadow-sm">
+                  <div className="max-w-md mx-auto">
+                    {/* QR: CHECK-IN SÂN ĐẤU */}
+                    <div className="p-6 border border-slate-200 rounded-3xl bg-slate-50 text-center space-y-4 shadow-sm">
                       <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                         <span className="text-xs font-black text-secondary uppercase tracking-wider flex items-center gap-1.5">
                           <CheckCircle className="w-4 h-4 text-emerald-500" />
                           MÃ QR CHECK-IN SÂN ĐẤU
                         </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                           {selectedSession.checkin_open_at ? formatVietnamDate(selectedSession.checkin_open_at, "time") : "Mở"} - {selectedSession.checkin_close_at ? formatVietnamDate(selectedSession.checkin_close_at, "time") : "Hết trận"}
                         </span>
                       </div>
@@ -1244,7 +1229,7 @@ export default function AdminSessionsPage() {
                         <QRCodeCanvas
                           id="session-qr-canvas"
                           value={qrCheckinUrl}
-                          size={180}
+                          size={200}
                           level={"H"}
                           includeMargin={true}
                         />
@@ -1252,8 +1237,8 @@ export default function AdminSessionsPage() {
 
                       <div className="space-y-2">
                         <button
-                          onClick={() => downloadQRCode("checkin")}
-                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-secondary text-white hover:bg-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
+                          onClick={() => downloadQRCode()}
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-secondary text-white hover:bg-slate-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
                         >
                           <Download className="w-3.5 h-3.5" /> Tải mã QR Check-in (PNG)
                         </button>
@@ -1274,68 +1259,21 @@ export default function AdminSessionsPage() {
                         </div>
                       </div>
                     </div>
-
-                    {/* QR 2: CHECK-OUT */}
-                    <div className="p-5 border border-teal-200/80 rounded-3xl bg-teal-50/40 text-center space-y-4 shadow-sm">
-                      <div className="flex items-center justify-between border-b border-teal-100 pb-3">
-                        <span className="text-xs font-black text-teal-950 uppercase tracking-wider flex items-center gap-1.5">
-                          <LogOut className="w-4 h-4 text-teal-600" />
-                          MÃ QR CHECK-OUT (RỜI SÂN)
-                        </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">
-                          {selectedSession.checkout_open_at ? formatVietnamDate(selectedSession.checkout_open_at, "time") : "Mở"} - {selectedSession.checkout_close_at ? formatVietnamDate(selectedSession.checkout_close_at, "time") : "Đóng sân"}
-                        </span>
-                      </div>
-                      
-                      <div className="bg-white p-4 rounded-2xl shadow-inner border border-teal-200 inline-block mx-auto">
-                        <QRCodeCanvas
-                          id="session-checkout-qr-canvas"
-                          value={qrCheckoutUrl}
-                          size={180}
-                          level={"H"}
-                          includeMargin={true}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <button
-                          onClick={() => downloadQRCode("checkout")}
-                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-teal-700 text-white hover:bg-teal-800 text-xs font-bold rounded-xl transition-all cursor-pointer shadow active:scale-95"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Tải mã QR Check-out (PNG)
-                        </button>
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            readOnly
-                            value={qrCheckoutUrl}
-                            className="w-full bg-white p-2 rounded-xl border border-teal-200 font-mono text-[10px] text-slate-600 select-all truncate"
-                          />
-                          <button
-                            onClick={copyQrCheckoutUrl}
-                            className="px-3 py-2 bg-teal-600 text-white font-bold text-xs rounded-xl cursor-pointer hover:bg-teal-500 shrink-0 transition-all"
-                            title="Sao chép link Check-out"
-                          >
-                            {copiedCheckoutUrl ? "Đã chép!" : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
-                  {/* Security & Token details */}
+                  {/* Security & Check-out mechanism info */}
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
-                    <h4 className="font-bold text-secondary">Thông tin bảo mật mã QR & Khung giờ:</h4>
+                    <h4 className="font-bold text-secondary">Thông tin bảo mật mã QR & Quy định rời sân:</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-600 text-[11px]">
                       <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
-                        <p className="font-bold text-secondary">Check-in Token:</p>
+                        <p className="font-bold text-secondary">Check-in Token tại sân:</p>
                         <p>• Mã Secret: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-secondary font-bold font-mono">{qrSecretToken || "Mặc định"}</code></p>
                         <p>• Mã 5 ký tự nhập tay: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-secondary font-bold font-mono">{selectedSession.checkin_code || "Không có"}</code></p>
                       </div>
                       <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
-                        <p className="font-bold text-teal-800">Check-out Token:</p>
-                        <p>• Mã Secret Check-out: <code className="bg-teal-50 px-1.5 py-0.5 rounded text-teal-800 font-bold font-mono">{qrCheckoutSecretToken || "Mặc định"}</code></p>
-                        <p>• Tự động loại khỏi Match Desk ngay khi Check-out thành công.</p>
+                        <p className="font-bold text-emerald-700">Quy chế Check-out (Rời sân):</p>
+                        <p>• <strong>Về sớm:</strong> Người chơi vào trang cá nhân bấm <em>&ldquo;Rời buổi tập sớm&rdquo;</em> để tự động loại khỏi Match Desk.</p>
+                        <p>• <strong>Đúng giờ:</strong> Người chơi chơi đến hết giờ được hệ thống tự động hoàn tất check-out đúng giờ, không cần quét mã.</p>
                       </div>
                     </div>
                   </div>
