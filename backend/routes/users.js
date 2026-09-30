@@ -419,7 +419,7 @@ router.get('/stats', authenticateToken, isAdmin, async (req, res) => {
     const [candidatesResult, membersResult, matchesResult, mediaResult] = await Promise.all([
       db.query(`SELECT COUNT(*) FROM users WHERE role = 'candidate'`),
       db.query(`SELECT COUNT(*) FROM users WHERE role IN ('member', 'admin')`),
-      db.query(`SELECT COUNT(*) FROM matches`),
+      db.query(`SELECT COUNT(*) FROM matches WHERE status = 'approved'`),
       db.query(`SELECT COUNT(*) FROM media_posts`)
     ]);
     

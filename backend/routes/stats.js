@@ -31,8 +31,8 @@ router.get('/', async (req, res) => {
            AND phone_zalo != '0999999999'`,
         'count'
       ),
-      // Tổng số trận đấu đã ghi nhận trong bảng matches.
-      safeStat(`SELECT COUNT(*)::int AS count FROM matches`, 'count'),
+      // Tổng số trận đấu đã ghi nhận hợp lệ trong bảng matches (loại trừ trận đã hủy / voided).
+      safeStat(`SELECT COUNT(*)::int AS count FROM matches WHERE status = 'approved'`, 'count'),
       // Buổi tập của tuần hiện tại (Thứ 2 - Chủ nhật theo giờ của DB).
       safeStat(
         `SELECT COUNT(*)::int AS count FROM sessions

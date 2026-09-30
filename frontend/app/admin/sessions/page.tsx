@@ -11,6 +11,8 @@ import {
 import { API_URL } from "@/app/config";
 import { QRCodeCanvas } from "qrcode.react";
 import { formatVietnamDate, toVietnamDatetimeInput } from "@/app/utils/date";
+import MonthlySubscriptionModal from "./components/MonthlySubscriptionModal";
+import BulkAddAttendeesModal from "./components/BulkAddAttendeesModal";
 
 export default function AdminSessionsPage() {
   const router = useRouter();
@@ -27,6 +29,8 @@ export default function AdminSessionsPage() {
   const [searchMemberQuery, setSearchMemberQuery] = useState("");
 
   // Modals
+  const [isMonthlyModalOpen, setIsMonthlyModalOpen] = useState(false);
+  const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isWalkInModalOpen, setIsWalkInModalOpen] = useState(false);
@@ -621,15 +625,23 @@ export default function AdminSessionsPage() {
           <h1 className="text-3xl font-black text-secondary tracking-tight">Quản lý Lịch tập & Đặt chỗ</h1>
           <p className="text-slate-500 text-sm mt-1">Hệ thống Giữ chỗ (Reservation) → Chốt slot (Confirmation) → Quét QR Điểm danh với Hàng chờ FIFO.</p>
         </div>
-        <button
-          onClick={() => {
-            setIsCreateModalOpen(true);
-            applyTemplate("dinh_ky");
-          }}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-secondary hover:bg-primary-hover font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer active:scale-95 shrink-0"
-        >
-          <Plus className="w-4 h-4" /> Thiết lập Buổi tập mới
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setIsMonthlyModalOpen(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer active:scale-95 shrink-0"
+          >
+            <Calendar className="w-4 h-4 text-primary" /> Đăng ký Cố định Tháng
+          </button>
+          <button
+            onClick={() => {
+              setIsCreateModalOpen(true);
+              applyTemplate("dinh_ky");
+            }}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-secondary hover:bg-primary-hover font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer active:scale-95 shrink-0"
+          >
+            <Plus className="w-4 h-4" /> Thiết lập Buổi tập mới
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -760,6 +772,14 @@ export default function AdminSessionsPage() {
                     className="px-3.5 py-2 rounded-xl text-xs font-bold bg-secondary hover:bg-slate-800 text-white flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
                   >
                     <UserPlus className="w-3.5 h-3.5" /> + Thêm thành viên
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsBulkAddModalOpen(true);
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-secondary font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+                  >
+                    <Users className="w-3.5 h-3.5" /> + Thêm hàng loạt
                   </button>
                   <button
                     onClick={openEditModal}
@@ -1915,6 +1935,29 @@ export default function AdminSessionsPage() {
           </div>
         </div>
       )}
+
+      {/* MONTHLY SUBSCRIPTION MODAL */}
+      <MonthlySubscriptionModal
+        isOpen={isMonthlyModalOpen}
+        onClose={() => setIsMonthlyModalOpen(false)}
+        onSuccess={() => {
+          fetchSessions();
+          if (selectedSession) fetchDashboard(selectedSession.id);
+        }}
+      />
+
+      {/* BULK ADD ATTENDEES MODAL */}
+      <BulkAddAttendeesModal
+        isOpen={isBulkAddModalOpen}
+        onClose={() => setIsBulkAddModalOpen(false)}
+        session={selectedSession}
+        allMembers={allMembers}
+        currentAttendees={dashboardData?.attendees || []}
+        onSuccess={() => {
+          fetchSessions();
+          if (selectedSession) fetchDashboard(selectedSession.id);
+        }}
+      />
 
     </div>
   );

@@ -25,6 +25,7 @@ router.get('/', async (req, res) => {
        LEFT JOIN users up1 ON m.player1_partner_id = up1.id
        LEFT JOIN users up2 ON m.player2_partner_id = up2.id
        JOIN users w ON m.winner_id = w.id
+       WHERE m.status = 'approved'
        ORDER BY m.created_at DESC LIMIT 50`
     );
     res.json(result.rows);

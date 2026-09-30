@@ -83,62 +83,181 @@ router.get('/me', authenticateToken, async (req, res) => {
 
     const player = userRes.rows[0];
 
-    // 2. Fetch 5 trận gần nhất
+    // 2. Fetch danh sách trận đấu hợp lệ (chỉ approved, loại trừ voided)
     const matchesRes = await db.query(
-      `SELECT m.id, m.score_p1, m.score_p2, m.elo_exchanged, m.created_at,
+      `SELECT m.id, m.score_p1, m.score_p2, m.elo_exchanged, m.created_at, m.status,
               m.player1_id, m.player2_id, m.player1_partner_id, m.player2_partner_id, m.winner_id,
               m.p1_elo_before, m.p2_elo_before, m.p1_elo_after, m.p2_elo_after,
-              u1.full_name as player1_name, u2.full_name as player2_name, w.full_name as winner_name,
-              up1.full_name as player1_partner_name, up2.full_name as player2_partner_name
+              m.p1_partner_elo_before, m.p1_partner_elo_after,
+              m.p2_partner_elo_before, m.p2_partner_elo_after,
+              u1.full_name as player1_name, u1.nickname as player1_nickname, u1.avatar_url as player1_avatar,
+              u2.full_name as player2_name, u2.nickname as player2_nickname, u2.avatar_url as player2_avatar,
+              up1.full_name as player1_partner_name, up1.nickname as player1_partner_nickname, up1.avatar_url as player1_partner_avatar,
+              up2.full_name as player2_partner_name, up2.nickname as player2_partner_nickname, up2.avatar_url as player2_partner_avatar
        FROM matches m
        JOIN users u1 ON m.player1_id = u1.id
        JOIN users u2 ON m.player2_id = u2.id
        LEFT JOIN users up1 ON m.player1_partner_id = up1.id
        LEFT JOIN users up2 ON m.player2_partner_id = up2.id
-       JOIN users w ON m.winner_id = w.id
-       WHERE m.player1_id = $1 OR m.player2_id = $1 OR m.player1_partner_id = $1 OR m.player2_partner_id = $1
-       ORDER BY m.created_at DESC LIMIT 5`,
+       WHERE (m.player1_id = $1 OR m.player2_id = $1 OR m.player1_partner_id = $1 OR m.player2_partner_id = $1)
+         AND m.status = 'approved'
+       ORDER BY m.created_at DESC
+       LIMIT 100`,
       [userId]
     );
 
+    // Tính thống kê toàn bộ các trận approved của người chơi
+    const matchStatsRes = await db.query(
+      `SELECT
+         COUNT(*)::int as total_matches,
+         COUNT(CASE WHEN (m.player1_id = $1 OR m.player1_partner_id = $1) AND (m.winner_id = m.player1_id OR m.winner_id = m.player1_partner_id)
+                      OR (m.player2_id = $1 OR m.player2_partner_id = $1) AND (m.winner_id = m.player2_id OR m.winner_id = m.player2_partner_id)
+               THEN 1 END)::int as won_matches,
+         COUNT(CASE WHEN (m.player1_partner_id IS NOT NULL OR m.player2_partner_id IS NOT NULL) THEN 1 END)::int as doubles_matches,
+         COUNT(CASE WHEN (m.player1_partner_id IS NULL AND m.player2_partner_id IS NULL) THEN 1 END)::int as singles_matches
+       FROM matches m
+       WHERE (m.player1_id = $1 OR m.player2_id = $1 OR m.player1_partner_id = $1 OR m.player2_partner_id = $1)
+         AND m.status = 'approved'`,
+      [userId]
+    );
+    const dbStats = matchStatsRes.rows[0] || { total_matches: 0, won_matches: 0, doubles_matches: 0, singles_matches: 0 };
+    const totalApprovedMatches = dbStats.total_matches;
+    const wonApprovedMatches = dbStats.won_matches;
+    const lostApprovedMatches = totalApprovedMatches - wonApprovedMatches;
+    const lifetimeWinRate = totalApprovedMatches > 0 ? Math.round((wonApprovedMatches / totalApprovedMatches) * 100) : 0;
+    const lifetimeMatchStats = {
+      total: totalApprovedMatches,
+      won: wonApprovedMatches,
+      lost: lostApprovedMatches,
+      winRate: lifetimeWinRate,
+      doubles: dbStats.doubles_matches,
+      singles: dbStats.singles_matches
+    };
+
     const formattedMatches = matchesRes.rows.map(m => {
       const isTeam1 = (m.player1_id === userId || m.player1_partner_id === userId);
-      const isDoubles = (m.player1_partner_id !== null && m.player2_partner_id !== null);
+      const isDoubles = Boolean(m.player1_partner_id || m.player2_partner_id);
       
       const team1Won = (m.winner_id === m.player1_id || m.winner_id === m.player1_partner_id);
       const won = isTeam1 ? team1Won : !team1Won;
 
-      // Tính ELO biến động
+      // Tính ELO biến động & ELO trước/sau chính xác theo vị trí của user
       let eloChange = 0;
-      if (isTeam1) {
-        eloChange = m.p1_elo_after - m.p1_elo_before;
-      } else {
-        eloChange = m.p2_elo_after - m.p2_elo_before;
+      let eloBefore = 1000;
+      let eloAfter = 1000;
+
+      if (m.player1_id === userId) {
+        eloBefore = m.p1_elo_before != null ? Number(m.p1_elo_before) : 1000;
+        eloAfter = m.p1_elo_after != null ? Number(m.p1_elo_after) : eloBefore;
+        eloChange = eloAfter - eloBefore;
+      } else if (m.player1_partner_id === userId) {
+        eloBefore = m.p1_partner_elo_before != null ? Number(m.p1_partner_elo_before) : 1000;
+        eloAfter = m.p1_partner_elo_after != null ? Number(m.p1_partner_elo_after) : eloBefore;
+        eloChange = eloAfter - eloBefore;
+      } else if (m.player2_id === userId) {
+        eloBefore = m.p2_elo_before != null ? Number(m.p2_elo_before) : 1000;
+        eloAfter = m.p2_elo_after != null ? Number(m.p2_elo_after) : eloBefore;
+        eloChange = eloAfter - eloBefore;
+      } else if (m.player2_partner_id === userId) {
+        eloBefore = m.p2_partner_elo_before != null ? Number(m.p2_partner_elo_before) : 1000;
+        eloAfter = m.p2_partner_elo_after != null ? Number(m.p2_partner_elo_after) : eloBefore;
+        eloChange = eloAfter - eloBefore;
       }
 
-      // Xác định đối thủ
-      let opponent = '';
-      if (isTeam1) {
-        opponent = isDoubles 
-          ? `${m.player2_name} / ${m.player2_partner_name || ''}` 
-          : m.player2_name;
-      } else {
-        opponent = isDoubles 
-          ? `${m.player1_name} / ${m.player1_partner_name || ''}` 
-          : m.player1_name;
+      // Xác định đồng đội (teammate) nếu đánh đôi
+      let teammate = null;
+      if (isDoubles) {
+        if (m.player1_id === userId && m.player1_partner_id) {
+          teammate = {
+            id: m.player1_partner_id,
+            name: m.player1_partner_name,
+            nickname: m.player1_partner_nickname,
+            avatar: m.player1_partner_avatar
+          };
+        } else if (m.player1_partner_id === userId && m.player1_id) {
+          teammate = {
+            id: m.player1_id,
+            name: m.player1_name,
+            nickname: m.player1_nickname,
+            avatar: m.player1_avatar
+          };
+        } else if (m.player2_id === userId && m.player2_partner_id) {
+          teammate = {
+            id: m.player2_partner_id,
+            name: m.player2_partner_name,
+            nickname: m.player2_partner_nickname,
+            avatar: m.player2_partner_avatar
+          };
+        } else if (m.player2_partner_id === userId && m.player2_id) {
+          teammate = {
+            id: m.player2_id,
+            name: m.player2_name,
+            nickname: m.player2_nickname,
+            avatar: m.player2_avatar
+          };
+        }
       }
+
+      // Xác định đối thủ (opponents)
+      const opponents = [];
+      if (isTeam1) {
+        if (m.player2_id) {
+          opponents.push({
+            id: m.player2_id,
+            name: m.player2_name,
+            nickname: m.player2_nickname,
+            avatar: m.player2_avatar
+          });
+        }
+        if (isDoubles && m.player2_partner_id) {
+          opponents.push({
+            id: m.player2_partner_id,
+            name: m.player2_partner_name,
+            nickname: m.player2_partner_nickname,
+            avatar: m.player2_partner_avatar
+          });
+        }
+      } else {
+        if (m.player1_id) {
+          opponents.push({
+            id: m.player1_id,
+            name: m.player1_name,
+            nickname: m.player1_nickname,
+            avatar: m.player1_avatar
+          });
+        }
+        if (isDoubles && m.player1_partner_id) {
+          opponents.push({
+            id: m.player1_partner_id,
+            name: m.player1_partner_name,
+            nickname: m.player1_partner_nickname,
+            avatar: m.player1_partner_avatar
+          });
+        }
+      }
+
+      // Chuỗi đối thủ dự phòng (backward compatibility)
+      const opponentNames = opponents.map(o => o.name || o.nickname).filter(Boolean);
+      const opponent = opponentNames.join(' / ');
 
       // Điểm số theo góc nhìn người chơi
-      const playerScore = isTeam1 ? m.score_p1 : m.score_p2;
+      const myScore = isTeam1 ? m.score_p1 : m.score_p2;
       const opponentScore = isTeam1 ? m.score_p2 : m.score_p1;
 
       return {
         id: m.id,
         isDoubles,
+        mode: isDoubles ? 'doubles' : 'singles',
+        teammate,
+        opponents,
         opponent,
-        score: `${playerScore} - ${opponentScore}`,
+        myScore,
+        opponentScore,
+        score: `${myScore} - ${opponentScore}`,
         won,
         eloChange,
+        eloBefore,
+        eloAfter,
         created_at: m.created_at
       };
     });
@@ -211,6 +330,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       title: stats?.title || null,
       meta: stats?.meta || null,
       matches: formattedMatches,
+      matchStats: lifetimeMatchStats,
       upcomingSession,
       attendanceHistory
     });

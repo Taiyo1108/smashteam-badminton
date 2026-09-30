@@ -8,7 +8,8 @@ import {
   Trophy, Flame, Calendar, Check, X, Sparkles, 
   Camera, Paintbrush, Shield, CalendarDays, Activity, 
   MapPin, Clock, LogOut, Edit2, Home, Loader2, Settings,
-  ShoppingBag, Lock, Gift, Coins
+  ShoppingBag, Lock, Gift, Coins,
+  Users, User, Swords, TrendingUp, TrendingDown, CheckCircle2, XCircle, Filter
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
@@ -33,6 +34,8 @@ export default function ProfilePage() {
   const [shopItems, setShopItems] = useState<any[]>([]);
   const [activeGamTab, setActiveGamTab] = useState<"quests" | "inventory" | "shop" | "matches">("quests");
   const [matchFilter, setMatchFilter] = useState<"all" | "month" | "week">("all");
+  const [matchModeFilter, setMatchModeFilter] = useState<"all" | "doubles" | "singles">("all");
+  const [matchOutcomeFilter, setMatchOutcomeFilter] = useState<"all" | "won" | "lost">("all");
   
   const [claimingQuestId, setClaimingQuestId] = useState<number | null>(null);
   const [equippingItemId, setEquippingItemId] = useState<number | null>(null);
@@ -100,23 +103,43 @@ export default function ProfilePage() {
 
   const filteredMatches = useMemo(() => {
     const list: any[] = playerData?.matches ?? [];
-    if (matchFilter === "all") return list;
-    const now = new Date();
     return list.filter((m: any) => {
-      const matchDate = new Date(m.created_at);
-      if (matchFilter === "month") {
-        return matchDate.getMonth() === now.getMonth() && matchDate.getFullYear() === now.getFullYear();
+      // Bộ lọc thời gian
+      if (matchFilter !== "all") {
+        const now = new Date();
+        const matchDate = new Date(m.created_at);
+        if (matchFilter === "month") {
+          const isMonth = matchDate.getMonth() === now.getMonth() && matchDate.getFullYear() === now.getFullYear();
+          if (!isMonth) return false;
+        } else if (matchFilter === "week") {
+          const isWeek = Math.abs(now.getTime() - matchDate.getTime()) / (1000 * 60 * 60 * 24) <= 7;
+          if (!isWeek) return false;
+        }
       }
-      // week: trong 7 ngày gần nhất
-      return Math.abs(now.getTime() - matchDate.getTime()) / (1000 * 60 * 60 * 24) <= 7;
+      // Bộ lọc thể thức
+      if (matchModeFilter === "doubles" && !m.isDoubles) return false;
+      if (matchModeFilter === "singles" && m.isDoubles) return false;
+      // Bộ lọc kết quả
+      if (matchOutcomeFilter === "won" && !m.won) return false;
+      if (matchOutcomeFilter === "lost" && m.won) return false;
+
+      return true;
     });
-  }, [playerData, matchFilter]);
+  }, [playerData, matchFilter, matchModeFilter, matchOutcomeFilter]);
 
   const matchStats = useMemo(() => {
+    // Nếu chọn tất cả và backend đã tính matchStats trọn đời chuẩn xác từ DB
+    if (matchFilter === "all" && matchModeFilter === "all" && matchOutcomeFilter === "all" && playerData?.matchStats) {
+      return playerData.matchStats;
+    }
     const total = filteredMatches.length;
     const won = filteredMatches.filter((m: any) => m.won).length;
-    return { total, won, winRate: total > 0 ? Math.round((won / total) * 100) : 0 };
-  }, [filteredMatches]);
+    const lost = total - won;
+    const winRate = total > 0 ? Math.round((won / total) * 100) : 0;
+    const doubles = filteredMatches.filter((m: any) => m.isDoubles).length;
+    const singles = filteredMatches.filter((m: any) => !m.isDoubles).length;
+    return { total, won, lost, winRate, doubles, singles };
+  }, [filteredMatches, matchFilter, matchModeFilter, matchOutcomeFilter, playerData]);
 
   // Fetch dữ liệu từ API /api/profile/me
   const fetchProfileData = async () => {
@@ -1352,107 +1375,154 @@ export default function ProfilePage() {
 
             {/* TAB CONTENT: MATCHES */}
             {activeGamTab === "matches" && (
-              <div className="space-y-6">
-                  {/* Title & Dropdown Filter Row */}
-                  <div className="flex items-center justify-between gap-4">
-                    <h4 className="text-xs uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5">
-                      <Trophy className="w-3.5 h-3.5 text-black" /> Hiệu số thi đấu
-                    </h4>
-                    
+              <div className="space-y-4 sm:space-y-5">
+                {/* Title & Filter Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                  <h4 className="text-xs uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5">
+                    <Trophy className="w-3.5 h-3.5 text-black" /> Hiệu số thi đấu
+                    <span className="text-[10px] text-slate-400 font-bold lowercase">
+                      ({filteredMatches.length} trận)
+                    </span>
+                  </h4>
+                  
+                  {/* Compact Filters Toolbar */}
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                    {/* Thể thức */}
+                    <select
+                      value={matchModeFilter}
+                      onChange={(e) => setMatchModeFilter(e.target.value as any)}
+                      className="text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl px-2.5 py-1.5 focus:ring-1 focus:ring-black/10 focus:border-black outline-none cursor-pointer shadow-2xs"
+                    >
+                      <option value="all">Tất cả thể thức</option>
+                      <option value="doubles">🏸 Đôi</option>
+                      <option value="singles">👤 Đơn</option>
+                    </select>
+
+                    {/* Kết quả */}
+                    <select
+                      value={matchOutcomeFilter}
+                      onChange={(e) => setMatchOutcomeFilter(e.target.value as any)}
+                      className="text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl px-2.5 py-1.5 focus:ring-1 focus:ring-black/10 focus:border-black outline-none cursor-pointer shadow-2xs"
+                    >
+                      <option value="all">Tất cả kết quả</option>
+                      <option value="won">🏆 Thắng</option>
+                      <option value="lost">❌ Thua</option>
+                    </select>
+
+                    {/* Thời gian */}
                     <select
                       value={matchFilter}
                       onChange={(e) => setMatchFilter(e.target.value as any)}
-                      className="text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl px-3 py-1.5 focus:ring-1 focus:ring-black/10 focus:border-black outline-none cursor-pointer"
+                      className="text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl px-2.5 sm:px-3 py-1.5 focus:ring-1 focus:ring-black/10 focus:border-black outline-none cursor-pointer shadow-2xs"
                     >
                       <option value="all">Tất cả thời gian</option>
                       <option value="month">Trong tháng này</option>
                       <option value="week">Trong tuần này</option>
                     </select>
                   </div>
+                </div>
 
-                  {/* 3 Prominent Stats Cards */}
-                  <div className="grid grid-cols-3 gap-3">
-                    {/* Card 1: Total matches */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
-                      <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Tổng Trận</span>
-                      <span className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums tracking-tight">{matchStats.total}</span>
-                    </div>
-
-                    {/* Card 2: Winrate */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
-                      <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Tỷ Lệ Thắng</span>
-                      <span className={`text-xl sm:text-2xl font-black tabular-nums tracking-tight ${matchStats.winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {matchStats.winRate}%
-                      </span>
-                    </div>
-
-                    {/* Card 3: Wins / Losses */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
-                      <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Thắng / Bại</span>
-                      <span className="text-xl sm:text-2xl font-black tabular-nums tracking-tight text-slate-600">
-                        <span className="text-emerald-400">{matchStats.won}</span>
-                        <span className="text-slate-400 px-0.5">/</span>
-                        <span className="text-rose-400">{matchStats.total - matchStats.won}</span>
-                      </span>
-                    </div>
+                {/* 3 Prominent Stats Cards (Tỉ lệ chuẩn gọn gàng, không chiếm diện tích) */}
+                <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                  {/* Card 1: Total matches */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-2.5 sm:p-3 text-center flex flex-col justify-center items-center gap-0.5 sm:gap-1 shadow-2xs">
+                    <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-400">Tổng Trận</span>
+                    <span className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums tracking-tight">{matchStats.total}</span>
                   </div>
 
-                  {filteredMatches.length > 0 ? (
-                    <div className="space-y-4">
-                      {filteredMatches.map((m: any) => (
-                        <div key={m.id} className="p-4 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-black/20 transition-all">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                                m.isDoubles 
-                                  ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" 
-                                  : "bg-black/5 text-black border border-slate-200"
-                              }`}>
-                                {m.isDoubles ? "Đôi" : "Đơn"}
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                {formatVietnamDate(m.created_at)}
-                              </span>
-                            </div>
-                            <p className="text-sm font-bold text-slate-900">
-                              đối thủ: <span className="text-slate-600">{m.opponent}</span>
-                            </p>
-                          </div>
+                  {/* Card 2: Winrate */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-2.5 sm:p-3 text-center flex flex-col justify-center items-center gap-0.5 sm:gap-1 shadow-2xs">
+                    <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-400">Tỷ Lệ Thắng</span>
+                    <span className={`text-xl sm:text-2xl font-black tabular-nums tracking-tight ${matchStats.winRate >= 50 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {matchStats.winRate}%
+                    </span>
+                  </div>
 
-                          <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-10">
-                            <span className="font-extrabold text-base text-slate-600 tracking-wider tabular-nums">
-                              {m.score}
-                            </span>
-                            
-                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full text-center min-w-[70px] ${
-                              m.won
-                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
-                                : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
-                            }`}>
-                              {m.won ? "Thắng" : "Thua"}
-                            </span>
-
-                            <span className={`text-sm font-black tracking-wide min-w-[65px] text-right ${
-                              m.eloChange >= 0 ? "text-emerald-400" : "text-rose-400"
-                            }`}>
-                              {m.eloChange >= 0 ? `+${m.eloChange}` : m.eloChange} ELO
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center p-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
-                      <div className="w-12 h-12 rounded-full bg-black/5 text-black flex items-center justify-center mb-4 border border-slate-200 shadow-inner animate-pulse">
-                        <Trophy className="w-6 h-6" />
-                      </div>
-                      <h4 className="text-slate-900 font-bold text-base mb-1.5">Không tìm thấy trận đấu nào</h4>
-                      <p className="text-xs text-slate-500 max-w-sm mb-6 leading-relaxed">
-                        Không có trận đấu nào được ghi nhận trong khoảng thời gian đã chọn.
-                      </p>
-                    </div>
-                  )}
+                  {/* Card 3: Wins / Losses */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-2.5 sm:p-3 text-center flex flex-col justify-center items-center gap-0.5 sm:gap-1 shadow-2xs">
+                    <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-400">Thắng / Bại</span>
+                    <span className="text-xl sm:text-2xl font-black tabular-nums tracking-tight text-slate-700">
+                      <span className="text-emerald-500">{matchStats.won}</span>
+                      <span className="text-slate-300 px-0.5">/</span>
+                      <span className="text-rose-500">{matchStats.lost ?? (matchStats.total - matchStats.won)}</span>
+                    </span>
+                  </div>
                 </div>
+
+                {/* Match Cards List (Gọn gàng, thanh thoát, hiển thị nhiều trận để sống ảo/chụp màn hình) */}
+                {filteredMatches.length > 0 ? (
+                  <div className="space-y-2.5 sm:space-y-3">
+                    {filteredMatches.map((m: any) => (
+                      <div 
+                        key={m.id} 
+                        className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 hover:border-black/20 hover:shadow-xs transition-all"
+                      >
+                        {/* Cột trái: Thể thức, Ngày giờ, Đồng đội (nếu có), Đối thủ */}
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                              m.isDoubles 
+                                ? "bg-blue-500/10 text-blue-600 border border-blue-500/20" 
+                                : "bg-black/5 text-black border border-slate-200"
+                            }`}>
+                              {m.isDoubles ? "Đôi" : "Đơn"}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {formatVietnamDate(m.created_at)}
+                            </span>
+                          </div>
+
+                          {/* Dòng Đồng đội (khi đánh đôi) */}
+                          {m.isDoubles && (
+                            <p className="text-xs sm:text-sm font-semibold text-slate-700 truncate">
+                              Đồng đội: <span className="font-bold text-slate-900">{m.teammate?.name || m.teammate?.nickname || "Đang cập nhật"}</span>
+                              {m.teammate?.nickname && m.teammate?.name && (
+                                <span className="text-slate-400 text-xs font-normal ml-1">({m.teammate.nickname})</span>
+                              )}
+                            </p>
+                          )}
+
+                          {/* Dòng Đối thủ (chữ Đối thủ viết hoa chỉn chu) */}
+                          <p className="text-xs sm:text-sm font-semibold text-slate-700 truncate">
+                            Đối thủ: <span className="font-bold text-slate-900">{m.opponent}</span>
+                          </p>
+                        </div>
+
+                        {/* Cột phải: Tỉ số, Badge Thắng/Thua, Biến động ELO */}
+                        <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                          <span className="font-black text-base sm:text-lg text-slate-800 tracking-wider tabular-nums min-w-[55px] text-left sm:text-center">
+                            {m.score}
+                          </span>
+                          
+                          <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 sm:px-3 py-1 rounded-full text-center min-w-[65px] ${
+                            m.won
+                              ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                              : "bg-rose-500/10 text-rose-600 border border-rose-500/30"
+                          }`}>
+                            {m.won ? "Thắng" : "Thua"}
+                          </span>
+
+                          <span className={`text-xs sm:text-sm font-black tracking-wide min-w-[65px] text-right ${
+                            m.eloChange >= 0 ? "text-emerald-500" : "text-rose-500"
+                          }`}>
+                            {m.eloChange >= 0 ? `+${m.eloChange}` : m.eloChange} ELO
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-8 sm:p-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/5 text-black flex items-center justify-center mb-3 sm:mb-4 border border-slate-200 shadow-inner">
+                      <Trophy className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </div>
+                    <h4 className="text-slate-900 font-bold text-sm sm:text-base mb-1">Không tìm thấy trận đấu nào</h4>
+                    <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
+                      Không có trận đấu nào thỏa mãn bộ lọc đã chọn. Hãy thử thay đổi bộ lọc thời gian, thể thức hoặc kết quả.
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

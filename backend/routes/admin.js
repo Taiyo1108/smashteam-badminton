@@ -10,6 +10,25 @@ const {
   adminRejectLateCancel,
   processQrCheckIn
 } = require('../services/sessionReservationService');
+const { getSessionCapacity, SLOT_OCCUPYING_STATUSES } = require('../services/sessionCapacityService');
+const {
+  parseExcelBuffer,
+  previewSubscriptions,
+  commitSubscriptions,
+  syncMonthSessions,
+  autoEnrollSubscribersForSession,
+  getMonthlySubscriptionStats,
+  resetMonthSubscriptions,
+  updateSingleSubscription,
+  deleteSingleSubscription
+} = require('../services/monthlySubscriptionService');
+const { getSessionSlotCode, getSlotLabel } = require('../utils/slotHelper');
+
+const multer = require('multer');
+const uploadExcel = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }
+});
 
 // Protect all admin routes
 router.use(authenticateToken);
@@ -228,24 +247,43 @@ router.post('/sessions', async (req, res) => {
     const secretToken = `SEC_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     const checkoutSecretToken = `SEC_OUT_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
+    // Xác định chính xác slot_code của buổi tập (ví dụ THU_17_19, THU_18_20, WED_18_20)
+    const sessionSlotCode = getSessionSlotCode({
+      date_time: sessionDateTime,
+      session_start: tStart,
+      session_end: tEnd
+    });
+
     const result = await db.query(
       `INSERT INTO sessions (
         title, date_time, location, qr_code, qr_created_at, checkin_code,
         session_start, session_end, reservation_open_at, reservation_deadline,
         checkin_open_at, checkin_close_at, checkout_open_at, checkout_close_at,
         capacity, qr_secret_token, qr_checkout_secret_token,
-        waitlist_offer_duration_minutes
+        waitlist_offer_duration_minutes, slot_code
       ) 
-      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) 
       RETURNING *`,
       [
         title, toVietnamIso(sessionDateTime), location, newQrCode, newCheckinCode,
         tStart, tEnd, resOpen, resDeadline, checkinOpen, checkinClose, checkoutOpen, checkoutClose,
-        parseInt(capacity, 10) || 40, secretToken, checkoutSecretToken, parseInt(waitlist_offer_duration_minutes, 10) || 10
+        parseInt(capacity, 10) || 40, secretToken, checkoutSecretToken, parseInt(waitlist_offer_duration_minutes, 10) || 10,
+        sessionSlotCode
       ]
     );
 
-    res.status(201).json({ success: true, session: result.rows[0] });
+    const newSession = result.rows[0];
+
+    // Tự động phân bổ thành viên cố định của tháng vào session mới (idempotent)
+    let autoEnrolledCount = 0;
+    try {
+      const autoEnrollRes = await autoEnrollSubscribersForSession(newSession.id);
+      autoEnrolledCount = autoEnrollRes.enrolledCount || 0;
+    } catch (enrollErr) {
+      console.error('Lỗi tự động phân bổ thành viên cố định cho session mới:', enrollErr);
+    }
+
+    res.status(201).json({ success: true, session: newSession, autoEnrolledCount });
   } catch (error) {
     console.error('Error creating session:', error);
     res.status(500).json({ error: error.message || 'Không thể tạo buổi tập.' });
@@ -387,6 +425,11 @@ router.get('/sessions/:id/dashboard', async (req, res) => {
   try {
     const { id } = req.params;
     const data = await getAdminSessionDashboard(id);
+    if (data && data.session) {
+      const derivedCode = getSessionSlotCode(data.session);
+      data.session.slot_code = data.session.slot_code || derivedCode;
+      data.session.slot_label = getSlotLabel(data.session.slot_code);
+    }
     res.json(data);
   } catch (error) {
     console.error('Error fetching session dashboard:', error);
@@ -488,6 +531,245 @@ router.post('/sessions/:id/participants/manual-add', async (req, res) => {
   } catch (error) {
     console.error('Error manually adding participant:', error);
     res.status(400).json({ error: error.message || 'Lỗi thêm thành viên.' });
+  }
+});
+
+// POST /api/admin/sessions/:id/bulk-add-attendees - Admin thêm hàng loạt thành viên vào buổi tập có kiểm tra Capacity
+router.post('/sessions/:id/bulk-add-attendees', async (req, res) => {
+  const client = await db.connect();
+  try {
+    const { id } = req.params;
+    const { 
+      user_ids = [], 
+      status = 'CONFIRMED', 
+      registration_type = 'ADMIN_ADDED', 
+      reason = 'Admin thêm hàng loạt vào buổi tập',
+      allow_exceed_capacity = false 
+    } = req.body;
+
+    if (!Array.isArray(user_ids) || user_ids.length === 0) {
+      return res.status(400).json({ error: 'Danh sách thành viên không được rỗng.' });
+    }
+
+    // 1. Kiểm tra session và capacity hiện tại
+    const capInfo = await getSessionCapacity(id, client);
+    const availableSlots = capInfo.availableSlots;
+
+    // 2. Tìm xem trong danh sách user_ids, ai đã chiếm slot rồi (để không tính 2 lần)
+    const existingOccupyingRes = await client.query(
+      `SELECT user_id, status FROM attendances 
+       WHERE session_id = $1::uuid AND user_id = ANY($2::uuid[]) AND status = ANY($3::varchar[])`,
+      [id, user_ids, SLOT_OCCUPYING_STATUSES]
+    );
+    const existingOccupyingSet = new Set(existingOccupyingRes.rows.map(r => r.user_id));
+    const newlyOccupyingUsers = user_ids.filter(uid => !existingOccupyingSet.has(uid));
+
+    // 3. Nếu số lượng người mới vượt quá slot trống và không bật cờ cho phép vượt
+    if (!allow_exceed_capacity && newlyOccupyingUsers.length > availableSlots) {
+      return res.status(400).json({
+        error: 'CAPACITY_EXCEEDED',
+        message: `Buổi tập chỉ còn ${availableSlots} chỗ trống, nhưng bạn đang chọn thêm ${newlyOccupyingUsers.length} người mới.`,
+        availableSlots,
+        requiredSlots: newlyOccupyingUsers.length,
+        canOverride: true
+      });
+    }
+
+    await client.query('BEGIN');
+
+    const addedRows = [];
+    for (const uid of user_ids) {
+      const upsertRes = await client.query(
+        `INSERT INTO attendances (
+          session_id, user_id, status, registration_type, confirmed_at, reserved_at, updated_at
+        )
+        VALUES ($1::uuid, $2::uuid, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (session_id, user_id)
+        DO UPDATE SET
+          status = EXCLUDED.status,
+          registration_type = EXCLUDED.registration_type,
+          confirmed_at = CURRENT_TIMESTAMP,
+          cancelled_at = NULL,
+          cancellation_reason = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *;`,
+        [id, uid, status, registration_type]
+      );
+      addedRows.push(upsertRes.rows[0]);
+
+      // Ghi audit log
+      await client.query(
+        `INSERT INTO session_audit_logs (
+          session_id, admin_user_id, target_user_id, action, before_status, after_status, reason
+        ) VALUES ($1::uuid, $2::uuid, $3::uuid, 'ADMIN_BULK_ADD_PARTICIPANT', 'NONE', $4, $5);`,
+        [id, req.user.id, uid, status, reason]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    const updatedCap = await getSessionCapacity(id);
+
+    res.json({
+      success: true,
+      message: `Đã thêm thành công ${addedRows.length} thành viên vào buổi tập.`,
+      addedCount: addedRows.length,
+      newlyOccupyingCount: newlyOccupyingUsers.length,
+      capacity: updatedCap
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Error in bulk-add-attendees:', error);
+    res.status(400).json({ error: error.message || 'Lỗi thêm hàng loạt thành viên.' });
+  } finally {
+    client.release();
+  }
+});
+
+// ==========================================
+// MONTHLY SUBSCRIPTION & IMPORT APIS
+// ==========================================
+
+// POST /api/admin/subscriptions/preview-import - Preview file Excel hoặc dữ liệu đăng ký tháng
+router.post('/subscriptions/preview-import', uploadExcel.single('file'), async (req, res) => {
+  try {
+    let rows = [];
+    let monthYear = req.body.monthYear || req.query.monthYear;
+
+    if (req.file) {
+      rows = parseExcelBuffer(req.file.buffer);
+    } else if (req.body.rows && Array.isArray(req.body.rows)) {
+      rows = req.body.rows;
+    } else {
+      return res.status(400).json({ error: 'Vui lòng tải lên file Excel hoặc gửi mảng rows dữ liệu.' });
+    }
+
+    if (!monthYear) {
+      // Mặc định tháng hiện tại theo giờ VN (YYYY-MM)
+      const now = new Date();
+      const vnYear = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric' });
+      const vnMonth = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', month: '2-digit' });
+      monthYear = `${vnYear}-${vnMonth}`;
+    }
+
+    const previewResult = await previewSubscriptions(rows, monthYear);
+    res.json({ success: true, preview: previewResult });
+  } catch (error) {
+    console.error('Error previewing subscription import:', error);
+    res.status(400).json({ error: error.message || 'Lỗi xem trước dữ liệu import.' });
+  }
+});
+
+// POST /api/admin/subscriptions/commit-import - Xác nhận lưu đăng ký tháng và đồng bộ vào các buổi tập
+router.post('/subscriptions/commit-import', async (req, res) => {
+  try {
+    const { monthYear, subscriptions, syncSessions = true } = req.body;
+    if (!monthYear || !Array.isArray(subscriptions)) {
+      return res.status(400).json({ error: 'Thiếu thông tin monthYear hoặc danh sách subscriptions.' });
+    }
+
+    const commitResult = await commitSubscriptions({
+      monthYear,
+      subscriptions,
+      syncSessions,
+      adminUserId: req.user.id
+    });
+
+    res.json(commitResult);
+  } catch (error) {
+    console.error('Error committing subscriptions:', error);
+    res.status(400).json({ error: error.message || 'Lỗi lưu đăng ký tháng.' });
+  }
+});
+
+// GET /api/admin/subscriptions/stats - Xem thống kê và danh sách đăng ký cố định tháng
+router.get('/subscriptions/stats', async (req, res) => {
+  try {
+    let monthYear = req.query.month;
+    if (!monthYear) {
+      const now = new Date();
+      const vnYear = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric' });
+      const vnMonth = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', month: '2-digit' });
+      monthYear = `${vnYear}-${vnMonth}`;
+    }
+
+    const stats = await getMonthlySubscriptionStats(monthYear);
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Error getting subscription stats:', error);
+    res.status(500).json({ error: error.message || 'Lỗi lấy thống kê đăng ký tháng.' });
+  }
+});
+
+// POST /api/admin/subscriptions/sync-month - Đồng bộ lại lịch đăng ký tháng vào các buổi tập
+router.post('/subscriptions/sync-month', async (req, res) => {
+  try {
+    const { monthYear } = req.body;
+    if (!monthYear) {
+      return res.status(400).json({ error: 'Thiếu thông tin monthYear.' });
+    }
+
+    const syncResult = await syncMonthSessions(monthYear, db, req.user.id);
+    res.json({ success: true, syncStats: syncResult });
+  } catch (error) {
+    console.error('Error syncing month sessions:', error);
+    res.status(400).json({ error: error.message || 'Lỗi đồng bộ lịch tháng.' });
+  }
+});
+
+// POST /api/admin/subscriptions/reset-month - Xóa toàn bộ danh sách đăng ký cố định của một tháng
+router.post('/subscriptions/reset-month', async (req, res) => {
+  try {
+    const { monthYear, cleanupAttendances = true } = req.body;
+    if (!monthYear) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp tháng cần reset (monthYear).' });
+    }
+    const result = await resetMonthSubscriptions({
+      monthYear,
+      cleanupAttendances,
+      adminUserId: req.user.id
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error resetting month subscriptions:', error);
+    res.status(400).json({ error: error.message || 'Lỗi khi reset danh sách tháng.' });
+  }
+});
+
+// PUT /api/admin/subscriptions/:id - Chỉnh sửa ca và thông tin đăng ký cố định
+router.put('/subscriptions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { registeredSlots, paymentStatus, note, syncSessions = true } = req.body;
+    const result = await updateSingleSubscription({
+      subscriptionId: id,
+      registeredSlots,
+      paymentStatus,
+      note,
+      syncSessions,
+      adminUserId: req.user.id
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating subscription:', error);
+    res.status(400).json({ error: error.message || 'Lỗi cập nhật đăng ký cố định.' });
+  }
+});
+
+// DELETE /api/admin/subscriptions/:id - Xóa 1 bản ghi đăng ký cố định
+router.delete('/subscriptions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cleanupAttendances = req.query.cleanupAttendances !== 'false';
+    const result = await deleteSingleSubscription({
+      subscriptionId: id,
+      cleanupAttendances,
+      adminUserId: req.user.id
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting subscription:', error);
+    res.status(400).json({ error: error.message || 'Lỗi xóa đăng ký cố định.' });
   }
 });
 

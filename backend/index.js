@@ -96,6 +96,11 @@ app.get('/', (req, res) => {
   res.json({ message: 'Welcome to SmashTeam API' });
 });
 
+// 404 JSON Handler for API routes
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `API endpoint không tồn tại: ${req.method} ${req.originalUrl}` });
+});
+
 // Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
