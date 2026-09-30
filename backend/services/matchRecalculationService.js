@@ -392,14 +392,7 @@ async function simulateRecalculation(client, { matchId, newMatchData = null, isV
     isVoid,
     affectedMatchesCount: affectedMatches.length,
     affectedMatches: affectedMatches.map(m => ({
-      id: m.id,
-      created_at: m.created_at,
-      player1_name: m.player1_name,
-      player2_name: m.player2_name,
-      player1_partner_name: m.player1_partner_name,
-      player2_partner_name: m.player2_partner_name,
-      score_p1: m.score_p1,
-      score_p2: m.score_p2,
+      ...m,
       p1_elo_after_old: m.old_p1_elo_after,
       p1_elo_after_new: m.p1_elo_after,
       p2_elo_after_old: m.old_p2_elo_after,
@@ -495,15 +488,15 @@ async function applyRecalculation({
           after.score_p1,
           after.score_p2,
           after.winner_id,
-          after.p1_elo_before,
-          after.p2_elo_before,
-          after.p1_elo_after,
-          after.p2_elo_after,
+          after.p1_elo_before != null ? after.p1_elo_before : 1000,
+          after.p2_elo_before != null ? after.p2_elo_before : 1000,
+          after.p1_elo_after != null ? after.p1_elo_after : 1000,
+          after.p2_elo_after != null ? after.p2_elo_after : 1000,
           after.p1_partner_elo_before || null,
           after.p2_partner_elo_before || null,
           after.p1_partner_elo_after || null,
           after.p2_partner_elo_after || null,
-          after.elo_exchanged,
+          after.elo_exchanged != null ? after.elo_exchanged : 0,
           matchId
         ]
       );
@@ -524,15 +517,15 @@ async function applyRecalculation({
              elo_exchanged = $9
          WHERE id = $10::uuid;`,
         [
-          m.p1_elo_before,
-          m.p2_elo_before,
-          m.p1_elo_after_new,
-          m.p2_elo_after_new,
+          m.p1_elo_before != null ? m.p1_elo_before : 1000,
+          m.p2_elo_before != null ? m.p2_elo_before : 1000,
+          m.p1_elo_after_new != null ? m.p1_elo_after_new : (m.p1_elo_after != null ? m.p1_elo_after : 1000),
+          m.p2_elo_after_new != null ? m.p2_elo_after_new : (m.p2_elo_after != null ? m.p2_elo_after : 1000),
           m.p1_partner_elo_before || null,
           m.p2_partner_elo_before || null,
           m.p1_partner_elo_after || null,
           m.p2_partner_elo_after || null,
-          m.elo_exchanged,
+          m.elo_exchanged != null ? m.elo_exchanged : 0,
           m.id
         ]
       );
