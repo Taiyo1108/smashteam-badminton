@@ -540,10 +540,14 @@ export default function AdminSessionsPage() {
         },
         body: JSON.stringify({ user_id: userId, reason })
       });
+      const data = await res.json();
       if (res.ok) {
+        if (data.offeredList && data.offeredList.length > 0) {
+          const names = data.offeredList.map((o: any) => o.fullName).join(", ");
+          alert(`Đã xóa thành viên! Slot trống đã được tự động cấp và gửi email thông báo cho: ${names} (Hàng chờ FIFO).`);
+        }
         fetchDashboard(selectedSession.id);
       } else {
-        const data = await res.json();
         alert(data.error || "Lỗi xóa thành viên.");
       }
     } catch (e) {

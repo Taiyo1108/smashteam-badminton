@@ -22,26 +22,26 @@ export interface PlayerRankData {
   trend_value?: number;
 }
 
-// Cấu hình huy hiệu Rank Tier tối giản
+// Cấu hình huy hiệu Rank Tier
 const TIER_CONFIG: Record<RankTierName, { label: string; badgeClass: string; bgSoft: string }> = {
   Master: {
-    label: "Master",
-    badgeClass: "bg-purple-950/80 text-purple-200 border border-purple-400/50 shadow-[0_0_12px_rgba(157,78,221,0.45)]",
+    label: "Thách Đấu",
+    badgeClass: "bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white border border-red-400 font-black shadow-md shadow-red-500/30",
     bgSoft: "from-purple-900/20 to-purple-950/40"
   },
   Elite: {
-    label: "Elite",
-    badgeClass: "bg-cyan-950/80 text-cyan-200 border border-cyan-400/50 shadow-[0_0_10px_rgba(34,211,238,0.3)]",
+    label: "Kim Cương",
+    badgeClass: "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white border border-cyan-300 font-black shadow-md shadow-blue-500/30",
     bgSoft: "from-cyan-900/15 to-slate-900/30"
   },
   Challenger: {
-    label: "Challenger",
-    badgeClass: "bg-amber-950/80 text-amber-200 border border-amber-400/50 shadow-[0_0_10px_rgba(251,191,36,0.3)]",
+    label: "Bạch Kim",
+    badgeClass: "bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 border border-yellow-300 font-black shadow-md shadow-amber-500/30",
     bgSoft: "from-amber-900/15 to-slate-900/30"
   },
   Rookie: {
-    label: "Rookie",
-    badgeClass: "bg-slate-800 text-slate-300 border border-slate-600",
+    label: "Tập Sự",
+    badgeClass: "bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 border border-amber-600 font-black shadow-md shadow-amber-900/40",
     bgSoft: "from-slate-800/30 to-slate-900/30"
   }
 };

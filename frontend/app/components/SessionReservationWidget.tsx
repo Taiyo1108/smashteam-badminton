@@ -26,6 +26,9 @@ interface SessionReservationWidgetProps {
     checkout_open_at?: string;
     checkout_close_at?: string;
     available_slots?: number;
+    raw_available_slots?: number;
+    waitlist_count?: number;
+    offered_count?: number;
     active_reservations_count?: number;
     is_full?: boolean;
     // user specific
@@ -104,6 +107,7 @@ export default function SessionReservationWidget({
 
   const capacity = session.capacity || 40;
   const activeCount = session.active_reservations_count ?? 0;
+  const rawAvailable = typeof session.raw_available_slots === "number" ? session.raw_available_slots : Math.max(0, capacity - activeCount);
   const availableSlots = typeof session.available_slots === "number" ? session.available_slots : Math.max(0, capacity - activeCount);
   const isSessionFull = session.is_full ?? (availableSlots <= 0);
 
@@ -378,6 +382,11 @@ export default function SessionReservationWidget({
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               Còn {availableSlots}/{capacity} slot
+            </span>
+          ) : rawAvailable > 0 ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              Ưu tiên Hàng chờ ({session.waitlist_count || session.offered_count ? `${(session.waitlist_count || 0) + (session.offered_count || 0)} người` : "Waitlist"})
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">

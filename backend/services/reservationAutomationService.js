@@ -62,6 +62,7 @@ async function processWaitlistExpirations() {
     );
 
     let expiredCount = 0;
+    const affectedSessionIds = new Set();
 
     for (const item of expiredRes.rows) {
       await client.query('BEGIN');
@@ -72,39 +73,21 @@ async function processWaitlistExpirations() {
         [item.id]
       );
 
-      // Tìm người tiếp theo để offer
-      const now = new Date();
-      const sessionEnd = new Date(item.session_end);
-
-      if (now.getTime() + 10 * 60000 < sessionEnd.getTime()) {
-        const nextUserRes = await client.query(
-          `SELECT id, position FROM session_waitlist
-           WHERE session_id = $1::uuid AND status = 'WAITING'
-           ORDER BY position ASC
-           LIMIT 1
-           FOR UPDATE;`,
-          [item.session_id]
-        );
-
-        if (nextUserRes.rows.length > 0) {
-          const nextUser = nextUserRes.rows[0];
-          const offerMinutes = item.waitlist_offer_duration_minutes || 10;
-          const offerExpiresAt = new Date(Date.now() + offerMinutes * 60000);
-
-          await client.query(
-            `UPDATE session_waitlist
-             SET status = 'OFFERED',
-                 offered_at = CURRENT_TIMESTAMP,
-                 offer_expires_at = $1,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2::uuid;`,
-            [offerExpiresAt, nextUser.id]
-          );
-        }
-      }
-
       await client.query('COMMIT');
       expiredCount++;
+      affectedSessionIds.add(item.session_id);
+    }
+
+    // 2. Với mỗi session có người hết hạn, tự động cấp quyền và gửi email cho người tiếp theo trong Waitlist FIFO
+    if (affectedSessionIds.size > 0) {
+      const { triggerWaitlistOffers } = require('./sessionReservationService');
+      for (const sessId of affectedSessionIds) {
+        try {
+          await triggerWaitlistOffers(sessId);
+        } catch (err) {
+          console.error(`[Automation] Error triggering waitlist offer for session ${sessId}:`, err);
+        }
+      }
     }
 
     return expiredCount;

@@ -69,14 +69,13 @@ async function getSessionCapacity(sessionId, client = db) {
 
   const stats = statsRes.rows[0];
   const occupiedSlots = parseInt(stats.occupied_count || 0, 10);
-  const availableSlots = Math.max(0, capacity - occupiedSlots);
-  const isFull = availableSlots === 0;
+  const rawAvailableSlots = Math.max(0, capacity - occupiedSlots);
 
   // 3. Đếm waitlist
   const wlRes = await client.query(
     `SELECT 
       COUNT(*) FILTER (WHERE status = 'WAITING') AS waiting_count,
-      COUNT(*) FILTER (WHERE status = 'OFFERED') AS offered_count
+      COUNT(*) FILTER (WHERE status = 'OFFERED' AND (offer_expires_at IS NULL OR offer_expires_at > CURRENT_TIMESTAMP)) AS offered_count
      FROM session_waitlist
      WHERE session_id = $1::uuid;`,
     [sessionId]
@@ -84,9 +83,15 @@ async function getSessionCapacity(sessionId, client = db) {
   const waitlistCount = parseInt(wlRes.rows[0].waiting_count || 0, 10);
   const offeredCount = parseInt(wlRes.rows[0].offered_count || 0, 10);
 
+  // Suất trống công khai: Bảo lưu slot trống cho thành viên trong danh sách chờ (offered hoặc waiting)
+  const waitlistReservedSlots = Math.min(rawAvailableSlots, offeredCount + waitlistCount);
+  const availableSlots = Math.max(0, rawAvailableSlots - waitlistReservedSlots);
+  const isFull = availableSlots === 0;
+
   return {
     capacity,
     occupiedSlots,
+    rawAvailableSlots,
     availableSlots,
     waitlistCount,
     offeredCount,
@@ -130,7 +135,7 @@ async function getSessionsCapacityMap(sessionIds, client = db) {
      LEFT JOIN (
        SELECT session_id, 
               COUNT(*) FILTER (WHERE status = 'WAITING') AS waiting_count,
-              COUNT(*) FILTER (WHERE status = 'OFFERED') AS offered_count
+              COUNT(*) FILTER (WHERE status = 'OFFERED' AND (offer_expires_at IS NULL OR offer_expires_at > CURRENT_TIMESTAMP)) AS offered_count
        FROM session_waitlist
        WHERE status IN ('WAITING', 'OFFERED')
        GROUP BY session_id
@@ -143,13 +148,19 @@ async function getSessionsCapacityMap(sessionIds, client = db) {
   for (const row of queryRes.rows) {
     const capacity = row.capacity || 40;
     const occupiedSlots = parseInt(row.occupied_count || 0, 10);
-    const availableSlots = Math.max(0, capacity - occupiedSlots);
+    const rawAvailableSlots = Math.max(0, capacity - occupiedSlots);
+    const waitlistCount = parseInt(row.waiting_count || 0, 10);
+    const offeredCount = parseInt(row.offered_count || 0, 10);
+    const waitlistReservedSlots = Math.min(rawAvailableSlots, offeredCount + waitlistCount);
+    const availableSlots = Math.max(0, rawAvailableSlots - waitlistReservedSlots);
+
     resultMap.set(row.session_id, {
       capacity,
       occupiedSlots,
+      rawAvailableSlots,
       availableSlots,
-      waitlistCount: parseInt(row.waiting_count || 0, 10),
-      offeredCount: parseInt(row.offered_count || 0, 10),
+      waitlistCount,
+      offeredCount,
       isFull: availableSlots === 0
     });
   }
@@ -168,6 +179,7 @@ async function enrichSessionsWithCapacity(sessionsList, client = db) {
     const capInfo = capMap.get(s.id) || {
       capacity: s.capacity || 40,
       occupiedSlots: 0,
+      rawAvailableSlots: s.capacity || 40,
       availableSlots: s.capacity || 40,
       waitlistCount: 0,
       offeredCount: 0,
@@ -178,8 +190,10 @@ async function enrichSessionsWithCapacity(sessionsList, client = db) {
       ...s,
       capacity: capInfo.capacity,
       active_reservations_count: capInfo.occupiedSlots,
+      raw_available_slots: capInfo.rawAvailableSlots,
       available_slots: capInfo.availableSlots,
       waitlist_count: capInfo.waitlistCount,
+      offered_count: capInfo.offeredCount,
       is_full: capInfo.isFull
     };
   });

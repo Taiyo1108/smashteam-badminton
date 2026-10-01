@@ -72,9 +72,9 @@ export default function RankingTable({
 
   const getRankBadge = (rank: number | null) => {
     if (!rank) return "bg-slate-100 text-slate-400 font-bold border border-slate-200";
-    if (rank === 1) return "bg-amber-400 text-amber-950 font-black shadow-amber-400/30";
-    if (rank === 2) return "bg-slate-300 text-slate-800 font-black";
-    if (rank === 3) return "bg-amber-800/30 text-amber-900 font-black border border-amber-800/40";
+    if (rank === 1) return "bg-gradient-to-tr from-amber-500 to-yellow-300 text-amber-950 font-black shadow-md shadow-amber-500/30 border border-amber-300";
+    if (rank === 2) return "bg-gradient-to-tr from-slate-300 via-slate-100 to-slate-300 text-slate-800 font-black shadow-md shadow-slate-300/30 border border-slate-300";
+    if (rank === 3) return "bg-gradient-to-tr from-amber-700 to-amber-600 text-white font-black shadow-md shadow-amber-700/30 border border-amber-500";
     return "bg-slate-100 text-slate-600 font-bold";
   };
 
@@ -146,8 +146,8 @@ export default function RankingTable({
                         (@{p.user.nickname})
                       </span>
                     )}
-                    <span className={`text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded shadow-xs shrink-0 ${p.badgeClass}`}>
-                      {p.tier}
+                    <span className={`text-[10px] uppercase tracking-wider font-black px-2.5 py-0.5 rounded-full shrink-0 shadow-xs ${p.badgeClass}`}>
+                      {p.tierLabel || p.tier}
                     </span>
                     {p.isProvisional && (
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
@@ -260,8 +260,8 @@ export default function RankingTable({
                   <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-400 text-amber-950 shrink-0">
                     BẠN
                   </span>
-                  <span className={`text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded shadow-xs shrink-0 ${myPosition.badgeClass}`}>
-                    {myPosition.tier}
+                  <span className={`text-[10px] uppercase tracking-wider font-black px-2.5 py-0.5 rounded-full shrink-0 shadow-xs ${myPosition.badgeClass}`}>
+                    {myPosition.tierLabel || myPosition.tier}
                   </span>
                   {myPosition.isProvisional && (
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-300 border border-amber-400/30 shrink-0">

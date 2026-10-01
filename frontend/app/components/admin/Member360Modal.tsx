@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { formatVietnamDate } from "@/app/utils/date";
-import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
+import { getRankName, getRankBadgeClass, getRankLabel } from "@/app/utils/rank";
 
 // Predefined available tags for badminton club
 const AVAILABLE_TAGS = [
@@ -1352,8 +1352,8 @@ export default function Member360Modal({
                         <div className="bg-gradient-to-br from-slate-50 to-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Đơn (Singles)</span>
-                            <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${getRankBadgeClass(singles.rank || "Bronze")}`}>
-                              {singles.rank || "Bronze"}
+                            <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-sm ${getRankBadgeClass(singles.rank || "Bronze")}`}>
+                              {getRankLabel(singles.rank || "Bronze")}
                             </span>
                           </div>
                           <div className="flex items-baseline gap-2">
@@ -1382,8 +1382,8 @@ export default function Member360Modal({
                         <div className="bg-gradient-to-br from-slate-50 to-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Đôi (Doubles)</span>
-                            <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${getRankBadgeClass(doubles.rank || "Bronze")}`}>
-                              {doubles.rank || "Bronze"}
+                            <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-sm ${getRankBadgeClass(doubles.rank || "Bronze")}`}>
+                              {getRankLabel(doubles.rank || "Bronze")}
                             </span>
                           </div>
                           <div className="flex items-baseline gap-2">

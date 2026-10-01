@@ -649,6 +649,135 @@ const sendPasswordResetEmail = async (toEmail, userName, otpCode, resetUrl) => {
   }
 };
 
+/**
+ * Gửi email thông báo cho thành viên trong hàng chờ khi có slot trống được cấp
+ */
+const sendWaitlistSlotOfferEmail = async ({
+  toEmail,
+  userName,
+  sessionTitle,
+  sessionDate,
+  sessionLocation,
+  offerExpiresAt,
+  offerMinutes = 10,
+  sessionId
+}) => {
+  try {
+    if (!toEmail) return false;
+    const resend = getResendClient();
+    if (!resend) {
+      console.warn('[EmailService] Bỏ qua gửi email Waitlist do chưa cấu hình RESEND_API_KEY.');
+      return false;
+    }
+
+    const hostUrl = getFrontendUrl();
+    const claimUrl = `${hostUrl}`;
+
+    const formattedExpires = offerExpiresAt instanceof Date 
+      ? offerExpiresAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) + ' ngày ' + offerExpiresAt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })
+      : String(offerExpiresAt);
+
+    const formattedSessionDate = sessionDate instanceof Date
+      ? sessionDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) + ' - ' + sessionDate.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' })
+      : String(sessionDate || 'Buổi tập sắp tới');
+
+    const subject = `🏸 [SMASH TEAM] Có suất trống dành riêng cho bạn: ${sessionTitle || 'Buổi tập CLB'}`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${subject}</title>
+      </head>
+      <body style="margin: 0; padding: 20px; background-color: #06050c; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="background-color: #0c0a1a; padding: 36px 24px; text-align: center; color: #f8fafc; border-radius: 20px; max-width: 580px; margin: 0 auto; border: 1px solid #7A22E0; box-shadow: 0 10px 30px rgba(122, 34, 224, 0.25);">
+          
+          <!-- Badge -->
+          <div style="margin-bottom: 20px;">
+            <span style="display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000000; padding: 6px 16px; border-radius: 50px; font-size: 11px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase;">
+              ⚡ ƯU TIÊN HÀNG CHỜ (WAITLIST FIFO)
+            </span>
+          </div>
+
+          <h1 style="color: #ffffff; font-size: 24px; font-weight: 900; margin: 0 0 12px 0; line-height: 1.3;">
+            ĐÃ CÓ SUẤT TRỐNG DÀNH CHO BẠN!
+          </h1>
+          <p style="font-size: 14px; color: #cbd5e1; margin: 0 0 24px 0;">
+            Chào <strong style="color: #f59e0b;">${userName || 'bạn'}</strong>, một vị trí trong buổi tập vừa được giải phóng. Bạn là thành viên tiếp theo trong danh sách chờ được cấp suất tham gia này!
+          </p>
+          
+          <!-- Session Box -->
+          <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 14px; text-align: left; margin-bottom: 24px;">
+            <p style="margin: 6px 0; color: #f8fafc; font-size: 15px; font-weight: 800;">🏸 ${sessionTitle || 'Buổi sinh hoạt CLB'}</p>
+            <p style="margin: 6px 0; color: #94a3b8; font-size: 13px;">🕒 <strong>Thời gian:</strong> <span style="color: #e2e8f0;">${formattedSessionDate}</span></p>
+            ${sessionLocation ? `<p style="margin: 6px 0; color: #94a3b8; font-size: 13px;">📍 <strong>Địa điểm:</strong> <span style="color: #e2e8f0;">${sessionLocation}</span></p>` : ''}
+          </div>
+
+          <!-- Countdown / Expiry Box -->
+          <div style="background: rgba(245, 158, 11, 0.1); border: 1px dashed #f59e0b; padding: 16px; border-radius: 14px; margin-bottom: 28px; text-align: center;">
+            <p style="margin: 0; font-size: 13px; color: #fcd34d; font-weight: 700;">
+              ⏳ Thời gian giữ suất: <span style="font-size: 16px; color: #ffffff; font-weight: 900;">${offerMinutes} phút</span>
+            </p>
+            <p style="margin: 6px 0 0 0; font-size: 12px; color: #cbd5e1;">
+              Hạn chót xác nhận: <strong style="color: #f59e0b;">${formattedExpires}</strong>
+            </p>
+            <p style="margin: 6px 0 0 0; font-size: 11px; color: #94a3b8;">
+              (Sau thời gian này nếu bạn không xác nhận, suất sẽ tự động chuyển cho người tiếp theo)
+            </p>
+          </div>
+
+          <!-- Call to Action -->
+          <div style="margin: 10px 0 25px 0;">
+            <a href="${claimUrl}" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000000; padding: 14px 34px; text-decoration: none; border-radius: 50px; font-weight: 900; font-size: 14px; display: inline-block; box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4); letter-spacing: 0.5px; text-transform: uppercase;">
+              👉 VÀO XÁC NHẬN NHẬN CHỖ NGAY
+            </a>
+          </div>
+          
+          <p style="font-size: 12px; color: #64748b; margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 18px; line-height: 1.5;">
+            Đây là email tự động từ hệ thống Quản lý Sân tập SmashTeam Badminton.<br/>
+            Vui lòng đăng nhập vào website để bấm &ldquo;Xác nhận nhận chỗ ngay&rdquo;.
+          </p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
+      to: [toEmail],
+      subject,
+      html
+    });
+
+    if (error) {
+      console.error('[EmailService] Lỗi Resend khi gửi email Waitlist Offer:', error);
+      await logSentEmail({
+        recipient_email: toEmail,
+        subject,
+        email_type: 'waitlist_offer',
+        status: 'failed',
+        error_message: error.message
+      });
+      return false;
+    }
+
+    console.log(`[EmailService] Đã gửi email Waitlist Offer thành công tới ${toEmail} (ID: ${data?.id})`);
+    await logSentEmail({
+      recipient_email: toEmail,
+      subject,
+      email_type: 'waitlist_offer',
+      status: 'sent',
+      resend_id: data?.id
+    });
+    return true;
+  } catch (err) {
+    console.error('[EmailService] Ngoại lệ khi gửi email Waitlist Offer:', err);
+    return false;
+  }
+};
+
 module.exports = {
   DEFAULT_WELCOME_TEMPLATE,
   getWelcomeTemplate,
@@ -659,6 +788,7 @@ module.exports = {
   sendTestEmail,
   sendBroadcastEmails,
   sendPasswordResetEmail,
+  sendWaitlistSlotOfferEmail,
   getEmailQuota,
   logSentEmail,
   logSentEmailsBatch

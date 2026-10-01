@@ -569,49 +569,55 @@ export default function ProfilePage() {
   const getRankConfig = (elo: number) => {
     if (elo >= 1800) return {
       name: "Challenger",
+      label: "Thách Đấu",
       borderClass: "bg-gradient-to-r from-red-500 via-purple-600 to-red-500 p-[3px]",
       glowClass: "rank-glow-challenger",
-      badgeClass: "bg-gradient-to-r from-red-500 to-purple-600 text-white border border-red-400",
+      badgeClass: "bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white font-black shadow-md border border-red-400",
       nextElo: 2500,
       prevElo: 1800
     };
     if (elo >= 1600) return {
       name: "Diamond",
+      label: "Kim Cương",
       borderClass: "border-4 border-blue-500",
       glowClass: "rank-glow-diamond",
-      badgeClass: "bg-blue-600/30 text-blue-400 border border-blue-500/50",
+      badgeClass: "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white font-black shadow-md border border-cyan-300",
       nextElo: 1800,
       prevElo: 1600
     };
     if (elo >= 1400) return {
       name: "Platinum",
+      label: "Bạch Kim",
       borderClass: "border-4 border-teal-400",
       glowClass: "rank-glow-platinum",
-      badgeClass: "bg-teal-600/30 text-teal-400 border border-teal-500/50",
+      badgeClass: "bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white font-black shadow-md border border-emerald-300",
       nextElo: 1600,
       prevElo: 1400
     };
     if (elo >= 1200) return {
       name: "Gold",
+      label: "Vàng",
       borderClass: "border-4 border-amber-400",
       glowClass: "rank-glow-gold",
-      badgeClass: "bg-amber-600/30 text-amber-400 border border-amber-500/50",
+      badgeClass: "bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-black shadow-md border border-yellow-300",
       nextElo: 1400,
       prevElo: 1200
     };
     if (elo >= 1100) return {
       name: "Silver",
+      label: "Bạc",
       borderClass: "border-4 border-slate-300",
       glowClass: "rank-glow-silver",
-      badgeClass: "bg-slate-600/30 text-slate-300 border border-slate-400/50",
+      badgeClass: "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 font-black shadow-md border border-slate-300",
       nextElo: 1200,
       prevElo: 1100
     };
     return {
       name: "Bronze",
+      label: "Đồng",
       borderClass: "border-4 border-amber-800",
       glowClass: "rank-glow-bronze",
-      badgeClass: "bg-amber-800/30 text-amber-600 border border-amber-800/50",
+      badgeClass: "bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 font-black shadow-md border border-amber-600",
       nextElo: 1100,
       prevElo: 800
     };
@@ -1175,7 +1181,7 @@ export default function ProfilePage() {
                       
                       {/* Tỉ lệ mở hộp quà */}
                       <div className="flex gap-4 mt-2 text-[10px] text-slate-500 font-bold justify-center sm:justify-start">
-                        <span>💰 75% Xu (20-50)</span>
+                        <span>💰 75% Xu (5-50)</span>
                         <span>🛡️ 25% Khiên Bảo Vệ</span>
                       </div>
                     </div>

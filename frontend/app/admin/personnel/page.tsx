@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { formatVietnamDate, toVietnamDatetimeInput, vietnamInputToIso } from "@/app/utils/date";
-import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
+import { getRankName, getRankBadgeClass, getRankLabel } from "@/app/utils/rank";
 import RecruitmentKPIs from "@/app/components/recruitment/RecruitmentKPIs";
 import ApplicantTable from "@/app/components/recruitment/ApplicantTable";
 import ApplicantDetailDrawer from "@/app/components/recruitment/ApplicantDetailDrawer";
@@ -1161,12 +1161,12 @@ export default function PersonnelPage() {
               className="p-2 text-xs border rounded-xl focus:ring-2 focus:ring-purple-600 outline-none bg-white min-w-[140px]"
             >
               <option value="all">Mọi phân cấp Rank</option>
-              <option value="Challenger">Challenger (1800+)</option>
-              <option value="Diamond">Diamond (1600+)</option>
-              <option value="Platinum">Platinum (1400+)</option>
-              <option value="Gold">Gold (1200+)</option>
-              <option value="Silver">Silver (1100+)</option>
-              <option value="Bronze">Bronze (&lt; 1100)</option>
+              <option value="Challenger">Thách Đấu (1800+)</option>
+              <option value="Diamond">Kim Cương (1600+)</option>
+              <option value="Platinum">Bạch Kim (1400+)</option>
+              <option value="Gold">Vàng (1200+)</option>
+              <option value="Silver">Bạc (1100+)</option>
+              <option value="Bronze">Đồng (&lt; 1100)</option>
             </select>
 
             <select 
@@ -1304,7 +1304,7 @@ export default function PersonnelPage() {
                             <div className="flex flex-col gap-1.5">
                               <div className="flex items-center gap-1.5">
                                 <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankSingles)}`}>
-                                  {rankSingles}
+                                  {getRankLabel(rankSingles)}
                                 </span>
                                 <span className="font-bold text-slate-700 font-mono text-[11px]">
                                   Đơn: {m.elo_singles ?? 1000}
@@ -1312,7 +1312,7 @@ export default function PersonnelPage() {
                               </div>
                               <div className="flex items-center gap-1.5">
                                 <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankDoubles)}`}>
-                                  {rankDoubles}
+                                  {getRankLabel(rankDoubles)}
                                 </span>
                                 <span className="font-bold text-slate-700 font-mono text-[11px]">
                                   Đôi: {m.elo_doubles ?? 1000}

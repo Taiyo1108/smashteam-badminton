@@ -10,7 +10,7 @@ const RANK_TIERS = [
     minElo: 1800,
     maxElo: 3000,
     prevTierMin: 1600,
-    badgeClass: 'from-red-500 via-rose-600 to-purple-600 text-white',
+    badgeClass: 'bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white font-black shadow-md shadow-red-500/30 border border-red-400',
     glowClass: 'shadow-[0_0_25px_rgba(239,68,68,0.5)]',
     borderClass: 'border-red-500'
   },
@@ -20,7 +20,7 @@ const RANK_TIERS = [
     minElo: 1600,
     maxElo: 1799,
     prevTierMin: 1400,
-    badgeClass: 'from-cyan-400 via-blue-500 to-indigo-600 text-white',
+    badgeClass: 'bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white font-black shadow-md shadow-blue-500/30 border border-cyan-300',
     glowClass: 'shadow-[0_0_20px_rgba(59,130,246,0.4)]',
     borderClass: 'border-blue-500'
   },
@@ -30,7 +30,7 @@ const RANK_TIERS = [
     minElo: 1400,
     maxElo: 1599,
     prevTierMin: 1200,
-    badgeClass: 'from-emerald-400 via-teal-500 to-cyan-600 text-white',
+    badgeClass: 'bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white font-black shadow-md shadow-emerald-500/30 border border-emerald-300',
     glowClass: 'shadow-[0_0_18px_rgba(16,185,129,0.35)]',
     borderClass: 'border-teal-400'
   },
@@ -40,7 +40,7 @@ const RANK_TIERS = [
     minElo: 1200,
     maxElo: 1399,
     prevTierMin: 1100,
-    badgeClass: 'from-amber-400 via-yellow-500 to-orange-500 text-slate-900',
+    badgeClass: 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/30 border border-yellow-300',
     glowClass: 'shadow-[0_0_15px_rgba(245,158,11,0.35)]',
     borderClass: 'border-amber-400'
   },
@@ -50,7 +50,7 @@ const RANK_TIERS = [
     minElo: 1100,
     maxElo: 1199,
     prevTierMin: 1000,
-    badgeClass: 'from-slate-200 via-slate-300 to-slate-400 text-slate-900',
+    badgeClass: 'bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 font-black shadow-md shadow-slate-300/40 border border-slate-300',
     glowClass: 'shadow-[0_0_12px_rgba(148,163,184,0.25)]',
     borderClass: 'border-slate-300'
   },
@@ -60,8 +60,8 @@ const RANK_TIERS = [
     minElo: 0,
     maxElo: 1099,
     prevTierMin: 0,
-    badgeClass: 'from-amber-700 via-amber-800 to-amber-900 text-amber-100',
-    glowClass: 'shadow-[0_0_10px_rgba(180,83,9,0.2)]',
+    badgeClass: 'bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 font-black shadow-md shadow-amber-900/40 border border-amber-600',
+    glowClass: 'shadow-[0_0_10px_rgba(180,83,9,0.3)]',
     borderClass: 'border-amber-700'
   }
 ];

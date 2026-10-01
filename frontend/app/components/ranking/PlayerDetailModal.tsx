@@ -70,8 +70,8 @@ export default function PlayerDetailModal({
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                  <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${player.badgeClass}`}>
-                    {player.tier}
+                  <span className={`text-[11px] font-black uppercase tracking-wider px-3 py-0.5 rounded-full shadow-sm ${player.badgeClass}`}>
+                    {player.tierLabel || player.tier}
                   </span>
                   {player.isProvisional || !player.rank ? (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-300 border border-amber-400/30">

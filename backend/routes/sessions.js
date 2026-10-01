@@ -190,12 +190,23 @@ router.post('/:id/waitlist/leave', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
+    const prevRes = await db.query(
+      `SELECT status FROM session_waitlist WHERE session_id = $1::uuid AND user_id = $2::uuid;`,
+      [id, userId]
+    );
+    const wasOffered = prevRes.rows[0]?.status === 'OFFERED';
+
     await db.query(
       `UPDATE session_waitlist 
        SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
        WHERE session_id = $1::uuid AND user_id = $2::uuid;`,
       [id, userId]
     );
+
+    if (wasOffered) {
+      const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+      triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist upon leave:', e));
+    }
 
     res.json({ success: true, message: 'Bạn đã rời khỏi danh sách chờ.' });
   } catch (error) {

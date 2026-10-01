@@ -384,6 +384,10 @@ router.put('/sessions/:id', async (req, res) => {
       } catch (discErr) {
         console.error('Error processing no-show discipline for closed session:', discErr);
       }
+    } else if (updatedSession) {
+      // Nếu session mở hoặc mở rộng capacity, kích hoạt kiểm tra waitlist để cấp slot nếu có
+      const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+      triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist on session update:', e));
     }
 
     res.json({ success: true, session: updatedSession });
@@ -806,7 +810,15 @@ router.post('/sessions/:id/participants/manual-remove', async (req, res) => {
       [id, req.user.id, user_id, beforeStatus, reason]
     );
 
-    res.json({ success: true, message: 'Đã xóa thành viên khỏi danh sách buổi tập.' });
+    // Tự động kích hoạt hàng chờ Waitlist và gửi email thông báo cho người tiếp theo
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    const offeredList = await triggerWaitlistOffers(id);
+
+    res.json({
+      success: true,
+      message: 'Đã xóa thành viên khỏi danh sách buổi tập.',
+      offeredList
+    });
   } catch (error) {
     console.error('Error manually removing participant:', error);
     res.status(400).json({ error: error.message || 'Lỗi xóa thành viên.' });

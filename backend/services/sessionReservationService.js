@@ -171,6 +171,39 @@ async function reserveSession(sessionId, userId) {
       throw err;
     }
 
+    // 3.1. KIỂM TRA ĐẶC QUYỀN HÀNG CHỜ (WAITLIST PRIORITY ENFORCEMENT)
+    // Kiểm tra xem user hiện tại có đang được OFFERED hợp lệ không
+    const userOfferRes = await client.query(
+      `SELECT * FROM session_waitlist
+       WHERE session_id = $1::uuid AND user_id = $2::uuid AND status = 'OFFERED' AND offer_expires_at > CURRENT_TIMESTAMP;`,
+      [sessionId, userId]
+    );
+    const isUserOffered = userOfferRes.rows.length > 0;
+
+    if (!isUserOffered) {
+      // User KHÔNG phải người được cấp offer.
+      // Kiểm tra xem số slot trống hiện tại có đang bị giữ cho danh sách chờ không:
+      const wlStatsRes = await client.query(
+        `SELECT 
+           COUNT(*) FILTER (WHERE status = 'OFFERED' AND (offer_expires_at IS NULL OR offer_expires_at > CURRENT_TIMESTAMP)) as active_offers,
+           COUNT(*) FILTER (WHERE status = 'WAITING') as waiting_count
+         FROM session_waitlist
+         WHERE session_id = $1::uuid;`,
+        [sessionId]
+      );
+      const activeOffers = parseInt(wlStatsRes.rows[0].active_offers || 0, 10);
+      const waitingCount = parseInt(wlStatsRes.rows[0].waiting_count || 0, 10);
+      const rawAvailable = capacity - activeCount;
+
+      // Nếu số slot còn lại nhỏ hơn hoặc bằng số người đang chờ / được offer,
+      // người ngoài không được phép đăng ký trực tiếp cướp chỗ!
+      if (rawAvailable <= (activeOffers + waitingCount)) {
+        const err = new Error('Suất trống hiện đang được bảo lưu ưu tiên cho thành viên trong Danh sách chờ (Waitlist). Vui lòng tham gia Hàng chờ!');
+        err.code = 'SESSION_FULL';
+        throw err;
+      }
+    }
+
     // 4. Ghi nhận reservation với status = 'RESERVED'
     const upsertRes = await client.query(
       `INSERT INTO attendances (
@@ -418,65 +451,173 @@ async function requestLateCancel(sessionId, userId, reason) {
 }
 
 /**
- * Tự động offer slot cho người đứng đầu Waitlist (hàm nội bộ chạy trong transaction)
+ * Tự động tìm và cấp offer cho các thành viên trong Waitlist FIFO khi có slot trống
+ * Hỗ trợ cấp đồng thời nhiều slot nếu có nhiều suất bị hủy cùng lúc.
+ * 
+ * @param {string} sessionId 
+ * @param {object|null} existingClient - Transaction client nếu đang nằm trong transaction cha
+ * @returns {Promise<Array>} Danh sách các user được cấp offer
+ */
+async function triggerWaitlistOffers(sessionId, existingClient = null) {
+  const client = existingClient || (await db.connect());
+  const shouldManageTransaction = !existingClient;
+
+  try {
+    if (shouldManageTransaction) {
+      await client.query('BEGIN');
+    }
+
+    // 1. Khóa và lấy thông tin session
+    const sessionRes = await client.query(
+      `SELECT id, title, capacity, session_start, session_end, date_time, location, waitlist_offer_duration_minutes, is_closed
+       FROM sessions
+       WHERE id = $1::uuid
+       FOR UPDATE;`,
+      [sessionId]
+    );
+
+    if (sessionRes.rows.length === 0) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    const session = sessionRes.rows[0];
+    if (session.is_closed) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    const now = new Date();
+    const tStart = session.session_start ? new Date(session.session_start) : new Date(session.date_time);
+    const sessionEnd = session.session_end ? new Date(session.session_end) : new Date(tStart.getTime() + 2 * 3600000);
+
+    // Nếu buổi tập đã kết thúc hoặc chỉ còn dưới 10 phút, không cần offer nữa
+    if (now.getTime() + 10 * 60000 >= sessionEnd.getTime()) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    // 2. Đếm số slot đang chiếm giữ
+    const countRes = await client.query(
+      `SELECT count(*) as active_count
+       FROM attendances
+       WHERE session_id = $1::uuid AND status = ANY($2::varchar[]);`,
+      [sessionId, SLOT_OCCUPYING_STATUSES]
+    );
+    const activeCount = parseInt(countRes.rows[0].active_count, 10);
+    const capacity = session.capacity || 40;
+    const rawAvailableSlots = Math.max(0, capacity - activeCount);
+
+    if (rawAvailableSlots <= 0) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    // 3. Đếm số người hiện đang giữ OFFER chưa hết hạn
+    const activeOfferRes = await client.query(
+      `SELECT id, user_id FROM session_waitlist
+       WHERE session_id = $1::uuid AND status = 'OFFERED' AND offer_expires_at > CURRENT_TIMESTAMP;`,
+      [sessionId]
+    );
+    const currentOfferedCount = activeOfferRes.rows.length;
+    const slotsToOffer = Math.max(0, rawAvailableSlots - currentOfferedCount);
+
+    if (slotsToOffer <= 0) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    // 4. Lấy danh sách `slotsToOffer` người tiếp theo đang WAITING theo FIFO
+    const nextUsersRes = await client.query(
+      `SELECT w.id, w.user_id, w.position, u.full_name, u.email, u.phone_zalo
+       FROM session_waitlist w
+       JOIN users u ON w.user_id = u.id
+       WHERE w.session_id = $1::uuid AND w.status = 'WAITING'
+       ORDER BY w.position ASC, w.created_at ASC
+       LIMIT $2
+       FOR UPDATE;`,
+      [sessionId, slotsToOffer]
+    );
+
+    if (nextUsersRes.rows.length === 0) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    const offerMinutes = session.waitlist_offer_duration_minutes || 10;
+    const offerExpiresAt = new Date(Date.now() + offerMinutes * 60000);
+    const offeredList = [];
+
+    for (const userRow of nextUsersRes.rows) {
+      await client.query(
+        `UPDATE session_waitlist
+         SET status = 'OFFERED',
+             offered_at = CURRENT_TIMESTAMP,
+             offer_expires_at = $1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2::uuid;`,
+        [offerExpiresAt, userRow.id]
+      );
+
+      offeredList.push({
+        waitlistId: userRow.id,
+        userId: userRow.user_id,
+        fullName: userRow.full_name,
+        email: userRow.email,
+        phoneZalo: userRow.phone_zalo,
+        position: userRow.position,
+        offerExpiresAt,
+        offerMinutes
+      });
+    }
+
+    if (shouldManageTransaction) {
+      await client.query('COMMIT');
+    }
+
+    // 5. Gửi email thông báo bất đồng bộ sau khi commit
+    if (offeredList.length > 0) {
+      setTimeout(() => {
+        const { sendWaitlistSlotOfferEmail } = require('../utils/emailService');
+        for (const offeredUser of offeredList) {
+          if (offeredUser.email) {
+            sendWaitlistSlotOfferEmail({
+              toEmail: offeredUser.email,
+              userName: offeredUser.fullName,
+              sessionTitle: session.title,
+              sessionDate: tStart,
+              sessionLocation: session.location,
+              offerExpiresAt: offeredUser.offerExpiresAt,
+              offerMinutes: offeredUser.offerMinutes,
+              sessionId: session.id
+            }).catch(err => {
+              console.error(`[Waitlist Offer] Lỗi khi gửi email tới ${offeredUser.email}:`, err);
+            });
+          }
+        }
+      }, 300);
+    }
+
+    return offeredList;
+  } catch (error) {
+    if (shouldManageTransaction) {
+      await client.query('ROLLBACK');
+    }
+    console.error('[triggerWaitlistOffers] Error:', error);
+    throw error;
+  } finally {
+    if (shouldManageTransaction) {
+      client.release();
+    }
+  }
+}
+
+/**
+ * Tự động offer slot cho người đứng đầu Waitlist (hàm nội bộ tương thích ngược)
  */
 async function triggerWaitlistOfferInternal(client, session) {
-  const now = new Date();
-  const sessionEnd = session.session_end ? new Date(session.session_end) : new Date(session.date_time.getTime() + 2 * 3600000);
-
-  // Nếu buổi tập đã kết thúc hoặc chỉ còn dưới 10 phút, không cần offer nữa
-  if (now.getTime() + 10 * 60000 >= sessionEnd.getTime()) {
-    return null;
-  }
-
-  // 1. Kiểm tra xem hiện có ai đang ở trạng thái OFFERED chưa hết hạn không
-  const activeOfferRes = await client.query(
-    `SELECT * FROM session_waitlist
-     WHERE session_id = $1::uuid AND status = 'OFFERED' AND offer_expires_at > CURRENT_TIMESTAMP;`,
-    [session.id]
-  );
-  if (activeOfferRes.rows.length > 0) {
-    return null; // Đã có người đang giữ offer
-  }
-
-  // 2. Tìm người đầu tiên trong waitlist có status = 'WAITING'
-  const nextUserRes = await client.query(
-    `SELECT w.*, u.full_name, u.email
-     FROM session_waitlist w
-     JOIN users u ON w.user_id = u.id
-     WHERE w.session_id = $1::uuid AND w.status = 'WAITING'
-     ORDER BY w.position ASC
-     LIMIT 1
-     FOR UPDATE;`,
-    [session.id]
-  );
-
-  if (nextUserRes.rows.length === 0) {
-    return null; // Waitlist rỗng
-  }
-
-  const nextUser = nextUserRes.rows[0];
-  const offerMinutes = session.waitlist_offer_duration_minutes || 10;
-  const offerExpiresAt = new Date(Date.now() + offerMinutes * 60000);
-
-  // 3. Cập nhật thành OFFERED
-  await client.query(
-    `UPDATE session_waitlist
-     SET status = 'OFFERED',
-         offered_at = CURRENT_TIMESTAMP,
-         offer_expires_at = $1,
-         updated_at = CURRENT_TIMESTAMP
-     WHERE id = $2::uuid;`,
-    [offerExpiresAt, nextUser.id]
-  );
-
-  return {
-    userId: nextUser.user_id,
-    fullName: nextUser.full_name,
-    email: nextUser.email,
-    position: nextUser.position,
-    offerExpiresAt
-  };
+  const offers = await triggerWaitlistOffers(session.id, client);
+  return offers && offers.length > 0 ? offers[0] : null;
 }
 
 /**
@@ -522,6 +663,8 @@ async function claimWaitlistOffer(sessionId, userId) {
         [wl.id]
       );
       await client.query('COMMIT');
+      // Kích hoạt ngay slot cho người kế tiếp
+      triggerWaitlistOffers(sessionId).catch(e => console.error('[claimWaitlistOffer] Auto offer next error:', e));
       throw new Error('Thời gian giữ slot của bạn đã hết hạn. Hệ thống đã chuyển cơ hội cho người tiếp theo.');
     }
 
@@ -1030,6 +1173,7 @@ module.exports = {
   cancelReservation,
   requestLateCancel,
   claimWaitlistOffer,
+  triggerWaitlistOffers,
   processQrCheckIn,
   processQrCheckOut,
   processCheckOut: processQrCheckOut,

@@ -48,6 +48,7 @@ export default function SharePlayerCard({
 
   const currentStats = mode === "doubles" ? doubles : singles;
   const tier = currentStats?.tier || "Bronze";
+  const tierLabel = currentStats?.tierLabel || (tier === "Challenger" ? "Thách Đấu" : tier === "Diamond" ? "Kim Cương" : tier === "Platinum" ? "Bạch Kim" : tier === "Gold" ? "Vàng" : tier === "Silver" ? "Bạc" : "Đồng");
   const elo = currentStats?.elo || 1000;
   const peakElo = currentStats?.peakElo || elo;
   const matches = currentStats?.matches || 0;
@@ -76,7 +77,7 @@ export default function SharePlayerCard({
       try {
         await navigator.share({
           title: `Hồ Sơ VĐV ${player.full_name} | SmashTeam Badminton`,
-          text: `Xem hồ sơ thi đấu của ${player.full_name} - ELO ${elo} (${tier}) tại SmashTeam Badminton Club!`,
+          text: `Xem hồ sơ thi đấu của ${player.full_name} - ELO ${elo} (Hạng ${tierLabel}) tại SmashTeam Badminton Club!`,
           url: profileUrl
         });
       } catch (err) {
@@ -175,8 +176,15 @@ export default function SharePlayerCard({
               </div>
 
               <div className="text-right">
-                <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 tracking-wider">
-                  {tier.toUpperCase()} TIER
+                <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full tracking-wider shadow-md ${
+                  tier === "Challenger" ? "bg-gradient-to-r from-red-600 to-purple-600 text-white border border-red-400" :
+                  tier === "Diamond" ? "bg-gradient-to-r from-cyan-400 to-blue-600 text-white border border-cyan-300" :
+                  tier === "Platinum" ? "bg-gradient-to-r from-emerald-400 to-cyan-500 text-white border border-emerald-300" :
+                  tier === "Gold" ? "bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 border border-yellow-300" :
+                  tier === "Silver" ? "bg-gradient-to-r from-slate-200 to-slate-300 text-slate-900 border border-slate-300" :
+                  "bg-gradient-to-r from-amber-700 to-amber-900 text-amber-50 border border-amber-600"
+                }`}>
+                  HẠNG {tierLabel.toUpperCase()}
                 </span>
               </div>
             </div>

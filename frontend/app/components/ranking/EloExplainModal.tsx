@@ -95,23 +95,23 @@ export default function EloExplainModal({ isOpen, onClose }: EloExplainModalProp
               Các Bậc Danh Vọng SmashTeam
             </h5>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <div className="p-2.5 rounded-xl bg-gradient-to-r from-red-500 to-purple-600 text-white text-xs font-bold text-center">
-                Challenger: 1800+
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white text-xs font-black text-center shadow-sm border border-red-400">
+                Thách Đấu: 1800+
               </div>
-              <div className="p-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold text-center">
-                Diamond: 1600+
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white text-xs font-black text-center shadow-sm border border-cyan-300">
+                Kim Cương: 1600+
               </div>
-              <div className="p-2.5 rounded-xl bg-teal-600 text-white text-xs font-bold text-center">
-                Platinum: 1400+
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white text-xs font-black text-center shadow-sm border border-emerald-300">
+                Bạch Kim: 1400+
               </div>
-              <div className="p-2.5 rounded-xl bg-amber-500 text-white text-xs font-bold text-center">
-                Gold: 1200+
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 text-xs font-black text-center shadow-sm border border-yellow-300">
+                Vàng: 1200+
               </div>
-              <div className="p-2.5 rounded-xl bg-slate-300 text-slate-800 text-xs font-bold text-center">
-                Silver: 1100+
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 text-xs font-black text-center shadow-sm border border-slate-300">
+                Bạc: 1100+
               </div>
-              <div className="p-2.5 rounded-xl bg-amber-900/20 text-amber-900 text-xs font-bold text-center">
-                Bronze: &lt; 1100
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 text-xs font-black text-center shadow-sm border border-amber-600">
+                Đồng: &lt; 1100
               </div>
             </div>
           </div>

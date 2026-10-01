@@ -352,7 +352,7 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
     }
 
     // 2. Quay thưởng ngẫu nhiên (Đã loại bỏ vật phẩm khung)
-    // 75% -> Smash Coins (20-50 xu), 25% -> Streak Shield (1-2 khiên)
+    // 75% -> Smash Coins (5-50 xu), 25% -> Streak Shield (1-2 khiên)
     const rand = Math.random() * 100;
     let rewardType = '';
     let rewardName = '';
@@ -360,9 +360,22 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
     let expiresAt = null;
 
     if (rand < 75) {
-      // 75% -> Coins
+      // 75% -> Coins (5-50 xu): Tỉ lệ cao ra 5 xu (60%), hiếm hơn là 10 xu (25%), 20 xu (10%), cực thấp là 40 xu (3%) & 50 xu (2%)
       rewardType = 'coins';
-      const coinsAwarded = Math.floor(Math.random() * 31) + 20; // 20 to 50
+      const coinRoll = Math.random() * 100;
+      let coinsAwarded = 5;
+      if (coinRoll < 60) {
+        coinsAwarded = 5;       // 60% tỉ lệ cao
+      } else if (coinRoll < 85) {
+        coinsAwarded = 10;      // 25% hiếm hơn
+      } else if (coinRoll < 95) {
+        coinsAwarded = 20;      // 10% hiếm
+      } else if (coinRoll < 98) {
+        coinsAwarded = 40;      // 3% cực thấp
+      } else {
+        coinsAwarded = 50;      // 2% cực thấp (Jackpot)
+      }
+
       rewardName = `${coinsAwarded} Smash Coins`;
       rewardValue = coinsAwarded.toString();
       

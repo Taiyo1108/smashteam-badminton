@@ -222,23 +222,23 @@ export default function RankingHubSection() {
               <span>Hệ Thống Phân Cấp Bậc ELO SmashTeam:</span>
             </div>
             <div className="flex flex-wrap gap-2 pt-0.5">
-              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-500 to-purple-600 text-white font-black shadow-xs">
-                Challenger: 1800+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white font-black shadow-sm border border-red-400">
+                Thách Đấu: 1800+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold shadow-xs">
-                Diamond: 1600+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white font-black shadow-sm border border-cyan-300">
+                Kim Cương: 1600+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-teal-600 text-white font-bold shadow-xs">
-                Platinum: 1400+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white font-black shadow-sm border border-emerald-300">
+                Bạch Kim: 1400+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-amber-500 text-white font-bold shadow-xs">
-                Gold: 1200+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-black shadow-sm border border-yellow-300">
+                Vàng: 1200+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-slate-300 text-slate-800 font-bold shadow-xs">
-                Silver: 1100+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 font-black shadow-sm border border-slate-300">
+                Bạc: 1100+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-amber-900/20 text-amber-900 font-bold shadow-xs">
-                Bronze: &lt; 1100
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 font-black shadow-sm border border-amber-600">
+                Đồng: &lt; 1100
               </span>
             </div>
           </div>

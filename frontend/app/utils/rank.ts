@@ -10,6 +10,7 @@
 
 export interface RankTier {
   name: string;
+  label: string;
   minElo: number;
   badgeClass: string;
   glowClass: string;
@@ -21,8 +22,9 @@ export interface RankTier {
 export const RANK_TIERS: RankTier[] = [
   {
     name: "Challenger",
+    label: "Thách Đấu",
     minElo: 1800,
-    badgeClass: "bg-gradient-to-r from-red-500 to-purple-600 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)] border border-red-400 font-extrabold",
+    badgeClass: "bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white shadow-md shadow-red-500/30 border border-red-400 font-black",
     glowClass: "rank-glow-challenger",
     borderClass: "bg-gradient-to-r from-red-500 via-purple-600 to-red-500 p-[3px]",
     nextElo: 2500,
@@ -30,8 +32,9 @@ export const RANK_TIERS: RankTier[] = [
   },
   {
     name: "Diamond",
+    label: "Kim Cương",
     minElo: 1600,
-    badgeClass: "bg-blue-500 text-white shadow-[0_0_8px_rgba(59,130,246,0.3)] font-bold",
+    badgeClass: "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/30 border border-cyan-300 font-black",
     glowClass: "rank-glow-diamond",
     borderClass: "border-4 border-blue-500",
     nextElo: 1800,
@@ -39,8 +42,9 @@ export const RANK_TIERS: RankTier[] = [
   },
   {
     name: "Platinum",
+    label: "Bạch Kim",
     minElo: 1400,
-    badgeClass: "bg-teal-500 text-white font-bold",
+    badgeClass: "bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white shadow-md shadow-emerald-500/30 border border-emerald-300 font-black",
     glowClass: "rank-glow-platinum",
     borderClass: "border-4 border-teal-400",
     nextElo: 1600,
@@ -48,8 +52,9 @@ export const RANK_TIERS: RankTier[] = [
   },
   {
     name: "Gold",
+    label: "Vàng",
     minElo: 1200,
-    badgeClass: "bg-amber-500 text-white font-bold",
+    badgeClass: "bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-md shadow-amber-500/30 border border-yellow-300 font-black",
     glowClass: "rank-glow-gold",
     borderClass: "border-4 border-amber-400",
     nextElo: 1400,
@@ -57,8 +62,9 @@ export const RANK_TIERS: RankTier[] = [
   },
   {
     name: "Silver",
+    label: "Bạc",
     minElo: 1100,
-    badgeClass: "bg-slate-300 text-slate-800 font-bold",
+    badgeClass: "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 shadow-md shadow-slate-300/40 border border-slate-300 font-black",
     glowClass: "rank-glow-silver",
     borderClass: "border-4 border-slate-300",
     nextElo: 1200,
@@ -66,8 +72,9 @@ export const RANK_TIERS: RankTier[] = [
   },
   {
     name: "Bronze",
+    label: "Đồng",
     minElo: 0,
-    badgeClass: "bg-amber-800/20 text-amber-900 font-bold",
+    badgeClass: "bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 shadow-md shadow-amber-900/40 border border-amber-600 font-black",
     glowClass: "rank-glow-bronze",
     borderClass: "border-4 border-amber-800",
     nextElo: 1100,
@@ -85,22 +92,44 @@ export const getRankName = (elo: number | null | undefined): string => {
   return "Bronze";
 };
 
-export const getRankBadgeClass = (rank: string): string => {
-  switch (rank) {
-    case "Challenger":
-      return "bg-gradient-to-r from-red-500 to-purple-600 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)] border border-red-400 font-extrabold";
-    case "Diamond":
-      return "bg-blue-500 text-white shadow-[0_0_8px_rgba(59,130,246,0.3)] font-bold";
-    case "Platinum":
-      return "bg-teal-500 text-white font-bold";
-    case "Gold":
-      return "bg-amber-500 text-white font-bold";
-    case "Silver":
-      return "bg-slate-300 text-slate-800 font-bold";
-    case "Bronze":
-    default:
-      return "bg-amber-800/20 text-amber-900 font-bold";
+export const getRankLabel = (rankOrElo: string | number | null | undefined): string => {
+  if (typeof rankOrElo === "number") {
+    if (rankOrElo >= 1800) return "Thách Đấu";
+    if (rankOrElo >= 1600) return "Kim Cương";
+    if (rankOrElo >= 1400) return "Bạch Kim";
+    if (rankOrElo >= 1200) return "Vàng";
+    if (rankOrElo >= 1100) return "Bạc";
+    return "Đồng";
   }
+  if (!rankOrElo) return "Đồng";
+  const lower = rankOrElo.toLowerCase().trim();
+  if (lower.includes("challenger") || lower.includes("thách đấu")) return "Thách Đấu";
+  if (lower.includes("diamond") || lower.includes("kim cương")) return "Kim Cương";
+  if (lower.includes("platinum") || lower.includes("bạch kim")) return "Bạch Kim";
+  if (lower.includes("gold") || lower.includes("vàng")) return "Vàng";
+  if (lower.includes("silver") || lower.includes("bạc")) return "Bạc";
+  if (lower.includes("bronze") || lower.includes("đồng")) return "Đồng";
+  return rankOrElo;
+};
+
+export const getRankBadgeClass = (rank: string): string => {
+  const lower = (rank || "").toLowerCase().trim();
+  if (lower.includes("challenger") || lower.includes("thách đấu")) {
+    return "bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white shadow-md shadow-red-500/30 border border-red-400 font-black";
+  }
+  if (lower.includes("diamond") || lower.includes("kim cương")) {
+    return "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/30 border border-cyan-300 font-black";
+  }
+  if (lower.includes("platinum") || lower.includes("bạch kim")) {
+    return "bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white shadow-md shadow-emerald-500/30 border border-emerald-300 font-black";
+  }
+  if (lower.includes("gold") || lower.includes("vàng")) {
+    return "bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-md shadow-amber-500/30 border border-yellow-300 font-black";
+  }
+  if (lower.includes("silver") || lower.includes("bạc")) {
+    return "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 shadow-md shadow-slate-300/40 border border-slate-300 font-black";
+  }
+  return "bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 shadow-md shadow-amber-900/40 border border-amber-600 font-black";
 };
 
 export const getRankConfig = (elo: number | null | undefined): RankTier => {

@@ -187,57 +187,57 @@ export default function CompetitivePlayerCard({
   const tierTheme = {
     Challenger: {
       accentGrad: "from-red-600 via-rose-600 to-purple-600",
-      borderGrad: "border-rose-500/40 hover:border-rose-500/70",
-      glowBg: "from-rose-500/10 via-purple-500/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-red-600 to-purple-600 text-white shadow-lg shadow-red-500/30",
-      textAcc: "text-rose-500",
+      borderGrad: "border-rose-500/70 hover:border-rose-500 shadow-[0_0_25px_rgba(239,68,68,0.25)]",
+      glowBg: "from-rose-500/25 via-purple-500/15 to-transparent",
+      badgeColor: "bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white shadow-md shadow-red-500/40 border border-red-400 font-black",
+      textAcc: "text-rose-600",
       ringColor: "stroke-rose-500"
     },
     Diamond: {
-      accentGrad: "from-cyan-500 via-blue-600 to-indigo-600",
-      borderGrad: "border-blue-500/40 hover:border-blue-500/70",
-      glowBg: "from-blue-500/10 via-cyan-500/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-blue-500/30",
-      textAcc: "text-blue-500",
+      accentGrad: "from-cyan-400 via-blue-500 to-indigo-600",
+      borderGrad: "border-blue-500/60 hover:border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.25)]",
+      glowBg: "from-blue-500/20 via-cyan-500/15 to-transparent",
+      badgeColor: "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/40 border border-cyan-300 font-black",
+      textAcc: "text-blue-600",
       ringColor: "stroke-blue-500"
     },
     Platinum: {
-      accentGrad: "from-emerald-500 via-teal-500 to-cyan-600",
-      borderGrad: "border-teal-500/40 hover:border-teal-500/70",
-      glowBg: "from-teal-500/10 via-emerald-500/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-teal-500 to-emerald-600 text-white shadow-lg shadow-teal-500/30",
-      textAcc: "text-teal-500",
+      accentGrad: "from-emerald-400 via-teal-500 to-cyan-500",
+      borderGrad: "border-teal-400/60 hover:border-teal-500 shadow-[0_0_25px_rgba(20,184,166,0.2)]",
+      glowBg: "from-teal-500/20 via-emerald-500/10 to-transparent",
+      badgeColor: "bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/35 border border-emerald-300 font-black",
+      textAcc: "text-teal-600",
       ringColor: "stroke-teal-500"
     },
     Gold: {
-      accentGrad: "from-amber-400 via-yellow-500 to-orange-500",
-      borderGrad: "border-amber-400/50 hover:border-amber-500/80",
-      glowBg: "from-amber-500/10 via-yellow-500/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 shadow-lg shadow-amber-500/30",
-      textAcc: "text-amber-500",
+      accentGrad: "from-amber-400 via-yellow-400 to-amber-500",
+      borderGrad: "border-amber-400/60 hover:border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.25)]",
+      glowBg: "from-amber-500/20 via-yellow-500/15 to-transparent",
+      badgeColor: "bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-md shadow-amber-500/35 border border-yellow-300 font-black",
+      textAcc: "text-amber-600",
       ringColor: "stroke-amber-500"
     },
     Silver: {
-      accentGrad: "from-slate-300 via-slate-400 to-slate-500",
-      borderGrad: "border-slate-300 hover:border-slate-400",
-      glowBg: "from-slate-200/40 via-slate-100/20 to-transparent",
-      badgeColor: "bg-gradient-to-r from-slate-200 to-slate-400 text-slate-800 shadow-md",
-      textAcc: "text-slate-600",
+      accentGrad: "from-slate-200 via-white to-slate-300",
+      borderGrad: "border-slate-300 hover:border-slate-400 shadow-[0_0_20px_rgba(148,163,184,0.2)]",
+      glowBg: "from-slate-300/30 via-slate-200/15 to-transparent",
+      badgeColor: "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 shadow-md shadow-slate-300/40 border border-slate-300 font-black",
+      textAcc: "text-slate-700",
       ringColor: "stroke-slate-400"
     },
     Bronze: {
-      accentGrad: "from-amber-700 via-amber-800 to-amber-900",
-      borderGrad: "border-amber-700/30 hover:border-amber-700/60",
-      glowBg: "from-amber-800/10 via-amber-900/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-amber-700 to-amber-900 text-amber-100 shadow-md",
-      textAcc: "text-amber-700",
+      accentGrad: "from-amber-700 via-orange-800 to-amber-900",
+      borderGrad: "border-amber-700/50 hover:border-amber-700 shadow-[0_0_20px_rgba(180,83,9,0.2)]",
+      glowBg: "from-amber-800/20 via-amber-900/10 to-transparent",
+      badgeColor: "bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 shadow-md shadow-amber-900/40 border border-amber-600 font-black",
+      textAcc: "text-amber-800",
       ringColor: "stroke-amber-700"
     }
   }[tier] || {
     accentGrad: "from-slate-700 to-slate-900",
     borderGrad: "border-slate-200",
     glowBg: "from-slate-100 to-transparent",
-    badgeColor: "bg-slate-800 text-white",
+    badgeColor: "bg-slate-800 text-white font-black",
     textAcc: "text-slate-800",
     ringColor: "stroke-slate-800"
   };
@@ -257,9 +257,9 @@ export default function CompetitivePlayerCard({
         <div className="flex items-center justify-between relative z-10 mb-4">
           <div className="flex items-center gap-2">
             {/* Tier Badge */}
-            <span className={`text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${tierTheme.badgeColor} flex items-center gap-1`}>
-              <Trophy className="w-3.5 h-3.5" />
-              {tier.toUpperCase()} {tierLabel !== tier && `(${tierLabel})`}
+            <span className={`text-[12px] font-black uppercase tracking-wider px-3.5 py-1 rounded-full ${tierTheme.badgeColor} flex items-center gap-1.5 shadow-sm`}>
+              <Trophy className="w-3.5 h-3.5 shrink-0" />
+              <span>HẠNG {tierLabel.toUpperCase()}</span>
             </span>
 
             {/* Standing or Percentile */}
@@ -404,8 +404,8 @@ export default function CompetitivePlayerCard({
                 <span className="text-4xl font-black text-slate-900 tracking-tight">
                   {elo}
                 </span>
-                <span className="text-xs font-extrabold uppercase px-2 py-0.5 rounded bg-slate-200 text-slate-700">
-                  {tier}
+                <span className={`text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full ${tierTheme.badgeColor}`}>
+                  {tierLabel}
                 </span>
               </div>
             </div>
