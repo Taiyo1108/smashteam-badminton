@@ -4,14 +4,16 @@ import { useState, useEffect } from "react";
 import { 
   Calendar, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, 
   XCircle, RefreshCw, Users, Search, Loader2, X, Check, ArrowRight,
-  ExternalLink, Sparkles, Filter, Clock, Trash2, Edit2
+  ExternalLink, Sparkles, Filter, Clock, Trash2, Edit2, UserPlus
 } from "lucide-react";
 import { API_URL } from "@/app/config";
+import SearchableMemberSelect from "@/app/components/admin/SearchableMemberSelect";
 
 interface MonthlySubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  allMembers?: any[];
 }
 
 const ALL_CLUB_SLOTS = [
@@ -37,7 +39,8 @@ const safeFetchJson = async (res: Response) => {
 export default function MonthlySubscriptionModal({
   isOpen,
   onClose,
-  onSuccess
+  onSuccess,
+  allMembers
 }: MonthlySubscriptionModalProps) {
   // Tab: 'dashboard' | 'import'
   const [activeTab, setActiveTab] = useState<"dashboard" | "import">("dashboard");
@@ -51,6 +54,50 @@ export default function MonthlySubscriptionModal({
   };
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr());
+  
+  // Danh sách hội viên dùng cho SearchableMemberSelect
+  const [membersList, setMembersList] = useState<any[]>(allMembers || []);
+  
+  // Popup thêm hội viên cố định thủ công
+  const [isManualAddOpen, setIsManualAddOpen] = useState(false);
+  const [manualAddUserId, setManualAddUserId] = useState("");
+  const [manualAddMonth, setManualAddMonth] = useState(selectedMonth);
+  const [manualAddSlots, setManualAddSlots] = useState<string[]>([]);
+  const [manualAddPaymentStatus, setManualAddPaymentStatus] = useState<"PAID" | "PENDING">("PAID");
+  const [manualAddNote, setManualAddNote] = useState("");
+  const [manualAddSyncSessions, setManualAddSyncSessions] = useState(true);
+  const [isSubmittingManualAdd, setIsSubmittingManualAdd] = useState(false);
+
+  // Popup gán lại hội viên cho dòng preview Excel
+  const [reassignRowIndex, setReassignRowIndex] = useState<number | null>(null);
+
+  // Đảm bảo membersList luôn được nạp đầy đủ
+  useEffect(() => {
+    if (allMembers && allMembers.length > 0) {
+      setMembersList(allMembers);
+    } else if (isOpen) {
+      const fetchInternalMembers = async () => {
+        try {
+          const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+          const res = await fetch(`${API_URL}/api/users/members`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setMembersList(data);
+          }
+        } catch (e) {
+          console.error("Error fetching members:", e);
+        }
+      };
+      fetchInternalMembers();
+    }
+  }, [isOpen, allMembers]);
+
+  // Cập nhật tháng thêm thủ công khi selectedMonth thay đổi
+  useEffect(() => {
+    setManualAddMonth(selectedMonth);
+  }, [selectedMonth]);
   
   // Dashboard states
   const [isLoadingStats, setIsLoadingStats] = useState(false);
@@ -246,6 +293,105 @@ export default function MonthlySubscriptionModal({
     } catch (err: any) {
       alert("Lỗi: " + err.message);
     }
+  };
+
+  const handleToggleManualAddSlot = (slotCode: string) => {
+    setManualAddSlots(prev =>
+      prev.includes(slotCode) ? prev.filter(c => c !== slotCode) : [...prev, slotCode]
+    );
+  };
+
+  const handleManualAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualAddUserId) {
+      alert("Vui lòng chọn thành viên cần thêm.");
+      return;
+    }
+    if (manualAddSlots.length === 0) {
+      alert("Vui lòng chọn ít nhất 1 ca tập cố định cho thành viên.");
+      return;
+    }
+
+    setIsSubmittingManualAdd(true);
+    try {
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/admin/subscriptions/manual-add`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          userId: manualAddUserId,
+          monthYear: manualAddMonth,
+          registeredSlots: manualAddSlots,
+          paymentStatus: manualAddPaymentStatus,
+          note: manualAddNote.trim() || undefined,
+          syncSessions: manualAddSyncSessions
+        })
+      });
+      const data = await safeFetchJson(res);
+      if (res.ok && data.success) {
+        alert(data.message || `✓ Đã thêm thành công thành viên vào danh sách cố định tháng ${manualAddMonth}!`);
+        setIsManualAddOpen(false);
+        setManualAddUserId("");
+        setManualAddSlots([]);
+        setManualAddNote("");
+        if (manualAddMonth === selectedMonth) {
+          fetchStats(selectedMonth);
+        } else {
+          setSelectedMonth(manualAddMonth);
+        }
+        if (onSuccess) onSuccess();
+      } else {
+        alert(data.error || "Lỗi thêm thành viên cố định.");
+      }
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
+    } finally {
+      setIsSubmittingManualAdd(false);
+    }
+  };
+
+  const handleReassignMember = (rowIndex: number, member: any) => {
+    if (!previewData || !member) return;
+    setPreviewData((prev: any) => {
+      const nextRows = prev.rows.map((r: any) => {
+        if (r.rowIndex === rowIndex) {
+          const nextIssues = (r.issues || []).filter(
+            (iss: string) => !iss.includes("Không tìm thấy") && !iss.includes("Chưa khớp SĐT") && !iss.includes("Chưa có nick")
+          );
+          return {
+            ...r,
+            matchedUser: {
+              id: member.id,
+              fullName: member.full_name,
+              nickname: member.nickname,
+              role: member.role,
+              badmintonLevel: member.badminton_level,
+              phoneZalo: member.phone_zalo
+            },
+            status: (Array.isArray(r.registeredSlots) && r.registeredSlots.length > 0) ? "VALID" : "WARNING",
+            selectedForImport: true,
+            issues: nextIssues
+          };
+        }
+        return r;
+      });
+
+      const validCount = nextRows.filter((r: any) => r.status === "VALID" && r.selectedForImport).length;
+      const warningCount = nextRows.filter((r: any) => r.status === "WARNING" || (r.status === "VALID" && !r.selectedForImport)).length;
+      const errorCount = nextRows.filter((r: any) => r.status === "ERROR").length;
+
+      return {
+        ...prev,
+        validCount,
+        warningCount,
+        errorCount,
+        rows: nextRows
+      };
+    });
+    setReassignRowIndex(null);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -591,6 +737,19 @@ export default function MonthlySubscriptionModal({
                 </div>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => {
+                      setManualAddMonth(selectedMonth);
+                      setManualAddUserId("");
+                      setManualAddSlots([]);
+                      setManualAddNote("");
+                      setIsManualAddOpen(true);
+                    }}
+                    className="flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                    title="Thêm thành viên đăng ký cố định tháng này thủ công"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" /> + Thêm Cố Định
+                  </button>
                   <button
                     onClick={() => setShowResetConfirm(true)}
                     disabled={isResettingMonth || subscribersList.length === 0}
@@ -941,15 +1100,44 @@ export default function MonthlySubscriptionModal({
                                 <td className="py-2.5 px-3 font-mono text-slate-600">{r.normalizedPhone || r.rawPhone || "—"}</td>
                                 <td className="py-2.5 px-3">
                                   {r.matchedUser ? (
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                                      <span className="font-bold text-emerald-900">{r.matchedUser.fullName}</span>
-                                      <span className="text-[10px] text-slate-400">({r.matchedUser.role})</span>
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                                        <span className="font-bold text-emerald-900">{r.matchedUser.fullName}</span>
+                                        {r.matchedUser.nickname && (
+                                          <span className="text-[10px] text-slate-500 font-medium">
+                                            &bull; &ldquo;{r.matchedUser.nickname}&rdquo;
+                                          </span>
+                                        )}
+                                        {r.matchedUser.badmintonLevel && (
+                                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                            {r.matchedUser.badmintonLevel}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => setReassignRowIndex(r.rowIndex)}
+                                        className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                                        title="Gán lại tài khoản thành viên khác cho dòng này"
+                                      >
+                                        <Edit2 className="w-2.5 h-2.5" /> Đổi nick
+                                      </button>
                                     </div>
                                   ) : (
-                                    <span className="text-rose-600 font-bold text-[11px] flex items-center gap-1">
-                                      <XCircle className="w-3.5 h-3.5 shrink-0" /> Chưa có nick
-                                    </span>
+                                    <div className="space-y-1">
+                                      <span className="text-rose-600 font-bold text-[11px] flex items-center gap-1">
+                                        <XCircle className="w-3.5 h-3.5 shrink-0" /> Chưa có nick
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setReassignRowIndex(r.rowIndex)}
+                                        className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                                        title="Chọn tài khoản thành viên trong CLB để gán"
+                                      >
+                                        <UserPlus className="w-2.5 h-2.5" /> Gán nick CLB
+                                      </button>
+                                    </div>
                                   )}
                                 </td>
                                 <td className="py-2.5 px-3">
@@ -1199,6 +1387,203 @@ export default function MonthlySubscriptionModal({
                 {isResettingMonth ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Xác nhận Reset tháng
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL: THÊM THÀNH VIÊN ĐĂNG KÝ CỐ ĐỊNH THỦ CÔNG */}
+      {isManualAddOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-secondary flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-emerald-600" /> Thêm hội viên cố định tháng
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Đăng ký trực tiếp cho thành viên mà không cần file Excel
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsManualAddOpen(false)}
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-400 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleManualAddSubmit} className="space-y-4 text-xs">
+              {/* Chọn tháng */}
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1">
+                  Tháng đăng ký
+                </label>
+                <input
+                  type="month"
+                  required
+                  value={manualAddMonth}
+                  onChange={(e) => setManualAddMonth(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+
+              {/* Searchable Member Select */}
+              <SearchableMemberSelect
+                label="Chọn thành viên"
+                placeholder="Gõ tên, biệt danh hoặc SĐT..."
+                required
+                members={membersList}
+                selectedMemberId={manualAddUserId}
+                onSelectMember={(id) => setManualAddUserId(id)}
+                helperText="Tìm nhanh theo tên (có dấu/không dấu), biệt danh hoặc số điện thoại"
+              />
+
+              {/* Chọn các khung giờ */}
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1.5">
+                  Chọn các khung giờ cố định ({manualAddSlots.length} ca đã chọn) <span className="text-rose-500">*</span>
+                </label>
+                <div className="space-y-2">
+                  {ALL_CLUB_SLOTS.map((slot) => {
+                    const isChecked = manualAddSlots.includes(slot.code);
+                    return (
+                      <label
+                        key={slot.code}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border font-bold cursor-pointer transition-all ${
+                          isChecked
+                            ? "border-emerald-500 bg-emerald-50/70 text-emerald-950 shadow-xs"
+                            : "border-slate-200 hover:border-slate-300 text-slate-600 bg-white"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleManualAddSlot(slot.code)}
+                            className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                          />
+                          <span>{slot.label}</span>
+                        </div>
+                        <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                          {slot.labelShort}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Trạng thái thanh toán & Ghi chú */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1">
+                    Thanh toán
+                  </label>
+                  <select
+                    value={manualAddPaymentStatus}
+                    onChange={(e) => setManualAddPaymentStatus(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50 focus:bg-white"
+                  >
+                    <option value="PAID">ĐÃ THANH TOÁN (PAID)</option>
+                    <option value="PENDING">CHỜ THANH TOÁN (PENDING)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1">
+                    Ghi chú
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="VD: CK Vietcombank..."
+                    value={manualAddNote}
+                    onChange={(e) => setManualAddNote(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium bg-slate-50 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Đồng bộ lịch tập */}
+              <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={manualAddSyncSessions}
+                  onChange={(e) => setManualAddSyncSessions(e.target.checked)}
+                  className="rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                />
+                Tự động xếp lịch vào các buổi tập trong tháng {manualAddMonth}
+              </label>
+
+              {/* Nút hành động */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsManualAddOpen(false)}
+                  className="px-4 py-2 font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingManualAdd || !manualAddUserId || manualAddSlots.length === 0}
+                  className="px-5 py-2 font-black rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingManualAdd ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Xác nhận Thêm Cố Định
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL: GÁN TÀI KHOẢN CLB CHO DÒNG EXCEL PREVIEW */}
+      {reassignRowIndex !== null && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-secondary flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-indigo-600" /> Chọn tài khoản hội viên cho Dòng #{reassignRowIndex}
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Gán thủ công tài khoản thành viên chính thức cho dòng dữ liệu này
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReassignRowIndex(null)}
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-400 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <SearchableMemberSelect
+                label="Tìm kiếm thành viên"
+                placeholder="Gõ tên, biệt danh hoặc SĐT..."
+                required
+                members={membersList}
+                selectedMemberId=""
+                onSelectMember={(_, member) => {
+                  if (member && reassignRowIndex !== null) {
+                    handleReassignMember(reassignRowIndex, member);
+                  }
+                }}
+                helperText="Bấm vào thành viên tương ứng để gán ngay cho dòng này"
+              />
+
+              <div className="flex items-center justify-end pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setReassignRowIndex(null)}
+                  className="px-4 py-2 font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
           </div>
         </div>

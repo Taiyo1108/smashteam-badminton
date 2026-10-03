@@ -13,6 +13,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import { formatVietnamDate, toVietnamDatetimeInput } from "@/app/utils/date";
 import MonthlySubscriptionModal from "./components/MonthlySubscriptionModal";
 import BulkAddAttendeesModal from "./components/BulkAddAttendeesModal";
+import SearchableMemberSelect from "@/app/components/admin/SearchableMemberSelect";
 
 export default function AdminSessionsPage() {
   const router = useRouter();
@@ -1722,22 +1723,15 @@ export default function AdminSessionsPage() {
             <p className="text-slate-500 mb-4">Ghi nhận check-in trực tiếp tại sân cho khách vãng lai hoặc thành viên đến sân đột xuất.</p>
 
             <form onSubmit={handleWalkInCheckIn} className="space-y-4">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600 uppercase tracking-wider text-[10px]">Chọn thành viên</label>
-                <select
-                  required
-                  value={selectedMemberId}
-                  onChange={(e) => setSelectedMemberId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 font-bold focus:border-primary"
-                >
-                  <option value="">-- Chọn thành viên từ danh sách CLB --</option>
-                  {allMembers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.full_name} ({m.phone_zalo || "Không SĐT"}) {m.nickname ? `• "${m.nickname}"` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableMemberSelect
+                label="Chọn thành viên walk-in"
+                placeholder="Gõ tên, biệt danh hoặc SĐT..."
+                required
+                members={allMembers}
+                selectedMemberId={selectedMemberId}
+                onSelectMember={(id) => setSelectedMemberId(id)}
+                helperText="Tìm nhanh theo tên (có dấu/không dấu), biệt danh hoặc số điện thoại"
+              />
 
               <div className="space-y-1">
                 <label className="font-bold text-slate-600 uppercase tracking-wider text-[10px]">Ghi chú / Lý do Walk-in</label>
@@ -1777,22 +1771,15 @@ export default function AdminSessionsPage() {
             </h3>
 
             <form onSubmit={handleManualAdd} className="space-y-4">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600 uppercase tracking-wider text-[10px]">Chọn thành viên</label>
-                <select
-                  required
-                  value={selectedMemberId}
-                  onChange={(e) => setSelectedMemberId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 font-bold"
-                >
-                  <option value="">-- Chọn thành viên từ danh sách CLB --</option>
-                  {allMembers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.full_name} ({m.phone_zalo || "Không SĐT"})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableMemberSelect
+                label="Chọn thành viên"
+                placeholder="Gõ tên, biệt danh hoặc SĐT..."
+                required
+                members={allMembers}
+                selectedMemberId={selectedMemberId}
+                onSelectMember={(id) => setSelectedMemberId(id)}
+                helperText="Tìm nhanh theo tên (có dấu/không dấu), biệt danh hoặc số điện thoại"
+              />
 
               <div className="space-y-1">
                 <label className="font-bold text-slate-600 uppercase tracking-wider text-[10px]">Trạng thái chỉ định</label>
@@ -1944,6 +1931,7 @@ export default function AdminSessionsPage() {
       <MonthlySubscriptionModal
         isOpen={isMonthlyModalOpen}
         onClose={() => setIsMonthlyModalOpen(false)}
+        allMembers={allMembers}
         onSuccess={() => {
           fetchSessions();
           if (selectedSession) fetchDashboard(selectedSession.id);

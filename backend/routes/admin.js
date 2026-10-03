@@ -686,6 +686,51 @@ router.post('/subscriptions/commit-import', async (req, res) => {
   }
 });
 
+// POST /api/admin/subscriptions/manual-add - Admin thêm trực tiếp 1 thành viên đăng ký cố định tháng
+router.post('/subscriptions/manual-add', async (req, res) => {
+  try {
+    const { userId, monthYear, registeredSlots, paymentStatus = 'PAID', note, syncSessions = true } = req.body;
+    if (!userId || !monthYear || !Array.isArray(registeredSlots) || registeredSlots.length === 0) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ: thành viên, tháng và ít nhất 1 khung giờ đăng ký.' });
+    }
+
+    // Kiểm tra user có tồn tại và hợp lệ không
+    const userRes = await db.query(`
+      SELECT id, full_name, nickname, phone_zalo, role, status, is_blocked, deleted_at 
+      FROM users 
+      WHERE id = $1 AND deleted_at IS NULL
+    `, [userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy thông tin thành viên.' });
+    }
+    const user = userRes.rows[0];
+    if (user.role === 'candidate') {
+      return res.status(400).json({ error: 'Tài khoản là ứng viên (candidate), vui lòng duyệt thành viên trước khi đăng ký cố định.' });
+    }
+
+    const commitResult = await commitSubscriptions({
+      monthYear,
+      subscriptions: [{
+        userId,
+        registeredSlots,
+        paymentStatus,
+        note: note || 'Thêm thủ công bởi Admin'
+      }],
+      syncSessions,
+      adminUserId: req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: `Đã thêm thành công thành viên ${user.full_name} vào đăng ký cố định tháng ${monthYear}.`,
+      result: commitResult
+    });
+  } catch (error) {
+    console.error('Error manual adding subscription:', error);
+    res.status(400).json({ error: error.message || 'Lỗi thêm đăng ký cố định thủ công.' });
+  }
+});
+
 // GET /api/admin/subscriptions/stats - Xem thống kê và danh sách đăng ký cố định tháng
 router.get('/subscriptions/stats', async (req, res) => {
   try {

@@ -75,11 +75,11 @@ async function previewSubscriptions(rows, monthYear, client = db) {
     throw new Error('monthYear không hợp lệ. Định dạng yêu cầu: YYYY-MM (ví dụ 2026-10).');
   }
 
-  // 1. Lấy tất cả user đang có trong hệ thống
+  // 1. Lấy danh sách thành viên hợp lệ trong hệ thống (chỉ lấy member/admin, loại bỏ candidate để tránh đăng ký nhầm ứng viên thành hội viên cố định)
   const usersRes = await client.query(`
-    SELECT id, full_name, phone_zalo, role, status, is_blocked, deleted_at
+    SELECT id, full_name, nickname, phone_zalo, role, badminton_level, status, is_blocked, deleted_at
     FROM users
-    WHERE deleted_at IS NULL;
+    WHERE deleted_at IS NULL AND (role IS NULL OR role != 'candidate');
   `);
 
   // Map số điện thoại chuẩn hóa -> User
@@ -95,6 +95,8 @@ async function previewSubscriptions(rows, monthYear, client = db) {
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'd')
       .trim();
     if (cleanName) {
       if (!nameToUsersMap.has(cleanName)) {
@@ -159,19 +161,27 @@ async function previewSubscriptions(rows, monthYear, client = db) {
     } else {
       matchedUser = phoneToUserMap.get(normalizedPhone);
       if (!matchedUser) {
-        // Thử tìm theo tên gợi ý
+        // Thử tìm theo tên gợi ý trong danh sách hội viên chính thức
         const cleanName = (row.fullName || '')
           .toLowerCase()
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
+          .replace(/đ/g, 'd')
+          .replace(/Đ/g, 'd')
           .trim();
-        const candidates = nameToUsersMap.get(cleanName);
-        if (candidates && candidates.length === 1) {
-          issues.push(`Chưa khớp SĐT. Tìm thấy tài khoản cùng tên: ${candidates[0].full_name} (${candidates[0].phone_zalo || 'Không có SĐT'})`);
+        const matchedByName = nameToUsersMap.get(cleanName);
+        if (matchedByName && matchedByName.length === 1) {
+          // Khớp duy nhất 1 thành viên chính thức theo họ tên -> Tự động gắn và cảnh báo SĐT lệch
+          matchedUser = matchedByName[0];
+          status = 'WARNING';
+          issues.push(`⚠️ Khớp theo họ tên "${matchedUser.full_name}" (SĐT trong form: ${rawPhone || 'trống'} khác SĐT tài khoản: ${matchedUser.phone_zalo || 'trống'}). Hệ thống đã tự động gán vào hội viên này.`);
+        } else if (matchedByName && matchedByName.length > 1) {
+          issues.push(`Chưa khớp SĐT. Tìm thấy ${matchedByName.length} thành viên cùng tên: ${matchedByName.map(c => c.full_name + ' (' + (c.phone_zalo || 'Không SĐT') + ')').join(', ')}. Vui lòng kiểm tra lại.`);
+          status = 'ERROR';
         } else {
-          issues.push(`Không tìm thấy tài khoản với SĐT ${normalizedPhone}`);
+          issues.push(`Không tìm thấy tài khoản thành viên nào với SĐT ${normalizedPhone || rawPhone || 'trống'} hoặc tên "${row.fullName}"`);
+          status = 'ERROR';
         }
-        status = 'ERROR';
       }
     }
 
@@ -280,7 +290,9 @@ async function previewSubscriptions(rows, monthYear, client = db) {
       matchedUser: matchedUser ? {
         id: matchedUser.id,
         fullName: matchedUser.full_name,
+        nickname: matchedUser.nickname,
         role: matchedUser.role,
+        badmintonLevel: matchedUser.badminton_level,
         phoneZalo: matchedUser.phone_zalo
       } : null,
       status,
@@ -471,6 +483,7 @@ async function syncMonthSessions(monthYear, client = db, adminUserId = null) {
     FROM monthly_subscriptions ms
     JOIN users u ON ms.user_id = u.id
     WHERE ms.month_year = $1
+      AND (u.role IS NULL OR u.role != 'candidate')
       AND (u.status IS NULL OR u.status = 'active')
       AND (u.is_blocked IS NULL OR u.is_blocked = false)
       AND u.deleted_at IS NULL;
@@ -624,6 +637,7 @@ async function autoEnrollSubscribersForSession(sessionId, client = db) {
           AND ($3 != 'THURSDAY' OR $2 = 'THU_18_20')
         )
       )
+      AND (u.role IS NULL OR u.role != 'candidate')
       AND (u.status IS NULL OR u.status = 'active')
       AND (u.is_blocked IS NULL OR u.is_blocked = false)
       AND u.deleted_at IS NULL;
@@ -664,7 +678,7 @@ async function autoEnrollSubscribersForSession(sessionId, client = db) {
  */
 async function getMonthlySubscriptionStats(monthYear, client = db) {
   const subsRes = await client.query(`
-    SELECT ms.*, u.full_name, u.phone_zalo, u.role, u.status, u.avatar_url
+    SELECT ms.*, u.full_name, u.nickname, u.phone_zalo, u.role, u.badminton_level, u.status, u.avatar_url
     FROM monthly_subscriptions ms
     JOIN users u ON ms.user_id = u.id
     WHERE ms.month_year = $1
@@ -692,6 +706,8 @@ async function getMonthlySubscriptionStats(monthYear, client = db) {
       id: row.id,
       userId: row.user_id,
       fullName: row.full_name,
+      nickname: row.nickname,
+      badmintonLevel: row.badminton_level,
       phone: row.phone_zalo,
       registeredSlots: slots,
       registeredSlotsLabels: slots.map(getSlotLabel),
