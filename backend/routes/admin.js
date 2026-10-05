@@ -531,6 +531,18 @@ router.post('/sessions/:id/participants/manual-add', async (req, res) => {
       [id, req.user.id, user_id, status, reason]
     );
 
+    // Tự động loại thành viên khỏi hàng chờ nếu họ đang ở trạng thái WAITING hoặc OFFERED
+    await db.query(
+      `UPDATE session_waitlist
+       SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND user_id = $2::uuid AND status IN ('WAITING', 'OFFERED');`,
+      [id, user_id]
+    );
+
+    // Tự động kích hoạt kiểm tra hàng chờ Waitlist nếu còn slot trống khác
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist after manual add:', e));
+
     res.json({ success: true, message: 'Đã thêm thành viên vào buổi tập thành công.', attendance: upsertRes.rows[0] });
   } catch (error) {
     console.error('Error manually adding participant:', error);
@@ -542,7 +554,8 @@ router.post('/sessions/:id/participants/manual-add', async (req, res) => {
 router.post('/sessions/:id/bulk-add-attendees', async (req, res) => {
   const client = await db.connect();
   try {
-    const { id } = req.params;
+    const { 
+      id } = req.params;
     const { 
       user_ids = [], 
       status = 'CONFIRMED', 
@@ -610,9 +623,21 @@ router.post('/sessions/:id/bulk-add-attendees', async (req, res) => {
       );
     }
 
+    // 4. Tự động loại bỏ các thành viên đã thêm khỏi hàng chờ (session_waitlist)
+    await client.query(
+      `UPDATE session_waitlist
+       SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND user_id = ANY($2::uuid[]) AND status IN ('WAITING', 'OFFERED');`,
+      [id, user_ids]
+    );
+
     await client.query('COMMIT');
 
     const updatedCap = await getSessionCapacity(id);
+
+    // Tự động kiểm tra cấp offer cho những slot còn trống nếu có
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist after bulk add:', e));
 
     res.json({
       success: true,
@@ -627,6 +652,39 @@ router.post('/sessions/:id/bulk-add-attendees', async (req, res) => {
     res.status(400).json({ error: error.message || 'Lỗi thêm hàng loạt thành viên.' });
   } finally {
     client.release();
+  }
+});
+
+// POST /api/admin/sessions/:id/waitlist/remove - Admin xóa thành viên khỏi hàng chờ Waitlist
+router.post('/sessions/:id/waitlist/remove', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id, reason = 'Admin xóa khỏi danh sách chờ' } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'Thiếu user_id.' });
+
+    const prevRes = await db.query(
+      `SELECT status FROM session_waitlist WHERE session_id = $1::uuid AND user_id = $2::uuid;`,
+      [id, user_id]
+    );
+    const wasOffered = prevRes.rows[0]?.status === 'OFFERED';
+
+    await db.query(
+      `UPDATE session_waitlist
+       SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND user_id = $2::uuid;`,
+      [id, user_id]
+    );
+
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    let offeredList = [];
+    if (wasOffered) {
+      offeredList = await triggerWaitlistOffers(id);
+    }
+
+    res.json({ success: true, message: 'Đã xóa khỏi hàng chờ thành công.', offeredList });
+  } catch (error) {
+    console.error('Error removing from waitlist:', error);
+    res.status(400).json({ error: error.message || 'Lỗi xóa khỏi hàng chờ.' });
   }
 });
 

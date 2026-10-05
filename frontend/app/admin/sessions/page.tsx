@@ -558,6 +558,38 @@ export default function AdminSessionsPage() {
     }
   };
 
+  // Remove Member from Waitlist
+  const handleRemoveFromWaitlist = async (userId: string, memberName: string) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa "${memberName}" khỏi Hàng chờ Waitlist không?`)) return;
+
+    setActionLoadingId(`remove-wl-${userId}`);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/sessions/${selectedSession.id}/waitlist/remove`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ user_id: userId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.offeredList && data.offeredList.length > 0) {
+          const names = data.offeredList.map((o: any) => o.fullName).join(", ");
+          alert(`Đã xóa khỏi hàng chờ! Cơ hội đã tự động chuyển cho người tiếp theo: ${names}`);
+        }
+        fetchDashboard(selectedSession.id);
+      } else {
+        alert(data.error || "Lỗi xóa khỏi hàng chờ.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   // QR & Link helpers
   const downloadQRCode = () => {
     if (!selectedSession) return;
@@ -586,6 +618,7 @@ export default function AdminSessionsPage() {
   // Filter attendees
   const attendeesList: any[] = dashboardData?.attendees || [];
   const waitlist: any[] = dashboardData?.waitlist || [];
+  const activeWaitlist = waitlist.filter(w => w.status === "WAITING" || w.status === "OFFERED");
   const auditLogs: any[] = dashboardData?.auditLogs || [];
 
   const pendingLateCancelCount = attendeesList.filter(a => a.cancellation_request_pending).length;
@@ -848,7 +881,7 @@ export default function AdminSessionsPage() {
                   </div>
                   <div className="bg-white p-2 rounded-xl border border-slate-200/60">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">Hàng chờ Waitlist</span>
-                    <span className="font-bold text-purple-600">{waitlist.length} người • Giữ {selectedSession.waitlist_offer_duration_minutes || 10}p</span>
+                    <span className="font-bold text-purple-600">{activeWaitlist.length} người chờ • Giữ {selectedSession.waitlist_offer_duration_minutes || 10}p</span>
                   </div>
                 </div>
               </div>
@@ -876,7 +909,7 @@ export default function AdminSessionsPage() {
                       : "border-transparent text-slate-400 hover:text-slate-700"
                   }`}
                 >
-                  <Hourglass className="w-4 h-4" /> Hàng chờ Waitlist FIFO ({waitlist.length})
+                  <Hourglass className="w-4 h-4" /> Hàng chờ Waitlist FIFO ({activeWaitlist.length})
                 </button>
                 <button
                   onClick={() => setActiveTab("qr")}
@@ -1205,7 +1238,7 @@ export default function AdminSessionsPage() {
                             </div>
                           </div>
 
-                          <div>
+                          <div className="flex items-center gap-2">
                             {w.status === "OFFERED" && (
                               <span className="text-[10px] text-amber-900 font-extrabold bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-full animate-pulse">
                                 Đang giữ chỗ • Hết hạn: {formatVietnamDate(w.offer_expires_at, "time")}
@@ -1225,6 +1258,21 @@ export default function AdminSessionsPage() {
                               <span className="text-[10px] text-rose-500 font-medium bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">
                                 Hết hạn nhận
                               </span>
+                            )}
+
+                            {(w.status === "WAITING" || w.status === "OFFERED") && (
+                              <button
+                                onClick={() => handleRemoveFromWaitlist(w.user_id, w.full_name)}
+                                disabled={actionLoadingId === `remove-wl-${w.user_id}`}
+                                title="Xóa khỏi hàng chờ"
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors ml-1 disabled:opacity-50"
+                              >
+                                {actionLoadingId === `remove-wl-${w.user_id}` ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                              </button>
                             )}
                           </div>
                         </div>

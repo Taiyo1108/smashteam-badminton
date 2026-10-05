@@ -567,6 +567,13 @@ async function syncMonthSessions(monthYear, client = db, adminUserId = null) {
           );
         `, [sess.id, sub.user_id]);
 
+        // Tự động loại khỏi hàng chờ (đánh dấu CLAIMED) nếu user đang trong Waitlist
+        await client.query(`
+          UPDATE session_waitlist
+          SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          WHERE session_id = $1::uuid AND user_id = $2::uuid AND status IN ('WAITING', 'OFFERED');
+        `, [sess.id, sub.user_id]);
+
         sessionEnrolledCount++;
         totalEnrolled++;
       }
@@ -659,6 +666,14 @@ async function autoEnrollSubscribersForSession(sessionId, client = db) {
           $1::uuid, $2::uuid, 'CONFIRMED', 'MONTHLY_FIXED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         );
       `, [sessionId, sub.user_id]);
+
+      // Tự động loại khỏi hàng chờ (đánh dấu CLAIMED) nếu user đang trong Waitlist
+      await client.query(`
+        UPDATE session_waitlist
+        SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE session_id = $1::uuid AND user_id = $2::uuid AND status IN ('WAITING', 'OFFERED');
+      `, [sessionId, sub.user_id]);
+
       count++;
     }
   }
@@ -779,7 +794,7 @@ async function resetMonthSubscriptions({ monthYear, cleanupAttendances = true, a
           AND a.registration_type = 'MONTHLY_FIXED'
           AND a.status = 'CONFIRMED'
           AND a.checked_in_at IS NULL
-        RETURNING a.id;
+        RETURNING a.id, a.session_id;
       `, [startIso, endIso]);
 
       deletedAttendancesCount = delAttRes.rows.length;
@@ -811,6 +826,19 @@ async function resetMonthSubscriptions({ monthYear, cleanupAttendances = true, a
     ]);
 
     await client.query('COMMIT');
+
+    // 4. Kích hoạt hàng chờ Waitlist cho các buổi tập có slot vừa giải phóng
+    if (cleanupAttendances && delAttRes && delAttRes.rows.length > 0) {
+      const affectedSessionIds = [...new Set(delAttRes.rows.map(r => r.session_id))];
+      const { triggerWaitlistOffers } = require('./sessionReservationService');
+      for (const sessId of affectedSessionIds) {
+        try {
+          await triggerWaitlistOffers(sessId);
+        } catch (err) {
+          console.error(`[resetMonthSubscriptions] Error triggering waitlist for session ${sessId}:`, err);
+        }
+      }
+    }
 
     return {
       success: true,
@@ -870,6 +898,7 @@ async function updateSingleSubscription({ subscriptionId, registeredSlots, payme
 
     // 2. Nếu syncSessions = true, đồng bộ lại cho user này trong tháng
     let syncResult = { added: 0, removed: 0 };
+    const freedSessionIds = [];
     if (syncSessions) {
       const [yearStr, monthStr] = month_year.split('-');
       const year = parseInt(yearStr, 10);
@@ -912,6 +941,14 @@ async function updateSingleSubscription({ subscriptionId, registeredSlots, payme
                 $1::uuid, $2::uuid, 'CONFIRMED', 'MONTHLY_FIXED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
               );
             `, [sess.id, user_id]);
+
+            // Tự động loại khỏi hàng chờ (đánh dấu CLAIMED) nếu user đang trong Waitlist
+            await client.query(`
+              UPDATE session_waitlist
+              SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+              WHERE session_id = $1::uuid AND user_id = $2::uuid AND status IN ('WAITING', 'OFFERED');
+            `, [sess.id, user_id]);
+
             syncResult.added++;
           }
         } else {
@@ -921,6 +958,7 @@ async function updateSingleSubscription({ subscriptionId, registeredSlots, payme
             if (att.registration_type === 'MONTHLY_FIXED' && att.status === 'CONFIRMED' && !att.checked_in_at) {
               await client.query(`DELETE FROM attendances WHERE id = $1::uuid;`, [att.id]);
               syncResult.removed++;
+              freedSessionIds.push(sess.id);
             }
           }
         }
@@ -943,6 +981,18 @@ async function updateSingleSubscription({ subscriptionId, registeredSlots, payme
     ]);
 
     await client.query('COMMIT');
+
+    // Kích hoạt hàng chờ Waitlist cho các buổi tập vừa bị xóa slot
+    if (freedSessionIds.length > 0) {
+      const { triggerWaitlistOffers } = require('./sessionReservationService');
+      for (const sessId of [...new Set(freedSessionIds)]) {
+        try {
+          await triggerWaitlistOffers(sessId);
+        } catch (err) {
+          console.error(`[updateSingleSubscription] Error triggering waitlist for session ${sessId}:`, err);
+        }
+      }
+    }
 
     return {
       success: true,
@@ -1004,7 +1054,7 @@ async function deleteSingleSubscription({ subscriptionId, cleanupAttendances = t
           AND a.registration_type = 'MONTHLY_FIXED'
           AND a.status = 'CONFIRMED'
           AND a.checked_in_at IS NULL
-        RETURNING a.id;
+        RETURNING a.id, a.session_id;
       `, [startIso, endIso, sub.user_id]);
 
       deletedAttendancesCount = delAttRes.rows.length;
@@ -1024,6 +1074,19 @@ async function deleteSingleSubscription({ subscriptionId, cleanupAttendances = t
     ]);
 
     await client.query('COMMIT');
+
+    // Kích hoạt hàng chờ Waitlist cho các buổi tập vừa giải phóng slot
+    if (cleanupAttendances && delAttRes && delAttRes.rows.length > 0) {
+      const affectedSessionIds = [...new Set(delAttRes.rows.map(r => r.session_id))];
+      const { triggerWaitlistOffers } = require('./sessionReservationService');
+      for (const sessId of affectedSessionIds) {
+        try {
+          await triggerWaitlistOffers(sessId);
+        } catch (err) {
+          console.error(`[deleteSingleSubscription] Error triggering waitlist for session ${sessId}:`, err);
+        }
+      }
+    }
 
     return {
       success: true,

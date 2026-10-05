@@ -199,12 +199,58 @@ async function processMissingCheckouts() {
 }
 
 /**
+ * Tự động quét và kích hoạt Waitlist Offer cho các session sắp tới còn slot trống
+ * Chạy định kỳ (mỗi 30s) để đảm bảo không bao giờ bị bỏ sót slot trống dù slot được giải phóng bằng bất kỳ hình thức nào.
+ */
+async function processAvailableWaitlistSlots() {
+  const client = await db.connect();
+  try {
+    // Tìm các session chưa kết thúc, chưa đóng, và đang có người trong session_waitlist với status = 'WAITING'
+    const waitingSessionsRes = await client.query(
+      `SELECT DISTINCT s.id, s.title
+       FROM sessions s
+       JOIN session_waitlist w ON s.id = w.session_id
+       WHERE w.status = 'WAITING'
+         AND (s.is_closed IS FALSE OR s.is_closed IS NULL)
+         AND (s.session_end > CURRENT_TIMESTAMP OR (s.session_end IS NULL AND s.date_time > CURRENT_TIMESTAMP - INTERVAL '3 hours'));`
+    );
+
+    if (waitingSessionsRes.rows.length === 0) {
+      return 0;
+    }
+
+    const { triggerWaitlistOffers } = require('./sessionReservationService');
+    let totalOffered = 0;
+
+    for (const session of waitingSessionsRes.rows) {
+      try {
+        const offers = await triggerWaitlistOffers(session.id);
+        if (offers && offers.length > 0) {
+          totalOffered += offers.length;
+          console.log(`[Automation] Auto-offered ${offers.length} waitlist slot(s) for session "${session.title}" (${session.id})`);
+        }
+      } catch (err) {
+        console.error(`[Automation] Error processing available waitlist slots for session ${session.id}:`, err);
+      }
+    }
+
+    return totalOffered;
+  } catch (error) {
+    console.error('[Automation] Error in processAvailableWaitlistSlots:', error);
+    return 0;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Chạy toàn bộ các automation jobs
  */
 async function runAllAutomationJobs() {
   try {
     await processAutoConfirmations();
     await processWaitlistExpirations();
+    await processAvailableWaitlistSlots();
     await processNoShows();
     await processMissingCheckouts();
   } catch (err) {
@@ -225,6 +271,7 @@ function startAutomationWorker(intervalMs = 30000) {
 module.exports = {
   processAutoConfirmations,
   processWaitlistExpirations,
+  processAvailableWaitlistSlots,
   processNoShows,
   processMissingCheckouts,
   runAllAutomationJobs,

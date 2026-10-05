@@ -497,6 +497,41 @@ async function triggerWaitlistOffers(sessionId, existingClient = null) {
       return [];
     }
 
+    // 1.1. Tự động chuyển các OFFER đã quá hạn sang EXPIRED ngay lập tức
+    await client.query(
+      `UPDATE session_waitlist
+       SET status = 'EXPIRED', updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND status = 'OFFERED' AND offer_expires_at <= CURRENT_TIMESTAMP;`,
+      [sessionId]
+    );
+
+    // 1.2. Tự động chuyển thành CLAIMED nếu bất kỳ thành viên nào trong Waitlist đã có mặt chính thức trong danh sách buổi tập
+    await client.query(
+      `UPDATE session_waitlist w
+       SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       FROM attendances a
+       WHERE w.session_id = $1::uuid
+         AND w.user_id = a.user_id
+         AND a.session_id = $1::uuid
+         AND a.status = ANY($2::varchar[])
+         AND w.status IN ('WAITING', 'OFFERED');`,
+      [sessionId, SLOT_OCCUPYING_STATUSES]
+    );
+
+    // 1.3. Cập nhật lại số thứ tự position liên tục cho các bạn đang WAITING (FIFO chuẩn)
+    await client.query(
+      `WITH numbered AS (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY position ASC, created_at ASC) as new_pos
+         FROM session_waitlist
+         WHERE session_id = $1::uuid AND status = 'WAITING'
+       )
+       UPDATE session_waitlist w
+       SET position = numbered.new_pos, updated_at = CURRENT_TIMESTAMP
+       FROM numbered
+       WHERE w.id = numbered.id;`,
+      [sessionId]
+    );
+
     // 2. Đếm số slot đang chiếm giữ
     const countRes = await client.query(
       `SELECT count(*) as active_count
@@ -577,10 +612,11 @@ async function triggerWaitlistOffers(sessionId, existingClient = null) {
 
     // 5. Gửi email thông báo bất đồng bộ sau khi commit
     if (offeredList.length > 0) {
-      setTimeout(() => {
+      setImmediate(() => {
         const { sendWaitlistSlotOfferEmail } = require('../utils/emailService');
         for (const offeredUser of offeredList) {
           if (offeredUser.email) {
+            console.log(`[Waitlist Offer] Gửi email cấp slot cho ${offeredUser.email} (${offeredUser.fullName}) buổi "${session.title}"...`);
             sendWaitlistSlotOfferEmail({
               toEmail: offeredUser.email,
               userName: offeredUser.fullName,
@@ -595,7 +631,7 @@ async function triggerWaitlistOffers(sessionId, existingClient = null) {
             });
           }
         }
-      }, 300);
+      });
     }
 
     return offeredList;
@@ -854,6 +890,14 @@ async function processQrCheckIn({
     const lvlUpRes = await addXpToUser(userId, 25);
     await client.query('UPDATE users SET smash_coins = smash_coins + 10 WHERE id = $1', [userId]);
     await trackActivity(userId, 'check_in');
+
+    // 8. Tự động loại khỏi hàng chờ (đánh dấu CLAIMED) nếu user đang trong waitlist
+    await client.query(
+      `UPDATE session_waitlist
+       SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND user_id = $2::uuid AND status IN ('WAITING', 'OFFERED');`,
+      [sessionId, userId]
+    );
 
     await client.query('COMMIT');
 
