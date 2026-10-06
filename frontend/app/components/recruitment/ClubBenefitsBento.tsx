@@ -72,7 +72,7 @@ export default function ClubBenefitsBento() {
             <ul className="text-slate-300 text-sm sm:text-base leading-relaxed space-y-2.5">
               <li className="flex items-start gap-2.5">
                 <Check className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 shrink-0 mt-0.5" aria-hidden="true" />
-                <span>Lịch sinh hoạt cố định <strong className="text-white font-bold">Thứ 2 – 4 – 6, từ 19h đến 21h</strong> hàng tuần</span>
+                <span>Lịch sinh hoạt cố định <strong className="text-white font-bold">Thứ 4 – 5 – 7, từ 18h đến 20h</strong> hàng tuần</span>
               </li>
               <li className="flex items-start gap-2.5">
                 <Check className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 shrink-0 mt-0.5" aria-hidden="true" />
@@ -87,11 +87,11 @@ export default function ClubBenefitsBento() {
 
           <div className="relative z-10 pt-6 mt-6 border-t border-white/10 grid grid-cols-2 gap-3 text-center">
             <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 min-w-0">
-              <p className="font-black text-base sm:text-lg text-emerald-400">T2 • T4 • T6</p>
+              <p className="font-black text-base sm:text-lg text-emerald-400">T4 • T5 • T7</p>
               <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Lịch cố định hàng tuần</p>
             </div>
             <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 min-w-0">
-              <p className="font-black text-base sm:text-lg text-amber-400">19h – 21h</p>
+              <p className="font-black text-base sm:text-lg text-amber-400">18h – 20h</p>
               <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Giờ sinh hoạt mỗi buổi</p>
             </div>
           </div>

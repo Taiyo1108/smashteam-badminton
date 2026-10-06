@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const [activeMembers, recordedMatches, weeklySessions, eventsCount, topElo] = await Promise.all([
+    const [activeMembers, recordedMatches, weeklySessions, eventsCount, topElo, weeklyMatches] = await Promise.all([
       // Hội viên đang hoạt động: role member/admin, status active, không bị block,
       // loại trừ tài khoản Super Admin kỹ thuật (đồng bộ logic với leaderboard).
       safeStat(
@@ -60,12 +60,21 @@ router.get('/', async (req, res) => {
            AND phone_zalo != '0999999999'`,
         'top'
       ),
+      // Số trận cầu đã diễn ra trong tuần hiện tại (Thứ 2 - Chủ nhật theo giờ VN).
+      safeStat(
+        `SELECT COUNT(*)::int AS count FROM matches
+         WHERE status = 'approved'
+           AND created_at >= (date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh')
+           AND created_at < (date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh') + INTERVAL '7 days'`,
+        'count'
+      ),
     ]);
 
     res.json({
       activeMembers,
       recordedMatches,
       weeklySessions,
+      weeklyMatches,
       eventsCount,
       topElo,
       // Số bậc Elo cố định theo thang của CLB (Bronze -> Challenger).

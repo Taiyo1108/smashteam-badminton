@@ -1,11 +1,13 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Users, Calendar, Trophy, Zap, ArrowUpRight } from "lucide-react";
+import { Users, Calendar, Swords, Zap, ArrowUpRight } from "lucide-react";
 
 interface ClubStatsProps {
   memberCount?: number | string;
   sessionsPerWeek?: string;
+  totalMatchesCount?: number | string;
+  weeklyMatchesCount?: number | string;
   tournamentsCount?: string;
   topElo?: number | string;
   className?: string;
@@ -14,7 +16,9 @@ interface ClubStatsProps {
 export default function ClubStats({
   memberCount = "150+",
   sessionsPerWeek = "2 - 3",
-  tournamentsCount = "12+",
+  totalMatchesCount = "165",
+  weeklyMatchesCount,
+  tournamentsCount,
   topElo = "1850+",
   className = ""
 }: ClubStatsProps) {
@@ -33,23 +37,23 @@ export default function ClubStats({
     {
       id: "sessions",
       label: "Buổi tập / tuần",
-      sublabel: "Lịch cố định sân chuẩn",
+      sublabel: "18h - 20h • Sân Bình Thắng",
       value: sessionsPerWeek,
       icon: Calendar,
       accentColor: "from-cyan-500 to-blue-600",
       textColor: "text-cyan-300",
-      badge: "Thứ 2 • Thứ 4 • Thứ 6",
+      badge: "Thứ 4 • Thứ 5 • Thứ 7",
       badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
     },
     {
-      id: "tournaments",
-      label: "Giải đấu & Cúp",
-      sublabel: "Nội bộ & Mở rộng",
-      value: tournamentsCount,
-      icon: Trophy,
+      id: "total-matches",
+      label: "Tổng trận cầu",
+      sublabel: "Đấu tập & Giao lưu ELO",
+      value: totalMatchesCount ?? weeklyMatchesCount ?? (tournamentsCount || "0"),
+      icon: Swords,
       accentColor: "from-amber-400 to-orange-500",
       textColor: "text-amber-400",
-      badge: `Mùa giải ${new Date().getFullYear()}`,
+      badge: "Đã diễn ra",
       badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/30"
     },
     {

@@ -661,8 +661,8 @@ export default function Home() {
                 >
                   <ClubStats
                     memberCount={clubStats ? String(clubStats.activeMembers) : undefined}
-                     sessionsPerWeek="2 - 3"
-                    tournamentsCount={clubStats ? String(clubStats.eventsCount) : undefined}
+                    sessionsPerWeek="2 - 3"
+                    totalMatchesCount={clubStats ? String(clubStats.recordedMatches ?? 0) : undefined}
                     topElo={clubStats ? String(clubStats.topElo) : undefined}
                   />
                 </motion.div>
@@ -670,31 +670,35 @@ export default function Home() {
             </section>
 
             {/* FEATURED EVENT COUNTDOWN BOARD (For Upcoming Sessions / Matches / Recruitment) */}
-            <FeaturedEventCountdown
-              settings={siteSettings}
-              featuredEvent={featuredEvent}
-              upcomingSession={upcomingSessionHighlight || upcomingSessions[0]}
-              onViewSchedule={() => {
-                setActiveTab("schedule");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              onRecruitmentClick={() => {
-                const el = document.getElementById("recruitment-event-section");
-                if (el) {
-                  el.scrollIntoView({ behavior: "smooth" });
-                }
-                setIsRegisterModalOpen(true);
-              }}
-              isLoggedIn={isLoggedIn}
-            />
+            {siteSettings.featured_event_enabled !== "false" && (
+              <FeaturedEventCountdown
+                settings={siteSettings}
+                featuredEvent={featuredEvent}
+                upcomingSession={upcomingSessionHighlight || upcomingSessions[0]}
+                onViewSchedule={() => {
+                  setActiveTab("schedule");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                onRecruitmentClick={() => {
+                  const el = document.getElementById("recruitment-event-section");
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth" });
+                  }
+                  setIsRegisterModalOpen(true);
+                }}
+                isLoggedIn={isLoggedIn}
+              />
+            )}
 
             {/* RECRUITMENT EVENT HIGHLIGHT CARD (MODULE 2A - User Flow) */}
-            <div id="recruitment-event-section" className="pt-8">
-              <EventRecruitmentCard
-                campaign={activeCampaign}
-                onOpenRegister={() => setIsRegisterModalOpen(true)}
-              />
-            </div>
+            {siteSettings.recruitment_card_enabled !== "false" && (
+              <div id="recruitment-event-section" className="pt-8">
+                <EventRecruitmentCard
+                  campaign={activeCampaign}
+                  onOpenRegister={() => setIsRegisterModalOpen(true)}
+                />
+              </div>
+            )}
 
             {/* BENTO GRID: WHY JOIN US & CULTURE */}
             <div id="club-benefits-section">

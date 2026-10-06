@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle } from "lucide-react";
+import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle, Eye, EyeOff, Clock, Sparkles } from "lucide-react";
 import { API_URL } from "@/app/config";
 
 export default function ContentManagementPage() {
@@ -53,6 +53,31 @@ export default function ContentManagementPage() {
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
+    }
+  };
+
+  // Toggle homepage modules
+  const [toggleLoading, setToggleLoading] = useState(false);
+  const handleToggleModule = async (key: string, currentVal: boolean) => {
+    const nextVal = !currentVal;
+    setToggleLoading(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ key, value: String(nextVal) })
+      });
+      if (res.ok) {
+        setSettings((prev: any) => ({ ...prev, [key]: String(nextVal) }));
+      }
+    } catch (e) {
+      console.error("Error toggling module:", e);
+    } finally {
+      setToggleLoading(false);
     }
   };
 
@@ -291,6 +316,96 @@ export default function ContentManagementPage() {
               <p className="text-xs text-slate-400">
                 * Khuyến nghị sử dụng ảnh ngang tỉ lệ 16:9, độ phân giải cao và được nén tối ưu để trang chủ tải nhanh nhất.
               </p>
+            </div>
+          </div>
+
+          {/* CẤU HÌNH BẬT / TẮT MODULES TRANG CHỦ */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <h2 className="text-lg font-bold text-secondary flex items-center gap-2">
+              <Eye className="w-5 h-5 text-primary" /> Hiển thị Modules Trang Chủ
+            </h2>
+            <p className="text-xs text-slate-500">
+              Bật hoặc tắt hiển thị các thành phần nổi bật trên trang chủ câu lạc bộ.
+            </p>
+
+            <div className="space-y-3 pt-2">
+              {/* Toggle 1: Box Đếm Ngược */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    settings.featured_event_enabled !== "false" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"
+                  }`}>
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">Box Đếm Ngược Sự Kiện</p>
+                    <p className="text-[11px] text-slate-500">
+                      {settings.featured_event_enabled !== "false" ? "🟢 Đang hiển thị" : "⚪ Đang ẩn"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={toggleLoading}
+                  onClick={() => handleToggleModule("featured_event_enabled", settings.featured_event_enabled !== "false")}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    settings.featured_event_enabled !== "false"
+                      ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
+                      : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  }`}
+                >
+                  {settings.featured_event_enabled !== "false" ? (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5" />
+                      <span>Tắt</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Bật</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Toggle 2: Box Tuyển Quân */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    settings.recruitment_card_enabled !== "false" ? "bg-cyan-100 text-cyan-700" : "bg-slate-200 text-slate-500"
+                  }`}>
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">Box Sự Kiện / Tuyển Quân</p>
+                    <p className="text-[11px] text-slate-500">
+                      {settings.recruitment_card_enabled !== "false" ? "🟢 Đang hiển thị" : "⚪ Đang ẩn"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={toggleLoading}
+                  onClick={() => handleToggleModule("recruitment_card_enabled", settings.recruitment_card_enabled !== "false")}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    settings.recruitment_card_enabled !== "false"
+                      ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
+                      : "bg-cyan-600 hover:bg-cyan-700 text-white"
+                  }`}
+                >
+                  {settings.recruitment_card_enabled !== "false" ? (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5" />
+                      <span>Tắt</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Bật</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
