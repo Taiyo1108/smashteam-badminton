@@ -33,6 +33,17 @@ export interface RankedPlayer {
   provisionalThreshold: number;
   isTopOne: boolean;
   gapToNext: number;
+  weeklyEloChange?: number;
+  nextTier?: {
+    hasNextTier: boolean;
+    nextTierName: string | null;
+    nextTierLabel: string | null;
+    nextTierMinElo: number;
+    eloNeeded: number;
+    progressPercent: number;
+    formattedCopy?: string;
+    fullStatusCopy?: string;
+  } | null;
   targetPlayer: {
     id: string;
     name: string;

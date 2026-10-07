@@ -73,7 +73,9 @@ export default function MyPositionBar({
 
             <div className="flex items-center gap-1.5 mt-0.5 text-xs text-amber-300 font-bold truncate">
               <Target className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="truncate">{myPosition.gapCopy}</span>
+              <span className="truncate">
+                {myPosition.nextTier?.formattedCopy ? `${myPosition.gapCopy} • ${myPosition.nextTier.formattedCopy}` : myPosition.gapCopy}
+              </span>
             </div>
           </div>
         </div>

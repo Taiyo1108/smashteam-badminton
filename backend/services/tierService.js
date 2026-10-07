@@ -85,6 +85,7 @@ function getNextTierInfo(elo) {
   const currentIndex = RANK_TIERS.findIndex(t => t.name === currentTier.name);
 
   // Highest tier reached (Challenger)
+  const score = Number(elo) || 0;
   if (currentIndex <= 0) {
     return {
       hasNextTier: false,
@@ -92,12 +93,13 @@ function getNextTierInfo(elo) {
       nextTierLabel: null,
       nextTierMinElo: currentTier.maxElo,
       eloNeeded: 0,
-      progressPercent: 100
+      progressPercent: 100,
+      formattedCopy: 'Đã đạt bậc cao nhất',
+      fullStatusCopy: `${score.toLocaleString()} ELO — Đỉnh cao Challenger`
     };
   }
 
   const nextTier = RANK_TIERS[currentIndex - 1];
-  const score = Number(elo) || 0;
   const eloNeeded = Math.max(0, nextTier.minElo - score);
   const tierSpan = nextTier.minElo - currentTier.minElo;
   const currentProgress = Math.max(0, score - currentTier.minElo);
@@ -109,7 +111,9 @@ function getNextTierInfo(elo) {
     nextTierLabel: nextTier.label,
     nextTierMinElo: nextTier.minElo,
     eloNeeded,
-    progressPercent
+    progressPercent,
+    formattedCopy: `${eloNeeded} ELO to ${nextTier.name}`,
+    fullStatusCopy: `${score.toLocaleString()} ELO — ${eloNeeded} ELO to ${nextTier.name}`
   };
 }
 

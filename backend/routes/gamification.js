@@ -55,22 +55,13 @@ async function checkAndUpdateStreak(userId, client = db) {
       [currentStreak, maxStreak, userId]
     );
   } else {
-    // Missed a day
-    if (streakShields > 0) {
-      streakShields -= 1;
-      streakNotification = "Mất mát suýt xảy ra! Một chiếc Khiên Streak đã được kích hoạt để bảo vệ chuỗi 🔥 của bạn.";
-      await client.query(
-        'UPDATE users SET streak_shields = $1, last_active_date = CURRENT_DATE WHERE id = $2',
-        [streakShields, userId]
-      );
-    } else {
-      currentStreak = 1;
-      await client.query(
-        'UPDATE users SET current_streak = $1, last_active_date = CURRENT_DATE WHERE id = $2',
-        [currentStreak, userId]
-      );
-      streakNotification = "Chuỗi ngày hoạt động 🔥 của bạn đã bị reset do không hoạt động.";
-    }
+    // Missed a day: reset daily active streak (không tiêu tốn khiên thi đấu)
+    currentStreak = 1;
+    await client.query(
+      'UPDATE users SET current_streak = $1, last_active_date = CURRENT_DATE WHERE id = $2',
+      [currentStreak, userId]
+    );
+    streakNotification = "Chuỗi ngày hoạt động 🔥 của bạn đã chuyển về ngày 1.";
   }
 
   return { currentStreak, streakShields, streakNotification };
@@ -532,6 +523,272 @@ router.post('/inventory/:id/unequip', async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     res.status(400).json({ error: error.message || 'Lỗi hủy trang bị' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/gamification/shield/status - Lấy trạng thái khiên và điều kiện sử dụng cho trận thua gần nhất
+router.get('/shield/status', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Lấy số khiên hiện tại
+    const userRes = await db.query(
+      `SELECT streak_shields FROM users WHERE id = $1`,
+      [userId]
+    );
+    const availableShields = userRes.rows.length > 0 ? (Number(userRes.rows[0].streak_shields) || 0) : 0;
+
+    // Lấy số khiên đã mua trong tháng hiện tại
+    const monthlyBuysRes = await db.query(
+      `SELECT COUNT(*)::int AS count 
+       FROM user_inventory 
+       WHERE user_id = $1 
+         AND (item_type IN ('shield', 'streak_shield') OR item_name ILIKE '%khiên%')
+         AND purchase_price > 0
+         AND purchased_at >= date_trunc('month', NOW())`,
+      [userId]
+    );
+    const monthlyPurchased = monthlyBuysRes.rows[0].count;
+
+    // Lấy trận đấu gần nhất
+    const matchRes = await db.query(
+      `SELECT m.* 
+       FROM matches m
+       WHERE (m.player1_id = $1 OR m.player2_id = $1 OR m.player1_partner_id = $1 OR m.player2_partner_id = $1)
+         AND m.status = 'approved'
+       ORDER BY m.created_at DESC, m.id DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    let canUse = false;
+    let lastMatchInfo = null;
+
+    if (matchRes.rows.length > 0) {
+      const m = matchRes.rows[0];
+      const isTeam1 = (m.player1_id === userId || m.player1_partner_id === userId);
+      const team1Won = (m.winner_id === m.player1_id || m.winner_id === m.player1_partner_id);
+      const userWon = isTeam1 ? team1Won : !team1Won;
+
+      if (!userWon) {
+        // Kiểm tra xem đã shield trận này chưa
+        const shieldedRes = await db.query(
+          `SELECT id FROM shield_usages WHERE user_id = $1 AND match_id = $2`,
+          [userId, m.id]
+        );
+        const alreadyShielded = shieldedRes.rows.length > 0;
+
+        if (!alreadyShielded) {
+          canUse = availableShields > 0;
+          let eloBefore = 0;
+          let eloAfter = 0;
+          if (m.player1_id === userId) { eloBefore = m.p1_elo_before; eloAfter = m.p1_elo_after; }
+          else if (m.player2_id === userId) { eloBefore = m.p2_elo_before; eloAfter = m.p2_elo_after; }
+          else if (m.player1_partner_id === userId) { eloBefore = m.p1_partner_elo_before; eloAfter = m.p1_partner_elo_after; }
+          else if (m.player2_partner_id === userId) { eloBefore = m.p2_partner_elo_before; eloAfter = m.p2_partner_elo_after; }
+
+          const isDoubles = !!(m.player1_partner_id && m.player2_partner_id);
+          lastMatchInfo = {
+            matchId: m.id,
+            mode: isDoubles ? 'doubles' : 'singles',
+            eloLost: Math.max(0, eloBefore - eloAfter),
+            createdAt: m.created_at,
+            alreadyShielded: false
+          };
+        }
+      }
+    }
+
+    res.json({
+      availableShields,
+      monthlyPurchased,
+      maxMonthlyPurchases: 3,
+      canUse,
+      lastMatch: lastMatchInfo
+    });
+  } catch (error) {
+    console.error('Error fetching shield status:', error);
+    res.status(500).json({ error: 'Lỗi nạp trạng thái khiên.' });
+  }
+});
+
+// POST /api/gamification/shield/use - Kích hoạt khiên bảo vệ ELO và chuỗi thắng cho trận thua gần nhất
+router.post('/shield/use', async (req, res) => {
+  const userId = req.user.id;
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Khóa dòng user để kiểm tra số lượng khiên
+    const userRes = await client.query(
+      `SELECT id, elo_singles, elo_doubles, streak_singles, streak_doubles, 
+              win_singles, win_doubles, loss_singles, loss_doubles, streak_shields
+       FROM users WHERE id = $1 FOR UPDATE`,
+      [userId]
+    );
+    if (userRes.rows.length === 0) {
+      throw new Error('Tài khoản không tồn tại.');
+    }
+    const user = userRes.rows[0];
+    const availableShields = Number(user.streak_shields) || 0;
+    if (availableShields <= 0) {
+      throw new Error('Bạn không có Khiên Hộ Mệnh trong túi đồ. Hãy ghé Cửa hàng hoặc mở Hộp quà bí ẩn để sở hữu!');
+    }
+
+    // 2. Tìm trận đấu gần nhất (approved) có user tham gia
+    const matchRes = await client.query(
+      `SELECT m.* 
+       FROM matches m
+       WHERE (m.player1_id = $1 OR m.player2_id = $1 OR m.player1_partner_id = $1 OR m.player2_partner_id = $1)
+         AND m.status = 'approved'
+       ORDER BY m.created_at DESC, m.id DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (matchRes.rows.length === 0) {
+      throw new Error('Bạn chưa có trận đấu nào trong hệ thống để sử dụng khiên.');
+    }
+
+    const lastMatch = matchRes.rows[0];
+
+    // Xác định xem user ở đội nào và có phải đội thua không
+    const isTeam1 = (lastMatch.player1_id === userId || lastMatch.player1_partner_id === userId);
+    const team1Won = (lastMatch.winner_id === lastMatch.player1_id || lastMatch.winner_id === lastMatch.player1_partner_id);
+    const userWon = isTeam1 ? team1Won : !team1Won;
+
+    if (userWon) {
+      throw new Error('Trận đấu gần nhất của bạn là một CHIẾN THẮNG! Khiên chỉ sử dụng khi gặp thất bại để bảo vệ điểm và chuỗi.');
+    }
+
+    // 3. Kiểm tra xem trận đấu này đã được dùng khiên chưa
+    const alreadyShieldedRes = await client.query(
+      `SELECT id FROM shield_usages WHERE user_id = $1 AND match_id = $2`,
+      [userId, lastMatch.id]
+    );
+    if (alreadyShieldedRes.rows.length > 0) {
+      throw new Error('Trận đấu này đã được sử dụng Khiên Hộ Mệnh bảo vệ trước đó.');
+    }
+
+    // 4. Xác định thể thức và điểm ELO bị trừ trong trận đó
+    const isDoubles = !!(lastMatch.player1_partner_id && lastMatch.player2_partner_id);
+    const mode = isDoubles ? 'doubles' : 'singles';
+
+    let eloBefore = 0;
+    let eloAfter = 0;
+    if (lastMatch.player1_id === userId) {
+      eloBefore = lastMatch.p1_elo_before;
+      eloAfter = lastMatch.p1_elo_after;
+    } else if (lastMatch.player2_id === userId) {
+      eloBefore = lastMatch.p2_elo_before;
+      eloAfter = lastMatch.p2_elo_after;
+    } else if (lastMatch.player1_partner_id === userId) {
+      eloBefore = lastMatch.p1_partner_elo_before;
+      eloAfter = lastMatch.p1_partner_elo_after;
+    } else if (lastMatch.player2_partner_id === userId) {
+      eloBefore = lastMatch.p2_partner_elo_before;
+      eloAfter = lastMatch.p2_partner_elo_after;
+    }
+
+    const eloLost = Math.max(0, eloBefore - eloAfter);
+
+    // 5. Xác định chuỗi thắng trước trận thua này bằng cách tái hiện chuỗi các trận trước đó
+    const priorMatchesRes = await client.query(
+      `SELECT m.id, m.winner_id, m.player1_id, m.player2_id, m.player1_partner_id, m.player2_partner_id
+       FROM matches m
+       WHERE (m.player1_id = $1 OR m.player2_id = $1 OR m.player1_partner_id = $1 OR m.player2_partner_id = $1)
+         AND (CASE WHEN $2 = true THEN m.player1_partner_id IS NOT NULL ELSE m.player1_partner_id IS NULL END)
+         AND m.status = 'approved'
+         AND (m.created_at < $3 OR (m.created_at = $3 AND m.id != $4))
+       ORDER BY m.created_at ASC, m.id ASC`,
+      [userId, isDoubles, lastMatch.created_at, lastMatch.id]
+    );
+
+    // Lấy danh sách các trận đã từng được shield của user
+    const shieldedMatchesRes = await client.query(
+      `SELECT match_id FROM shield_usages WHERE user_id = $1`,
+      [userId]
+    );
+    const shieldedMatchIds = new Set(shieldedMatchesRes.rows.map(r => r.match_id));
+
+    let runningStreak = 0;
+    for (const pm of priorMatchesRes.rows) {
+      const pmIsTeam1 = (pm.player1_id === userId || pm.player1_partner_id === userId);
+      const pmTeam1Won = (pm.winner_id === pm.player1_id || pm.winner_id === pm.player1_partner_id);
+      const pmWon = pmIsTeam1 ? pmTeam1Won : !pmTeam1Won;
+
+      if (pmWon) {
+        runningStreak = runningStreak >= 0 ? runningStreak + 1 : 1;
+      } else {
+        if (!shieldedMatchIds.has(pm.id)) {
+          runningStreak = runningStreak <= 0 ? runningStreak - 1 : -1;
+        }
+      }
+    }
+
+    const restoredStreak = runningStreak > 0 ? runningStreak : 0;
+
+    // 6. Trừ 1 Khiên trên users và cập nhật 1 bản ghi trong user_inventory
+    await client.query(
+      `UPDATE users SET streak_shields = GREATEST(0, streak_shields - 1) WHERE id = $1`,
+      [userId]
+    );
+
+    await client.query(
+      `UPDATE user_inventory 
+       SET status = 'used', redeemed_at = NOW() 
+       WHERE id = (
+         SELECT id FROM user_inventory 
+         WHERE user_id = $1 
+           AND (item_type IN ('shield', 'streak_shield') OR item_name ILIKE '%khiên%')
+           AND status = 'unused'
+         ORDER BY purchased_at ASC
+         LIMIT 1
+       )`,
+      [userId]
+    );
+
+    // 7. Hồi phục điểm ELO và chuỗi trên users
+    const eloCol = isDoubles ? 'elo_doubles' : 'elo_singles';
+    const streakCol = isDoubles ? 'streak_doubles' : 'streak_singles';
+    const currentElo = isDoubles ? user.elo_doubles : user.elo_singles;
+
+    const newElo = currentElo + eloLost;
+    const finalStreak = restoredStreak > 0 ? restoredStreak : 0;
+
+    await client.query(
+      `UPDATE users 
+       SET ${eloCol} = $1,
+           ${streakCol} = $2
+       WHERE id = $3`,
+      [newElo, finalStreak, userId]
+    );
+
+    // 8. Ghi nhật ký vào shield_usages
+    await client.query(
+      `INSERT INTO shield_usages (user_id, match_id, elo_restored, streak_restored, mode, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [userId, lastMatch.id, eloLost, restoredStreak, mode]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      message: 'Kích hoạt Khiên Hộ Mệnh thành công!',
+      eloRestored: eloLost,
+      streakRestored: restoredStreak,
+      hasStreakFlame: restoredStreak > 0,
+      newElo,
+      newStreak: finalStreak,
+      mode
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error using shield:', error);
+    res.status(400).json({ error: error.message || 'Lỗi sử dụng khiên bảo vệ.' });
   } finally {
     client.release();
   }

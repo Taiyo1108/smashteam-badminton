@@ -159,9 +159,42 @@ export default function PlayerDetailModal({
               <div className="text-right">
                 <span className="text-[10px] uppercase font-bold text-slate-400">Điểm ELO</span>
                 <p className="text-2xl font-black text-primary tabular-nums">{player.elo}</p>
-                <p className="text-[10px] text-slate-400 font-bold tabular-nums">Đỉnh cao: {player.peakElo}</p>
+                <div className="flex items-center justify-end gap-1.5 text-[10px] font-bold">
+                  <span className="text-slate-400">Đỉnh: {player.peakElo}</span>
+                  {player.weeklyEloChange !== undefined && player.weeklyEloChange !== 0 && (
+                    <span className={player.weeklyEloChange > 0 ? "text-emerald-600" : "text-rose-500"}>
+                      ({player.weeklyEloChange > 0 ? `+${player.weeklyEloChange}` : player.weeklyEloChange} tuần)
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* Tier Progression Progress Bar */}
+            {player.nextTier && (
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100">
+                <div className="flex items-center justify-between text-xs font-bold mb-1.5">
+                  <span className="text-slate-700 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                    Tiến trình Bậc Rank
+                  </span>
+                  <span className="text-purple-700 text-[11px]">
+                    {player.nextTier.fullStatusCopy || `${player.elo} ELO — ${player.nextTier.formattedCopy}`}
+                  </span>
+                </div>
+                <div className="w-full bg-white/80 h-2 rounded-full overflow-hidden border border-purple-200/60 p-[1px]">
+                  <div 
+                    className="h-full bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full transition-all duration-500"
+                    style={{ width: `${player.nextTier.progressPercent || 0}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold mt-1">
+                  <span>{player.tierLabel}</span>
+                  <span>{player.nextTier.progressPercent}%</span>
+                  <span>{player.nextTier.nextTierLabel || 'Challenger'}</span>
+                </div>
+              </div>
+            )}
 
             {/* Grid Stats: Matches, W/L, Win Rate, Streaks */}
             <div className="grid grid-cols-2 gap-3">

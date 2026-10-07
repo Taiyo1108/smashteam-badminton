@@ -72,6 +72,22 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Winner must be one of the active players' });
     }
 
+    // Chống Duplicate Submission (ấn đúp chuột hoặc trùng request trong 3 giây)
+    const dupCheckRes = await db.query(
+      `SELECT id FROM matches 
+       WHERE player1_id = $1::uuid 
+         AND player2_id = $2::uuid 
+         AND COALESCE(player1_partner_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE($3::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+         AND COALESCE(player2_partner_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE($4::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+         AND score_p1 = $5 AND score_p2 = $6 AND winner_id = $7::uuid
+         AND created_at >= NOW() - INTERVAL '3 seconds'
+       LIMIT 1`,
+      [player1_id, player2_id, player1_partner_id || null, player2_partner_id || null, score_p1, score_p2, winner_id]
+    );
+    if (dupCheckRes.rows.length > 0) {
+      return res.status(400).json({ error: 'Trận đấu này vừa được gửi lên hệ thống. Vui lòng không nhấn liên tiếp để tránh trùng lặp!' });
+    }
+
     // Bắt đầu một transaction
     await db.query('BEGIN');
 

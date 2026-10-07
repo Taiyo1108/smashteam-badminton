@@ -49,6 +49,17 @@ export default function ProfilePage() {
   // Lưu item cần mở modal xem mã QR
   const [qrModalItem, setQrModalItem] = useState<any | null>(null);
 
+  // Shield states (Khiên bảo vệ ELO & chuỗi)
+  const [shieldStatus, setShieldStatus] = useState<any>(null);
+  const [isUsingShield, setIsUsingShield] = useState(false);
+  const [shieldAnimation, setShieldAnimation] = useState<{
+    isOpen: boolean;
+    eloRestored: number;
+    streakRestored: number;
+    hasStreakFlame: boolean;
+    mode?: string;
+  } | null>(null);
+
   // Settings Modal states
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"avatar" | "profile" | "password">("avatar");
@@ -206,11 +217,12 @@ export default function ProfilePage() {
       const headers = { Authorization: `Bearer ${token}` };
 
       // Chạy song song thay vì nối tiếp để giảm ~5x RTT
-      const [profileRes, questsRes, invRes, shopRes] = await Promise.all([
+      const [profileRes, questsRes, invRes, shopRes, shieldRes] = await Promise.all([
         fetch(`${API_URL}/api/gamification/profile`, { headers }),
         fetch(`${API_URL}/api/gamification/quests`, { headers }),
         fetch(`${API_URL}/api/gamification/inventory`, { headers }),
         fetch(`${API_URL}/api/shop/items`, { headers }),
+        fetch(`${API_URL}/api/gamification/shield/status`, { headers }),
       ]);
 
       if (profileRes.ok) {
@@ -223,9 +235,60 @@ export default function ProfilePage() {
       if (questsRes.ok) setQuests(await questsRes.json());
       if (invRes.ok) setInventory(await invRes.json());
       if (shopRes.ok) setShopItems(await shopRes.json());
+      if (shieldRes.ok) setShieldStatus(await shieldRes.json());
 
     } catch (e) {
       console.error("Error fetching gamification data:", e);
+    }
+  };
+
+  const handleUseShield = async () => {
+    if (!confirm("Xác nhận kích hoạt 1 Khiên Hộ Mệnh để hồi phục điểm ELO và bảo toàn chuỗi thắng cho trận thua gần nhất?")) {
+      return;
+    }
+
+    setIsUsingShield(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/gamification/shield/use`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Không thể sử dụng khiên bảo vệ.", "error");
+        return;
+      }
+
+      // Kích hoạt hiệu ứng hồi điểm và bùng cháy ngọn lửa chuỗi thắng
+      setShieldAnimation({
+        isOpen: true,
+        eloRestored: data.eloRestored,
+        streakRestored: data.streakRestored,
+        hasStreakFlame: data.hasStreakFlame,
+        mode: data.mode
+      });
+
+      // Tự động đóng sau 3 giây
+      setTimeout(() => {
+        setShieldAnimation(null);
+      }, 3000);
+
+      showToast(data.message || "Đã kích hoạt Khiên Hộ Mệnh thành công!", "success");
+
+      // Cập nhật lại dữ liệu
+      await Promise.all([
+        fetchProfileData(),
+        fetchGamificationData()
+      ]);
+    } catch (err: any) {
+      console.error("Error using shield:", err);
+      showToast(err.message || "Lỗi kết nối khi dùng khiên.", "error");
+    } finally {
+      setIsUsingShield(false);
     }
   };
 
@@ -1001,9 +1064,40 @@ export default function ProfilePage() {
                           : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
-                      Trang bị (Danh hiệu...)
+                      Trang bị & Bảo bối
                     </button>
                   </div>
+
+                  {/* Banner phát hiện trận thua có thể bảo vệ */}
+                  {shieldStatus?.canUse && (
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-950 via-slate-900 to-indigo-950 border border-cyan-400/40 text-white flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-cyan-950/40">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center text-cyan-300 shrink-0">
+                          <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">
+                              Trận thua gần nhất
+                            </span>
+                            <span className="text-xs font-bold text-slate-300">
+                              (-{shieldStatus.lastMatch?.eloLost} ELO)
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 mt-1">
+                            Bạn đang có <strong>{shieldStatus.availableShields} Khiên Hộ Mệnh</strong>. Dùng khiên ngay để hồi phục điểm ELO và bảo toàn chuỗi thắng!
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleUseShield}
+                        disabled={isUsingShield}
+                        className="w-full sm:w-auto px-5 py-2 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+                      >
+                        {isUsingShield ? "Đang xử lý..." : "Dùng Khiên Ngay"}
+                      </button>
+                    </div>
+                  )}
 
                   {filteredAndSortedInventory.length === 0 ? (
                     <div className="text-center py-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200">
@@ -1014,7 +1108,7 @@ export default function ProfilePage() {
                       <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">
                         {inventorySubTab === "physical" 
                           ? "Hãy tích cực thi đấu, tích lũy xu để đổi những phần quà vật lý hấp dẫn tại Cửa hàng!"
-                          : "Hoàn thành nhiệm vụ và mở hộp quà mỗi tuần để sưu tầm thêm danh hiệu độc quyền nhé!"}
+                          : "Hoàn thành nhiệm vụ và mở hộp quà mỗi tuần để sưu tầm thêm danh hiệu và khiên bảo vệ nhé!"}
                       </p>
                     </div>
                   ) : (
@@ -1022,7 +1116,8 @@ export default function ProfilePage() {
                       {filteredAndSortedInventory.map((item: any) => {
                         const isEquipped = item.is_equipped;
                         const isPhysical = item.item_type === 'physical';
-                        const isRedeemed = item.status === 'redeemed';
+                        const isRedeemed = item.status === 'redeemed' || item.status === 'used';
+                        const isShield = item.item_type === 'shield' || (item.item_name && item.item_name.includes('Khiên'));
                         const canEquip = item.item_type === 'title';
                         
                         if (isPhysical) {
@@ -1074,6 +1169,53 @@ export default function ProfilePage() {
                           );
                         }
 
+                        // Vật phẩm Khiên Hộ Mệnh (Bảo vệ ELO & chuỗi)
+                        if (isShield) {
+                          const isUsed = item.status === 'used';
+                          return (
+                            <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-3 ${
+                              isUsed ? "border-slate-200 opacity-60 bg-slate-50/50" : "border-cyan-500/40 hover:border-cyan-500 shadow-xs"
+                            }`}>
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-600 border border-cyan-500/20 flex items-center gap-1">
+                                    <Shield className="w-3 h-3 text-cyan-500" /> Bảo Bối Thi Đấu
+                                  </span>
+                                  <span className={`text-[10px] font-bold ${isUsed ? "text-slate-400" : "text-emerald-500 flex items-center gap-1"}`}>
+                                    {isUsed ? "✓ Đã kích hoạt" : "● Sẵn sàng bảo vệ"}
+                                  </span>
+                                </div>
+                                <h4 className="text-sm font-bold text-slate-900 tracking-wide flex items-center gap-1.5">
+                                  {item.item_name}
+                                </h4>
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                  Bảo vệ điểm ELO và bảo toàn chuỗi thắng khi bạn gặp thất bại trong trận đấu.
+                                </p>
+                                <p className="text-[10px] text-slate-400 mt-1">Sở hữu: {formatVietnamDate(item.acquired_at)}</p>
+                              </div>
+
+                              {!isUsed && (
+                                <button
+                                  onClick={handleUseShield}
+                                  disabled={!shieldStatus?.canUse || isUsingShield}
+                                  className={`w-full py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                                    shieldStatus?.canUse 
+                                      ? "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-md shadow-cyan-500/20 active:scale-95 animate-pulse" 
+                                      : "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                                  }`}
+                                >
+                                  {isUsingShield 
+                                    ? "Đang xử lý..." 
+                                    : shieldStatus?.canUse 
+                                    ? `Sử Dụng Khiên Ngay (-${shieldStatus.lastMatch?.eloLost || 0} ELO)` 
+                                    : "Chưa có trận thua cần bảo vệ"}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        // Danh hiệu & các vật phẩm ảo khác
                         return (
                           <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-3 ${
                             isEquipped ? "border-black/30" : "border-slate-200 hover:border-black/20"
@@ -1153,6 +1295,75 @@ export default function ProfilePage() {
                         >
                           Đóng
                         </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Shield Activation & Win Streak Reignited Animation Modal */}
+                  {shieldAnimation && (
+                    <div 
+                      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in cursor-pointer select-none"
+                      onClick={() => setShieldAnimation(null)}
+                    >
+                      <div 
+                        className="relative w-full max-w-sm sm:max-w-md bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-950 border-2 border-cyan-400/60 rounded-3xl p-6 sm:p-8 shadow-[0_0_50px_rgba(6,182,212,0.5)] text-center text-white overflow-hidden animate-scale-up"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Background glowing radiating orbs */}
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
+                        {shieldAnimation.hasStreakFlame && (
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-amber-500/30 rounded-full blur-3xl pointer-events-none animate-pulse" />
+                        )}
+
+                        {/* Radiant Shield Icon */}
+                        <div className="relative mx-auto w-20 h-20 sm:w-24 sm:h-24 mb-3 flex items-center justify-center">
+                          <div className="absolute inset-0 bg-cyan-400/30 rounded-full blur-xl animate-ping" />
+                          <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-500 border border-cyan-300 flex items-center justify-center shadow-lg shadow-cyan-500/50">
+                            <Shield className="w-10 h-10 sm:w-12 sm:h-12 text-white animate-bounce" />
+                          </div>
+                        </div>
+
+                        <span className="inline-block text-[10px] font-black uppercase tracking-widest text-cyan-300 bg-cyan-950/90 border border-cyan-500/40 px-3 py-1 rounded-full mb-2">
+                          Khiên Hộ Mệnh Kích Hoạt
+                        </span>
+
+                        {/* Restored ELO Counter Effect */}
+                        <div className="space-y-1 my-3">
+                          <div className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-cyan-300 to-teal-200 tabular-nums tracking-tight animate-pulse">
+                            +{shieldAnimation.eloRestored} ELO
+                          </div>
+                          <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                            Điểm ELO đã được bảo vệ & hoàn trả
+                          </p>
+                        </div>
+
+                        {/* Flame Win Streak Bursting in Center for 1-3s */}
+                        {shieldAnimation.hasStreakFlame && (
+                          <div className="mt-4 pt-4 border-t border-white/10 flex flex-col items-center justify-center">
+                            <div className="relative my-2">
+                              <div className="text-6xl sm:text-7xl animate-bounce filter drop-shadow-[0_0_30px_rgba(245,158,11,1)]">
+                                🔥
+                              </div>
+                              <div className="absolute -inset-2 bg-amber-500/40 rounded-full blur-xl pointer-events-none animate-ping" />
+                            </div>
+                            <p className="text-sm sm:text-base font-black text-amber-300 uppercase tracking-wide mt-1">
+                              Ngọn Lửa Chuỗi Thắng Bùng Sáng!
+                            </p>
+                            <div className="inline-flex items-center gap-1.5 mt-1.5 px-3.5 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs font-black">
+                              <Flame className="w-4 h-4 text-amber-400 fill-amber-400" />
+                              Bảo toàn chuỗi {shieldAnimation.streakRestored} trận thắng liên tiếp
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-6">
+                          <button
+                            onClick={() => setShieldAnimation(null)}
+                            className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-xs rounded-xl shadow-lg transition-transform active:scale-95 cursor-pointer"
+                          >
+                            Đồng ý & Đóng (Tự đóng sau 3s)
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}

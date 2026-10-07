@@ -119,14 +119,30 @@ router.post('/buy', authenticateToken, async (req, res) => {
     }
 
     // 4. Kiểm tra giới hạn mua tối đa của mỗi người
-    const ownedRes = await client.query(
-      `SELECT COUNT(*)::int AS count FROM user_inventory 
-       WHERE user_id = $1 AND shop_item_id = $2 AND (expires_at IS NULL OR expires_at > NOW())`,
-      [userId, item.id]
-    );
-    const ownedCount = ownedRes.rows[0].count;
-    if (ownedCount >= item.max_per_user) {
-      return res.status(400).json({ error: `Bạn đã đạt giới hạn mua tối đa cho vật phẩm này (Tối đa: ${item.max_per_user} lần).` });
+    const isShield = item.category === 'Bảo bối' || (item.name && item.name.toLowerCase().includes('khiên'));
+
+    if (isShield) {
+      // Giới hạn mua tối đa 3 khiên trong 1 tháng
+      const monthlyShieldPurchasesRes = await client.query(
+        `SELECT COUNT(*)::int AS count FROM user_inventory 
+         WHERE user_id = $1 AND shop_item_id = $2 
+           AND purchased_at >= date_trunc('month', NOW())`,
+        [userId, item.id]
+      );
+      const monthlyCount = monthlyShieldPurchasesRes.rows[0].count;
+      if (monthlyCount >= (item.max_per_user || 3)) {
+        return res.status(400).json({ error: `Bạn đã đạt giới hạn mua tối đa ${item.max_per_user || 3} khiên trong tháng này. Hãy quay lại vào tháng sau nhé!` });
+      }
+    } else {
+      const ownedRes = await client.query(
+        `SELECT COUNT(*)::int AS count FROM user_inventory 
+         WHERE user_id = $1 AND shop_item_id = $2 AND (expires_at IS NULL OR expires_at > NOW())`,
+        [userId, item.id]
+      );
+      const ownedCount = ownedRes.rows[0].count;
+      if (ownedCount >= item.max_per_user) {
+        return res.status(400).json({ error: `Bạn đã đạt giới hạn mua tối đa cho vật phẩm này (Tối đa: ${item.max_per_user} lần).` });
+      }
     }
 
     // 5. Kiểm tra số dư xu
@@ -162,6 +178,14 @@ router.post('/buy', authenticateToken, async (req, res) => {
       if (item.name.toLowerCase().includes('danh hiệu') || item.name.toLowerCase().includes('title') || item.name.toLowerCase().includes('smash king')) {
         invItemType = 'title';
         invItemValue = item.name.replace(/danh hiệu\s*:?/i, '').trim() || 'Smash King';
+      } else if (isShield) {
+        invItemType = 'shield';
+        invItemValue = 'elo_streak_protection';
+        // Tăng streak_shields trên bảng users
+        await client.query(
+          `UPDATE users SET streak_shields = streak_shields + 1 WHERE id = $1`,
+          [userId]
+        );
       } else {
         invItemType = 'virtual';
         invItemValue = item.name;
@@ -383,17 +407,25 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
         `UPDATE users SET smash_coins = smash_coins + $1 WHERE id = $2`,
         [coinsAwarded, userId]
       );
-    } else {
-      // 25% -> Streak Shield
+      // 25% -> Streak Shield (Khiên Hộ Mệnh)
       rewardType = 'streak_shield';
       const shieldsAwarded = Math.floor(Math.random() * 2) + 1; // 1 to 2
-      rewardName = `${shieldsAwarded} Khiên bảo vệ chuỗi`;
+      rewardName = `${shieldsAwarded} Khiên Hộ Mệnh (Bảo vệ ELO & Chuỗi)`;
       rewardValue = shieldsAwarded.toString();
 
       await client.query(
         `UPDATE users SET streak_shields = streak_shields + $1 WHERE id = $2`,
         [shieldsAwarded, userId]
       );
+
+      // Thêm khiên vào túi đồ (user_inventory)
+      for (let i = 0; i < shieldsAwarded; i++) {
+        await client.query(
+          `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, status, purchase_price, purchased_at)
+           VALUES ($1, 'shield', '🛡️ Khiên Hộ Mệnh', 'elo_streak_protection', 'unused', 0, NOW())`,
+          [userId]
+        );
+      }
     }
 
     // 3. Ghi nhận claim vào inventory để giữ cooldown

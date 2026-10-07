@@ -19,6 +19,25 @@
  * @param {string|null} player2_partner_id - Partner 2's ID (null if Singles)
  * @returns {object} { elo1New, elo2New, elo1_partnerNew, elo2_partnerNew, eloExchanged }
  */
+/**
+ * Thang K-factor mới của SmashTeam dựa trên số trận đã đấu:
+ * - 0–5 matches: K = 40 (Provisional / Calibrating)
+ * - 6–10 matches: K = 38
+ * - 11–25 matches: K = 36
+ * - 26–50 matches: K = 32
+ * - 51–100 matches: K = 28
+ * - 100+ matches: K = 26
+ */
+function getK(matches) {
+  const m = Number(matches) || 0;
+  if (m <= 5) return 40;
+  if (m <= 10) return 38;
+  if (m <= 25) return 36;
+  if (m <= 50) return 32;
+  if (m <= 100) return 28;
+  return 26;
+}
+
 function calculateElo(
   elo1, elo2, player1_id, player2_id, winner_id,
   streak1 = 0, streak2 = 0, matches1 = 0, matches2 = 0,
@@ -32,23 +51,19 @@ function calculateElo(
   const T2 = elo2_partner !== null ? (elo2 + elo2_partner) / 2 : elo2;
 
   // 2. Calculate Individual K-factors
-  const getK = (matches, streak) => {
-    return matches < 10 ? 40 : (streak >= 3 ? 36 : 24);
-  };
-
-  const K1 = getK(matches1, streak1);
-  const K2 = getK(matches2, streak2);
+  const K1 = getK(matches1);
+  const K2 = getK(matches2);
 
   // 3. Calculate Team K-factors (Averages if Doubles)
   let K_team1 = K1;
   if (elo1_partner !== null) {
-    const K1_p = getK(matches1_partner, streak1_partner);
+    const K1_p = getK(matches1_partner);
     K_team1 = (K1 + K1_p) / 2;
   }
 
   let K_team2 = K2;
   if (elo2_partner !== null) {
-    const K2_p = getK(matches2_partner, streak2_partner);
+    const K2_p = getK(matches2_partner);
     K_team2 = (K2 + K2_p) / 2;
   }
 
@@ -62,9 +77,10 @@ function calculateElo(
   const S1 = team1Won ? 1 : 0;
   const S2 = 1 - S1;
 
-  // 6. Calculate Team Delta changes
-  const delta1 = Math.round(K_team1 * (S1 - E1));
-  const delta2 = Math.round(K_team2 * (S2 - E2));
+  // 6. Calculate Team Delta changes with Safety Cap [-40, +40]
+  const clampDelta = (d) => Math.max(-40, Math.min(40, d));
+  const delta1 = clampDelta(Math.round(K_team1 * (S1 - E1)));
+  const delta2 = clampDelta(Math.round(K_team2 * (S2 - E2)));
 
   // 7. Calculate New Ratings
   const elo1New = Math.max(100, Math.round(elo1 + delta1));
@@ -127,5 +143,5 @@ function getRankLabel(elo) {
   return 'Đồng';
 }
 
-module.exports = { calculateElo, getRankName, getRankLabel, RANK_TIERS };
+module.exports = { calculateElo, getK, getRankName, getRankLabel, RANK_TIERS };
 

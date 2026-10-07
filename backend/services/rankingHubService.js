@@ -6,7 +6,7 @@
 
 const db = require('../db');
 const { getIsoWeekString } = require('./rankingSnapshotJob');
-const { getTierByElo } = require('./tierService');
+const { getTierByElo, getNextTierInfo } = require('./tierService');
 
 // Threshold to transition from Provisional to Established
 const MIN_MATCHES_FOR_ESTABLISHED_RANK = 3;
@@ -125,11 +125,19 @@ async function getRankingHubData({ mode = 'doubles', filter = 'official', curren
       else movement = 'SAME';
     }
 
+    let weeklyEloChange = 0;
+    if (baseline && baseline.elo != null) {
+      weeklyEloChange = Number(p.elo) - Number(baseline.elo);
+    }
+    const nextTier = getNextTierInfo(p.elo);
+
     return {
       rank,
       movement,
       rankChange,
       previousRank,
+      weeklyEloChange,
+      nextTier,
       user: {
         id: p.id,
         full_name: p.full_name,
@@ -193,11 +201,20 @@ async function getRankingHubData({ mode = 'doubles', filter = 'official', curren
     const matches = Number(p.matches);
     const neededMatches = Math.max(1, MIN_MATCHES_FOR_ESTABLISHED_RANK - matches);
 
+    let weeklyEloChange = 0;
+    const baseline = baselineMap.get(p.id);
+    if (baseline && baseline.elo != null) {
+      weeklyEloChange = Number(p.elo) - Number(baseline.elo);
+    }
+    const nextTier = getNextTierInfo(p.elo);
+
     return {
       rank: null,
       movement: 'NEW',
       rankChange: 0,
       previousRank: null,
+      weeklyEloChange,
+      nextTier,
       user: {
         id: p.id,
         full_name: p.full_name,
@@ -277,6 +294,8 @@ async function getRankingHubData({ mode = 'doubles', filter = 'official', curren
             movement: 'NEW',
             rankChange: 0,
             previousRank: null,
+            weeklyEloChange: 0,
+            nextTier: getNextTierInfo(1000),
             user: u,
             elo: 1000,
             peakElo: 1000,
