@@ -25,8 +25,8 @@ function CheckInContent() {
     }
   }, [urlMode, urlCode, router]);
 
-  // Mode: "auto" (khi có params), "manual" (nhập code 5 ký tự), "camera" (quét QR)
-  const [activeTab, setActiveTab] = useState<"code" | "camera">("code");
+  // Mode: "camera" (mặc định: quét QR bằng camera), "code" (dự phòng: nhập code 5 ký tự)
+  const [activeTab, setActiveTab] = useState<"code" | "camera">("camera");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -219,12 +219,31 @@ function CheckInContent() {
 
   // Quản lý Camera Scanner
   const startCameraScanner = async () => {
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      return;
+    }
     setCameraError(null);
     setIsCameraActive(true);
 
     // Chờ DOM mount thẻ #qr-checkin-camera
     setTimeout(async () => {
       try {
+        const elem = document.getElementById("qr-checkin-camera");
+        if (!elem) {
+          return;
+        }
+        if (scannerRef.current && scannerRef.current.isScanning) {
+          return;
+        }
+        if (scannerRef.current) {
+          try {
+            await scannerRef.current.clear();
+          } catch {
+            // ignore
+          }
+          scannerRef.current = null;
+        }
+
         const scanner = new Html5Qrcode("qr-checkin-camera");
         scannerRef.current = scanner;
 
@@ -238,23 +257,37 @@ function CheckInContent() {
         );
       } catch (err: any) {
         console.error("Lỗi khởi tạo camera:", err);
-        setCameraError("Không thể mở camera. Vui lòng cấp quyền truy cập camera trên trình duyệt hoặc sử dụng mã 5 ký tự.");
+        setCameraError("Không thể mở camera. Vui lòng cấp quyền truy cập camera trên trình duyệt hoặc sử dụng tab 'Nhập mã 5 ký tự'.");
         setIsCameraActive(false);
       }
     }, 250);
   };
 
   const stopCameraScanner = async () => {
-    if (scannerRef.current && scannerRef.current.isScanning) {
+    if (scannerRef.current) {
       try {
-        await scannerRef.current.stop();
-        scannerRef.current = null;
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+        await scannerRef.current.clear();
       } catch (e) {
         // ignore
+      } finally {
+        scannerRef.current = null;
       }
     }
     setIsCameraActive(false);
   };
+
+  // Tự động khởi động camera quét QR khi ở tab camera và trạng thái chờ quét
+  useEffect(() => {
+    if (activeTab === "camera" && status === "idle" && !urlCode) {
+      startCameraScanner();
+    }
+    return () => {
+      stopCameraScanner();
+    };
+  }, [activeTab, status, urlCode]);
 
   // Khi camera quét được chuỗi
   const handleQrScanned = async (decodedText: string) => {
@@ -432,7 +465,7 @@ function CheckInContent() {
                 className="min-h-[46px] w-full py-3 px-5 bg-primary hover:bg-primary-hover text-white font-bold text-sm rounded-2xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4" />
-                <span>Nhập mã 5 ký tự khác</span>
+                <span>Thử lại hoặc Quét lại QR</span>
               </button>
               <button
                 onClick={() => router.push("/")}
@@ -468,23 +501,8 @@ function CheckInContent() {
               </div>
             )}
 
-            {/* Tab Selection */}
+            {/* Tab Selection: Quét mã QR là mặc định */}
             <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("code");
-                  stopCameraScanner();
-                }}
-                className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  activeTab === "code"
-                    ? "bg-primary text-white shadow-lg shadow-primary/30"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>Nhập mã 5 ký tự</span>
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -500,9 +518,92 @@ function CheckInContent() {
                 <Camera className="w-4 h-4" />
                 <span>Quét mã QR</span>
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("code");
+                  stopCameraScanner();
+                }}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  activeTab === "code"
+                    ? "bg-primary text-white shadow-lg shadow-primary/30"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>Nhập mã 5 ký tự</span>
+              </button>
             </div>
 
-            {/* TAB 1: NHẬP MÃ 5 KÝ TỰ (DÀNH CHO THIẾT BỊ KHÔNG CÓ CAMERA) */}
+            {/* TAB 1: QUÉT MÃ QR BẰNG CAMERA (MẶC ĐỊNH) */}
+            {activeTab === "camera" && (
+              <div className="space-y-4">
+                <div className="text-center space-y-1">
+                  <h2 className="text-lg sm:text-xl font-bold text-white">Quét Mã QR Điểm Danh</h2>
+                  <p className="text-xs text-slate-400">
+                    Hướng camera về phía mã QR của buổi tập trên màn hình Ban chủ nhiệm.
+                  </p>
+                </div>
+
+                {cameraError ? (
+                  <div className="p-5 bg-rose-500/15 border border-rose-500/30 rounded-2xl text-center space-y-3 animate-fade-in">
+                    <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
+                    <p className="text-xs text-rose-300 leading-relaxed">{cameraError}</p>
+                    <div className="flex flex-col sm:flex-row gap-2 justify-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => startCameraScanner()}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Thử bật lại Camera
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("code");
+                          stopCameraScanner();
+                        }}
+                        className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow"
+                      >
+                        Chuyển sang nhập mã 5 ký tự
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="relative rounded-2xl overflow-hidden border-2 border-primary/50 shadow-inner bg-black flex items-center justify-center min-h-[260px]">
+                      <div id="qr-checkin-camera" className="w-full h-full" />
+                      {!isCameraActive && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-secondary/80 backdrop-blur-sm space-y-3">
+                          <Camera className="w-12 h-12 text-slate-400 animate-pulse" />
+                          <p className="text-xs text-slate-300">Đang khởi động camera...</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                      <span>Mẹo: Giữ camera cách mã QR khoảng 15-30cm</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          stopCameraScanner();
+                          setTimeout(() => startCameraScanner(), 300);
+                        }}
+                        className="text-primary hover:text-smash-violet underline cursor-pointer"
+                      >
+                        Tải lại Camera
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-center text-slate-400">
+                      Nếu camera không mở được hoặc máy tính không có webcam, bạn hãy chọn tab <strong>"Nhập mã 5 ký tự"</strong> ở trên nhé!
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: NHẬP MÃ 5 KÝ TỰ (DỰ PHÒNG CHO THIẾT BỊ KHÔNG CÓ CAMERA) */}
             {activeTab === "code" && (
               <form onSubmit={handleManualSubmit} className="space-y-5">
                 <div className="text-center space-y-1.5">
@@ -574,48 +675,6 @@ function CheckInContent() {
                   <span>Cộng ngay <strong className="text-emerald-400 font-bold">+25 XP</strong> và <strong className="text-amber-400 font-bold">+10 Coins</strong> khi xác nhận thành công.</span>
                 </div>
               </form>
-            )}
-
-            {/* TAB 2: QUÉT MÃ QR BẰNG CAMERA */}
-            {activeTab === "camera" && (
-              <div className="space-y-4">
-                <div className="text-center space-y-1">
-                  <h2 className="text-lg font-bold text-white">Quét Mã QR Bằng Camera</h2>
-                  <p className="text-xs text-slate-400">
-                    Hướng camera điện thoại hoặc laptop về phía mã QR trên màn hình sân tập.
-                  </p>
-                </div>
-
-                {cameraError ? (
-                  <div className="p-5 bg-rose-500/15 border border-rose-500/30 rounded-2xl text-center space-y-3 animate-fade-in">
-                    <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
-                    <p className="text-xs text-rose-300 leading-relaxed">{cameraError}</p>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("code")}
-                      className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow"
-                    >
-                      Chuyển sang nhập mã 5 ký tự
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="relative rounded-2xl overflow-hidden border-2 border-primary/50 shadow-inner bg-black flex items-center justify-center min-h-[260px]">
-                      <div id="qr-checkin-camera" className="w-full h-full" />
-                      {!isCameraActive && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-secondary/80 backdrop-blur-sm space-y-3">
-                          <Camera className="w-12 h-12 text-slate-400 animate-pulse" />
-                          <p className="text-xs text-slate-300">Đang khởi động camera...</p>
-                        </div>
-                      )}
-                    </div>
-
-                    <p className="text-[11px] text-center text-slate-400">
-                      Nếu camera không mở được hoặc máy không có webcam, bạn hãy chọn tab <strong>"Nhập mã 5 ký tự"</strong> ở trên nhé!
-                    </p>
-                  </div>
-                )}
-              </div>
             )}
           </div>
         )}
