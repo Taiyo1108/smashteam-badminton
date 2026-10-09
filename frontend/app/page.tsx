@@ -88,10 +88,25 @@ export default function Home() {
     siteSettings.social_links, [...SOCIAL_FALLBACK]
   ).filter((s) => s && String(s.label || "").trim());
 
-  // Tiêu đề Hero trang chủ do admin cấu hình trong Quản lý nội dung
+  // Tiêu đề & Kiểu chữ Hero trang chủ do admin cấu hình trong Quản lý nội dung
   const heroTitleLine1 = (siteSettings.homepage_hero_title_line1 || "").trim() || "ĐAM MÊ DẪN LỐI";
   const heroTitleLine2 = (siteSettings.homepage_hero_title_line2 !== undefined ? siteSettings.homepage_hero_title_line2 : "ĐẬP TAN GIỚI HẠN").trim();
   const heroSubtitle = (siteSettings.homepage_hero_subtitle || "").trim() || "Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!";
+  const heroFont = siteSettings.homepage_hero_font || "inter";
+  const heroStyle = siteSettings.homepage_hero_style || "classic";
+
+  const getHeroFontClass = (fontKey?: string) => {
+    switch (fontKey) {
+      case "montserrat": return "font-hero-montserrat";
+      case "bevietnam": return "font-hero-bevietnam";
+      case "oswald": return "font-hero-oswald uppercase tracking-wide";
+      case "kanit": return "font-hero-kanit";
+      case "barlow": return "font-hero-barlow uppercase tracking-wider";
+      case "inter":
+      default:
+        return "font-hero-inter";
+    }
+  };
 
   // User auth and profile state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -605,20 +620,60 @@ export default function Home() {
                   <span>Chiến Dịch Tuyển Vợt Thủ Mùa Giải {new Date().getFullYear()}</span>
                 </motion.div>
 
-                {/* Primary H1 Heading - Hollow Outline Athletic Style */}
+                {/* Primary H1 Heading - Customizable Font & Style */}
                 <motion.h1 
                   id="hero-title"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.1 }}
-                  className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.15] sm:leading-[1.12]"
+                  className={`text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.15] sm:leading-[1.12] ${getHeroFontClass(heroFont)}`}
                 >
-                  <span className="hero-hollow-text-white block sm:inline-block">{heroTitleLine1}</span>
-                  {heroTitleLine2 && (
+                  {heroStyle === "hollow" ? (
                     <>
-                      {" "}
-                      <br className="hidden sm:inline" />
-                      <span className="hero-hollow-text-glow block sm:inline-block">{heroTitleLine2}</span>
+                      <span className="hero-hollow-text-white block sm:inline-block">{heroTitleLine1}</span>
+                      {heroTitleLine2 && (
+                        <>
+                          {" "}
+                          <br className="hidden sm:inline" />
+                          <span className="hero-hollow-text-glow block sm:inline-block">{heroTitleLine2}</span>
+                        </>
+                      )}
+                    </>
+                  ) : heroStyle === "neon" ? (
+                    <>
+                      <span className="text-white block sm:inline-block drop-shadow-[0_0_20px_rgba(255,255,255,0.7)]">{heroTitleLine1}</span>
+                      {heroTitleLine2 && (
+                        <>
+                          {" "}
+                          <br className="hidden sm:inline" />
+                          <span className="text-fuchsia-400 block sm:inline-block drop-shadow-[0_0_28px_rgba(217,70,239,0.9)]">{heroTitleLine2}</span>
+                        </>
+                      )}
+                    </>
+                  ) : heroStyle === "solid_white" ? (
+                    <>
+                      <span className="text-white block sm:inline-block drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">{heroTitleLine1}</span>
+                      {heroTitleLine2 && (
+                        <>
+                          {" "}
+                          <br className="hidden sm:inline" />
+                          <span className="text-white/95 block sm:inline-block drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">{heroTitleLine2}</span>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    /* Default "classic": Kiểu cũ nguyên bản (Trắng + Gradient tím hồng rực rỡ) */
+                    <>
+                      <span className="text-white block sm:inline-block drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">{heroTitleLine1}</span>
+                      {heroTitleLine2 && (
+                        <>
+                          {" "}
+                          <br className="hidden sm:inline" />
+                          <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent block sm:inline-block drop-shadow-[0_0_30px_rgba(157,78,221,0.55)]">
+                            {heroTitleLine2}
+                          </span>
+                        </>
+                      )}
                     </>
                   )}
                 </motion.h1>

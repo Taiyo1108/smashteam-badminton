@@ -6,7 +6,7 @@ import PwaInstallPrompt from "./components/PwaInstallPrompt";
 
 const inter = Inter({
   variable: "--font-inter",
-  subsets: ["latin"],
+  subsets: ["latin", "vietnamese"],
   display: "swap",
 });
 
@@ -54,6 +54,14 @@ export default function RootLayout({
       lang="vi"
       className={`${inter.variable} font-sans h-full antialiased`}
     >
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Be+Vietnam+Pro:wght@700;800;900&family=Kanit:wght@700;800;900&family=Montserrat:wght@700;800;900&family=Oswald:wght@600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         {children}
         <BgmPlayer />

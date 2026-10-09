@@ -17,6 +17,8 @@ export default function ContentManagementPage() {
     titleLine1: "",
     titleLine2: "",
     subtitle: "",
+    font: "inter",
+    style: "classic",
   });
   const [heroLoading, setHeroLoading] = useState(false);
   const [heroSuccess, setHeroSuccess] = useState(false);
@@ -64,6 +66,8 @@ export default function ContentManagementPage() {
           titleLine1: data.homepage_hero_title_line1 ?? "ĐAM MÊ DẪN LỐI",
           titleLine2: data.homepage_hero_title_line2 ?? "ĐẬP TAN GIỚI HẠN",
           subtitle: data.homepage_hero_subtitle ?? "Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!",
+          font: data.homepage_hero_font ?? "inter",
+          style: data.homepage_hero_style ?? "classic",
         });
       }
     } catch (e) {
@@ -90,7 +94,9 @@ export default function ContentManagementPage() {
           settings: {
             homepage_hero_title_line1: heroForm.titleLine1.trim(),
             homepage_hero_title_line2: heroForm.titleLine2.trim(),
-            homepage_hero_subtitle: heroForm.subtitle.trim()
+            homepage_hero_subtitle: heroForm.subtitle.trim(),
+            homepage_hero_font: heroForm.font,
+            homepage_hero_style: heroForm.style,
           }
         })
       });
@@ -101,7 +107,9 @@ export default function ContentManagementPage() {
           ...prev,
           homepage_hero_title_line1: heroForm.titleLine1.trim(),
           homepage_hero_title_line2: heroForm.titleLine2.trim(),
-          homepage_hero_subtitle: heroForm.subtitle.trim()
+          homepage_hero_subtitle: heroForm.subtitle.trim(),
+          homepage_hero_font: heroForm.font,
+          homepage_hero_style: heroForm.style,
         }));
         setTimeout(() => setHeroSuccess(false), 3500);
       } else {
@@ -313,16 +321,16 @@ export default function ContentManagementPage() {
           {/* CẤU HÌNH TIÊU ĐỀ HERO TRANG CHỦ */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
             <h2 className="text-lg font-bold text-secondary flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-primary" /> Tiêu đề Hero Trang chủ
+              <Sparkles className="w-5 h-5 text-primary" /> Tiêu đề & Phông chữ Trang chủ
             </h2>
             <p className="text-xs text-slate-500">
-              Tùy chỉnh tiêu đề chính (hiển thị hiệu ứng chữ rỗng thể thao) và tiêu đề phụ giới thiệu câu lạc bộ trên trang chủ.
+              Tùy chỉnh nội dung tiêu đề, lựa chọn phông chữ phổ biến và kiểu hiển thị (chữ đặc nguyên bản kiểu cũ, chữ rỗng, neon...) trên trang chủ.
             </p>
 
             <form onSubmit={handleSaveHeroTitles} className="space-y-4 pt-1">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Tiêu đề chính - Dòng 1 (Viền trắng rỗng)
+                  Tiêu đề chính - Dòng 1
                 </label>
                 <input
                   type="text"
@@ -335,7 +343,7 @@ export default function ContentManagementPage() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Tiêu đề chính - Dòng 2 (Viền neon phát sáng)
+                  Tiêu đề chính - Dòng 2
                 </label>
                 <input
                   type="text"
@@ -344,6 +352,47 @@ export default function ContentManagementPage() {
                   placeholder="Ví dụ: ĐẬP TAN GIỚI HẠN"
                   className="w-full p-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
+              </div>
+
+              {/* Lựa chọn Phông chữ (Font Family) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Phông chữ tiêu đề chính</span>
+                  <span className="text-[11px] font-semibold text-primary">6 font tuyển chọn</span>
+                </label>
+                <select
+                  value={heroForm.font}
+                  onChange={(e) => setHeroForm({ ...heroForm, font: e.target.value })}
+                  className="w-full p-2.5 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-800 outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white cursor-pointer"
+                >
+                  <option value="inter">1. Inter (Phông chữ cũ / Mặc định ban đầu)</option>
+                  <option value="montserrat">2. Montserrat (Hiện đại, nét đậm thể thao - Rất đẹp)</option>
+                  <option value="bevietnam">3. Be Vietnam Pro (Chuẩn tiếng Việt, thanh thoát hiện đại)</option>
+                  <option value="oswald">4. Oswald (Thể thao cô đọng, cao ráo, poster)</option>
+                  <option value="kanit">5. Kanit (Năng động, thể thao, bo góc cá tính)</option>
+                  <option value="barlow">6. Barlow Condensed (Đậm chất giải đấu, tốc độ, sắc bén)</option>
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  * Hỗ trợ 100% đầy đủ dấu Tiếng Việt, hiển thị mượt mà trên mọi thiết bị.
+                </p>
+              </div>
+
+              {/* Lựa chọn Kiểu hiển thị / Hiệu ứng */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Kiểu hiển thị / Hiệu ứng chữ</span>
+                  <span className="text-[11px] font-semibold text-primary">4 kiểu thể thao</span>
+                </label>
+                <select
+                  value={heroForm.style}
+                  onChange={(e) => setHeroForm({ ...heroForm, style: e.target.value })}
+                  className="w-full p-2.5 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-800 outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white cursor-pointer"
+                >
+                  <option value="classic">Chữ đặc nguyên bản (Kiểu cũ: Dòng 1 trắng, dòng 2 tím hồng)</option>
+                  <option value="hollow">Chữ rỗng ruột (Hollow: Viền trắng dòng 1, viền neon tím dòng 2)</option>
+                  <option value="neon">Chữ phát sáng Neon Glow (Trắng ánh sáng & Tím neon)</option>
+                  <option value="solid_white">Chữ trắng đặc 3D (Trắng tuyết nguyên khối, đổ bóng thể thao)</option>
+                </select>
               </div>
 
               <div>
@@ -360,20 +409,72 @@ export default function ContentManagementPage() {
               </div>
 
               {/* Live Preview Box */}
-              <div className="p-3.5 bg-secondary rounded-xl border border-primary/30 space-y-1.5 shadow-inner">
-                <span className="text-[10px] uppercase font-black tracking-wider text-purple-300 block">
-                  Xem trước tiêu đề
-                </span>
-                <div className="text-sm font-black tracking-tight leading-tight">
-                  <span className="hero-hollow-text-white block">
-                    {heroForm.titleLine1 || "ĐAM MÊ DẪN LỐI"}
+              <div className="p-3.5 bg-secondary rounded-xl border border-primary/30 space-y-2 shadow-inner">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-purple-300">
+                    Xem trước tiêu đề
                   </span>
-                  {heroForm.titleLine2 && (
-                    <span className="hero-hollow-text-glow block mt-0.5">
-                      {heroForm.titleLine2}
-                    </span>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    Font: <strong className="text-purple-300 capitalize">{heroForm.font}</strong> | Kiểu: <strong className="text-purple-300 capitalize">{heroForm.style}</strong>
+                  </span>
+                </div>
+
+                <div className={`text-base sm:text-lg font-black tracking-tight leading-tight ${
+                  heroForm.font === "montserrat" ? "font-hero-montserrat" :
+                  heroForm.font === "bevietnam" ? "font-hero-bevietnam" :
+                  heroForm.font === "oswald" ? "font-hero-oswald uppercase" :
+                  heroForm.font === "kanit" ? "font-hero-kanit" :
+                  heroForm.font === "barlow" ? "font-hero-barlow uppercase" :
+                  "font-hero-inter"
+                }`}>
+                  {heroForm.style === "hollow" ? (
+                    <>
+                      <span className="hero-hollow-text-white block">
+                        {heroForm.titleLine1 || "ĐAM MÊ DẪN LỐI"}
+                      </span>
+                      {heroForm.titleLine2 && (
+                        <span className="hero-hollow-text-glow block mt-0.5">
+                          {heroForm.titleLine2}
+                        </span>
+                      )}
+                    </>
+                  ) : heroForm.style === "neon" ? (
+                    <>
+                      <span className="text-white block drop-shadow-[0_0_15px_rgba(255,255,255,0.7)]">
+                        {heroForm.titleLine1 || "ĐAM MÊ DẪN LỐI"}
+                      </span>
+                      {heroForm.titleLine2 && (
+                        <span className="text-fuchsia-400 block mt-0.5 drop-shadow-[0_0_20px_rgba(217,70,239,0.9)]">
+                          {heroForm.titleLine2}
+                        </span>
+                      )}
+                    </>
+                  ) : heroForm.style === "solid_white" ? (
+                    <>
+                      <span className="text-white block drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+                        {heroForm.titleLine1 || "ĐAM MÊ DẪN LỐI"}
+                      </span>
+                      {heroForm.titleLine2 && (
+                        <span className="text-white/95 block mt-0.5 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+                          {heroForm.titleLine2}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    /* Default classic: Kiểu cũ */
+                    <>
+                      <span className="text-white block drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+                        {heroForm.titleLine1 || "ĐAM MÊ DẪN LỐI"}
+                      </span>
+                      {heroForm.titleLine2 && (
+                        <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent block mt-0.5 drop-shadow-[0_0_20px_rgba(157,78,221,0.6)]">
+                          {heroForm.titleLine2}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
+
                 <p className="text-[11px] text-slate-300/80 line-clamp-2 leading-relaxed pt-1">
                   {heroForm.subtitle || "Smash Team - Câu lạc bộ cầu lông sinh viên..."}
                 </p>
@@ -382,7 +483,7 @@ export default function ContentManagementPage() {
               {/* Success / Error Alerts */}
               {heroSuccess && (
                 <div className="p-3 bg-green-50 text-green-700 rounded-xl text-xs flex items-center gap-2 border border-green-200">
-                  <Check className="w-4 h-4 shrink-0" /> Cập nhật tiêu đề trang chủ thành công!
+                  <Check className="w-4 h-4 shrink-0" /> Cập nhật tiêu đề & phông chữ trang chủ thành công!
                 </div>
               )}
 
@@ -402,7 +503,7 @@ export default function ContentManagementPage() {
                     <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang lưu...
                   </>
                 ) : (
-                  <>Lưu thay đổi tiêu đề</>
+                  <>Lưu thay đổi tiêu đề & phông chữ</>
                 )}
               </button>
             </form>

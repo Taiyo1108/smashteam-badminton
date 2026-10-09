@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Be+Vietnam+Pro:wght@700;800;900&family=Kanit:wght@700;800;900&family=Montserrat:wght@700;800;900&family=Oswald:wght@600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
@@ -252,5 +253,27 @@ body {
   }
 }
 
+/* Hero Font Families */
+.font-hero-inter {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
 
+.font-hero-montserrat {
+  font-family: "Montserrat", var(--font-inter), sans-serif;
+}
 
+.font-hero-bevietnam {
+  font-family: "Be Vietnam Pro", var(--font-inter), sans-serif;
+}
+
+.font-hero-oswald {
+  font-family: "Oswald", var(--font-inter), sans-serif;
+}
+
+.font-hero-kanit {
+  font-family: "Kanit", var(--font-inter), sans-serif;
+}
+
+.font-hero-barlow {
+  font-family: "Barlow Condensed", var(--font-inter), sans-serif;
+}
