@@ -226,10 +226,11 @@ router.post('/buy', authenticateToken, async (req, res) => {
       }
     }
 
-    // 10. Ghi nhận vào túi đồ
+    // 10. Ghi nhận vào túi đồ (Khiên có hạn sử dụng 7 ngày kể từ khi nhận)
+    const itemExpiresAt = isShield ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null;
     await client.query(
       `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, shop_item_id, coupon_code, status, purchase_price, purchased_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NULL)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)`,
       [
         userId,
         invItemType,
@@ -238,7 +239,8 @@ router.post('/buy', authenticateToken, async (req, res) => {
         item.id,
         couponCode,
         item.item_type === 'physical' ? 'unused' : 'unused',
-        item.coin_price
+        item.coin_price,
+        itemExpiresAt
       ]
     );
 
@@ -375,16 +377,15 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
       }
     }
 
-    // 2. Quay thưởng ngẫu nhiên (Đã loại bỏ vật phẩm khung)
-    // 75% -> Smash Coins (5-50 xu), 25% -> Streak Shield (1-2 khiên)
+    // 2. Quay thưởng ngẫu nhiên (85% Smash Coins, 15% Khiên Hộ Mệnh - tối đa 1 khiên, hạn dùng 7 ngày)
     const rand = Math.random() * 100;
     let rewardType = '';
     let rewardName = '';
     let rewardValue = '';
     let expiresAt = null;
 
-    if (rand < 75) {
-      // 75% -> Coins (5-50 xu): Tỉ lệ cao ra 5 xu (60%), hiếm hơn là 10 xu (25%), 20 xu (10%), cực thấp là 40 xu (3%) & 50 xu (2%)
+    if (rand < 85) {
+      // 85% -> Coins (5-50 xu): Tỉ lệ cao ra 5 xu (60%), hiếm hơn là 10 xu (25%), 20 xu (10%), cực thấp là 40 xu (3%) & 50 xu (2%)
       rewardType = 'coins';
       const coinRoll = Math.random() * 100;
       let coinsAwarded = 5;
@@ -407,25 +408,25 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
         `UPDATE users SET smash_coins = smash_coins + $1 WHERE id = $2`,
         [coinsAwarded, userId]
       );
-      // 25% -> Streak Shield (Khiên Hộ Mệnh)
+    } else {
+      // 15% -> Streak Shield (Khiên Hộ Mệnh - mỗi lần mở nhận tối đa 1 khiên, thời hạn sử dụng 1 tuần)
       rewardType = 'streak_shield';
-      const shieldsAwarded = Math.floor(Math.random() * 2) + 1; // 1 to 2
-      rewardName = `${shieldsAwarded} Khiên Hộ Mệnh (Bảo vệ ELO & Chuỗi)`;
-      rewardValue = shieldsAwarded.toString();
+      const shieldsAwarded = 1; // Tối đa 1 khiên
+      rewardName = `1 Khiên Hộ Mệnh (Hạn dùng 7 ngày)`;
+      rewardValue = '1';
+      expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
       await client.query(
-        `UPDATE users SET streak_shields = streak_shields + $1 WHERE id = $2`,
-        [shieldsAwarded, userId]
+        `UPDATE users SET streak_shields = streak_shields + 1 WHERE id = $1`,
+        [userId]
       );
 
-      // Thêm khiên vào túi đồ (user_inventory)
-      for (let i = 0; i < shieldsAwarded; i++) {
-        await client.query(
-          `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, status, purchase_price, purchased_at)
-           VALUES ($1, 'shield', '🛡️ Khiên Hộ Mệnh', 'elo_streak_protection', 'unused', 0, NOW())`,
-          [userId]
-        );
-      }
+      // Thêm khiên vào túi đồ (user_inventory) với thời hạn 7 ngày
+      await client.query(
+        `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, status, purchase_price, purchased_at, expires_at)
+         VALUES ($1, 'shield', '🛡️ Khiên Hộ Mệnh', 'elo_streak_protection', 'unused', 0, NOW(), NOW() + INTERVAL '7 days')`,
+        [userId]
+      );
     }
 
     // 3. Ghi nhận claim vào inventory để giữ cooldown

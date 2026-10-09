@@ -1172,17 +1172,20 @@ export default function ProfilePage() {
                         // Vật phẩm Khiên Hộ Mệnh (Bảo vệ ELO & chuỗi)
                         if (isShield) {
                           const isUsed = item.status === 'used';
+                          const isExpired = item.status === 'expired' || (!isUsed && item.expires_at && new Date(item.expires_at).getTime() <= Date.now());
                           return (
                             <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-3 ${
-                              isUsed ? "border-slate-200 opacity-60 bg-slate-50/50" : "border-cyan-500/40 hover:border-cyan-500 shadow-xs"
+                              isUsed || isExpired ? "border-slate-200 opacity-60 bg-slate-50/50" : "border-cyan-500/40 hover:border-cyan-500 shadow-xs"
                             }`}>
                               <div>
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-600 border border-cyan-500/20 flex items-center gap-1">
                                     <Shield className="w-3 h-3 text-cyan-500" /> Bảo Bối Thi Đấu
                                   </span>
-                                  <span className={`text-[10px] font-bold ${isUsed ? "text-slate-400" : "text-emerald-500 flex items-center gap-1"}`}>
-                                    {isUsed ? "✓ Đã kích hoạt" : "● Sẵn sàng bảo vệ"}
+                                  <span className={`text-[10px] font-bold ${
+                                    isUsed ? "text-slate-400" : isExpired ? "text-red-500" : "text-emerald-500 flex items-center gap-1"
+                                  }`}>
+                                    {isUsed ? "✓ Đã kích hoạt" : isExpired ? "✕ Đã hết hạn" : "● Sẵn sàng bảo vệ"}
                                   </span>
                                 </div>
                                 <h4 className="text-sm font-bold text-slate-900 tracking-wide flex items-center gap-1.5">
@@ -1191,10 +1194,17 @@ export default function ProfilePage() {
                                 <p className="text-[11px] text-slate-500 mt-1">
                                   Bảo vệ điểm ELO và bảo toàn chuỗi thắng khi bạn gặp thất bại trong trận đấu.
                                 </p>
-                                <p className="text-[10px] text-slate-400 mt-1">Sở hữu: {formatVietnamDate(item.acquired_at)}</p>
+                                <div className="flex flex-col gap-0.5 mt-1.5 text-[10px]">
+                                  <span className="text-slate-400">Sở hữu: {formatVietnamDate(item.acquired_at)}</span>
+                                  {item.expires_at && !isUsed && (
+                                    <span className={isExpired ? "text-red-500 font-bold" : "text-amber-600 font-bold"}>
+                                      {isExpired ? "Đã hết hạn lúc:" : "Hạn dùng (1 tuần):"} {formatVietnamDate(item.expires_at)}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
 
-                              {!isUsed && (
+                              {!isUsed && !isExpired && (
                                 <button
                                   onClick={handleUseShield}
                                   disabled={!shieldStatus?.canUse || isUsingShield}
@@ -1391,9 +1401,9 @@ export default function ProfilePage() {
                       <p className="text-xs text-slate-500 mt-1">Mỗi tuần mở 1 lần để có cơ hội nhận lượng lớn Smash Coins hoặc Khiên bảo vệ chuỗi!</p>
                       
                       {/* Tỉ lệ mở hộp quà */}
-                      <div className="flex gap-4 mt-2 text-[10px] text-slate-500 font-bold justify-center sm:justify-start">
-                        <span>💰 75% Xu (5-50)</span>
-                        <span>🛡️ 25% Khiên Bảo Vệ</span>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] text-slate-500 font-bold justify-center sm:justify-start">
+                        <span>💰 85% Xu (5-50)</span>
+                        <span>🛡️ 15% Khiên Bảo Vệ (Tối đa 1 khiên, hạn 7 ngày)</span>
                       </div>
                     </div>
                   </div>

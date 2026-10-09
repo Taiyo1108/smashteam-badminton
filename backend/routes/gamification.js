@@ -67,6 +67,34 @@ async function checkAndUpdateStreak(userId, client = db) {
   return { currentStreak, streakShields, streakNotification };
 }
 
+// Tự động hết hạn khiên (7 ngày) và đồng bộ streak_shields trên bảng users
+async function cleanupAndSyncShields(userId, client = db) {
+  await client.query(
+    `UPDATE user_inventory 
+     SET status = 'expired' 
+     WHERE user_id = $1 
+       AND (item_type IN ('shield', 'streak_shield') OR item_name ILIKE '%khiên%') 
+       AND status = 'unused' 
+       AND expires_at IS NOT NULL 
+       AND expires_at <= NOW()`,
+    [userId]
+  );
+
+  await client.query(
+    `UPDATE users u
+     SET streak_shields = (
+       SELECT COUNT(*)::int 
+       FROM user_inventory 
+       WHERE user_id = u.id 
+         AND (item_type IN ('shield', 'streak_shield') OR item_name ILIKE '%khiên%') 
+         AND status = 'unused' 
+         AND (expires_at IS NULL OR expires_at > NOW())
+     )
+     WHERE u.id = $1`,
+    [userId]
+  );
+}
+
 // GET /api/gamification/profile
 router.get('/profile', async (req, res) => {
   try {
@@ -87,6 +115,9 @@ router.get('/profile', async (req, res) => {
        WHERE id = $1`,
       [userId]
     );
+
+    // Dọn dẹp và đồng bộ số khiên còn hạn
+    await cleanupAndSyncShields(userId);
     
     // Check and update streak
     const streakInfo = await checkAndUpdateStreak(userId);
@@ -402,11 +433,14 @@ router.get('/inventory', async (req, res) => {
       [userId]
     );
 
-    // Lọc bỏ các bản ghi legacy (tính năng SmashPass cũ đã gỡ), avatar_frame (đã gỡ bỏ) và các vật phẩm đã hết hạn
+    // Dọn dẹp và đồng bộ số khiên còn hạn
+    await cleanupAndSyncShields(userId);
+
+    // Lọc bỏ các bản ghi legacy (tính năng SmashPass cũ đã gỡ) và avatar_frame (đã gỡ bỏ)
     const inventoryRes = await db.query(
       `SELECT id, item_type, item_name, item_value, is_equipped, acquired_at, coupon_code, status, redeemed_at, expires_at 
        FROM user_inventory 
-       WHERE user_id = $1 AND item_type != 'smash_pass_reward_level' AND item_type != 'avatar_frame' AND (expires_at IS NULL OR expires_at > NOW())
+       WHERE user_id = $1 AND item_type != 'smash_pass_reward_level' AND item_type != 'avatar_frame' AND (expires_at IS NULL OR expires_at > NOW() OR status IN ('used', 'expired'))
        ORDER BY acquired_at DESC`,
       [userId]
     );
@@ -533,6 +567,9 @@ router.get('/shield/status', async (req, res) => {
   try {
     const userId = req.user.id;
 
+    // Dọn dẹp khiên hết hạn và đồng bộ lại streak_shields
+    await cleanupAndSyncShields(userId);
+
     // Lấy số khiên hiện tại
     const userRes = await db.query(
       `SELECT streak_shields FROM users WHERE id = $1`,
@@ -621,6 +658,9 @@ router.post('/shield/use', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Dọn dẹp các khiên đã hết hạn trước khi kiểm tra số lượng
+    await cleanupAndSyncShields(userId, client);
+
     // 1. Khóa dòng user để kiểm tra số lượng khiên
     const userRes = await client.query(
       `SELECT id, elo_singles, elo_doubles, streak_singles, streak_doubles, 
@@ -634,7 +674,7 @@ router.post('/shield/use', async (req, res) => {
     const user = userRes.rows[0];
     const availableShields = Number(user.streak_shields) || 0;
     if (availableShields <= 0) {
-      throw new Error('Bạn không có Khiên Hộ Mệnh trong túi đồ. Hãy ghé Cửa hàng hoặc mở Hộp quà bí ẩn để sở hữu!');
+      throw new Error('Bạn không có Khiên Hộ Mệnh còn hạn sử dụng trong túi đồ. Hãy ghé Cửa hàng hoặc mở Hộp quà bí ẩn để sở hữu!');
     }
 
     // 2. Tìm trận đấu gần nhất (approved) có user tham gia
@@ -744,7 +784,8 @@ router.post('/shield/use', async (req, res) => {
          WHERE user_id = $1 
            AND (item_type IN ('shield', 'streak_shield') OR item_name ILIKE '%khiên%')
            AND status = 'unused'
-         ORDER BY purchased_at ASC
+           AND (expires_at IS NULL OR expires_at > NOW())
+         ORDER BY expires_at ASC NULLS LAST, purchased_at ASC
          LIMIT 1
        )`,
       [userId]
