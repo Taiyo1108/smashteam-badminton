@@ -416,6 +416,10 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
       rewardValue = '1';
       expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
+      // Lấy ảnh của Khiên Hộ Mệnh từ shop_items
+      const shieldItemRes = await client.query('SELECT image_url FROM shop_items WHERE id = 10 OR name ILIKE \'%Khiên Hộ Mệnh%\' LIMIT 1');
+      var shieldRewardImageUrl = shieldItemRes.rows[0]?.image_url || null;
+
       await client.query(
         `UPDATE users SET streak_shields = streak_shields + 1 WHERE id = $1`,
         [userId]
@@ -423,8 +427,8 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
 
       // Thêm khiên vào túi đồ (user_inventory) với thời hạn 7 ngày
       await client.query(
-        `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, status, purchase_price, purchased_at, expires_at)
-         VALUES ($1, 'shield', '🛡️ Khiên Hộ Mệnh', 'elo_streak_protection', 'unused', 0, NOW(), NOW() + INTERVAL '7 days')`,
+        `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, shop_item_id, status, purchase_price, purchased_at, expires_at)
+         VALUES ($1, 'shield', '🛡️ Khiên Hộ Mệnh', 'elo_streak_protection', 10, 'unused', 0, NOW(), NOW() + INTERVAL '7 days')`,
         [userId]
       );
     }
@@ -444,7 +448,8 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
         type: rewardType,
         name: rewardName,
         value: rewardValue,
-        expiresAt
+        expiresAt,
+        imageUrl: rewardType === 'streak_shield' ? shieldRewardImageUrl : null
       }
     });
   } catch (error) {

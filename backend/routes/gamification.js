@@ -438,10 +438,13 @@ router.get('/inventory', async (req, res) => {
 
     // Lọc bỏ các bản ghi legacy (tính năng SmashPass cũ đã gỡ) và avatar_frame (đã gỡ bỏ)
     const inventoryRes = await db.query(
-      `SELECT id, item_type, item_name, item_value, is_equipped, acquired_at, coupon_code, status, redeemed_at, expires_at 
-       FROM user_inventory 
-       WHERE user_id = $1 AND item_type != 'smash_pass_reward_level' AND item_type != 'avatar_frame' AND (expires_at IS NULL OR expires_at > NOW() OR status IN ('used', 'expired'))
-       ORDER BY acquired_at DESC`,
+      `SELECT ui.id, ui.item_type, ui.item_name, ui.item_value, ui.is_equipped, ui.acquired_at, 
+              ui.coupon_code, ui.status, ui.redeemed_at, ui.expires_at,
+              COALESCE(si.image_url, CASE WHEN ui.item_type IN ('shield', 'streak_shield') OR ui.item_name ILIKE '%khiên%' THEN (SELECT image_url FROM shop_items WHERE id = 10 OR name ILIKE '%Khiên Hộ Mệnh%' LIMIT 1) ELSE NULL END) AS image_url
+       FROM user_inventory ui
+       LEFT JOIN shop_items si ON ui.shop_item_id = si.id
+       WHERE ui.user_id = $1 AND ui.item_type != 'smash_pass_reward_level' AND ui.item_type != 'avatar_frame' AND (ui.expires_at IS NULL OR ui.expires_at > NOW() OR ui.status IN ('used', 'expired'))
+       ORDER BY ui.acquired_at DESC`,
       [userId]
     );
 

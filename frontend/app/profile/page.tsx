@@ -1146,8 +1146,25 @@ export default function ProfilePage() {
                                     {isRedeemed ? "✓ Đã nhận" : "● Chưa sử dụng"}
                                   </span>
                                 </div>
-                                <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                                <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {formatVietnamDate(item.acquired_at)}</p>
+                                <div className="flex items-start gap-3">
+                                  {item.image_url && (
+                                    <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-50 relative">
+                                      <Image
+                                        src={item.image_url}
+                                        alt={item.item_name}
+                                        fill
+                                        sizes="48px"
+                                        loading="lazy"
+                                        unoptimized
+                                        className="object-cover"
+                                      />
+                                    </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 tracking-wide">{item.item_name}</h4>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">Đổi lúc: {formatVietnamDate(item.acquired_at)}</p>
+                                  </div>
+                                </div>
                               </div>
 
                               <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
@@ -1188,13 +1205,30 @@ export default function ProfilePage() {
                                     {isUsed ? "✓ Đã kích hoạt" : isExpired ? "✕ Đã hết hạn" : "● Sẵn sàng bảo vệ"}
                                   </span>
                                 </div>
-                                <h4 className="text-sm font-bold text-slate-900 tracking-wide flex items-center gap-1.5">
-                                  {item.item_name}
-                                </h4>
-                                <p className="text-[11px] text-slate-500 mt-1">
-                                  Bảo vệ điểm ELO và bảo toàn chuỗi thắng khi bạn gặp thất bại trong trận đấu.
-                                </p>
-                                <div className="flex flex-col gap-0.5 mt-1.5 text-[10px]">
+                                <div className="flex items-start gap-3">
+                                  {item.image_url && (
+                                    <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-50 relative">
+                                      <Image
+                                        src={item.image_url}
+                                        alt={item.item_name}
+                                        fill
+                                        sizes="48px"
+                                        loading="lazy"
+                                        unoptimized
+                                        className="object-cover"
+                                      />
+                                    </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 tracking-wide flex items-center gap-1.5">
+                                      {item.item_name}
+                                    </h4>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">
+                                      Bảo vệ điểm ELO và bảo toàn chuỗi thắng khi bạn gặp thất bại trong trận đấu.
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex flex-col gap-0.5 mt-2 text-[10px]">
                                   <span className="text-slate-400">Sở hữu: {formatVietnamDate(item.acquired_at)}</span>
                                   {item.expires_at && !isUsed && (
                                     <span className={isExpired ? "text-red-500 font-bold" : "text-amber-600 font-bold"}>
@@ -1441,9 +1475,22 @@ export default function ProfilePage() {
                   <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="p-6 rounded-2xl bg-white border border-slate-200 max-w-sm w-full text-center relative overflow-hidden shadow-2xl">
                       <div className="absolute top-0 left-0 right-0 h-1 bg-black animate-pulse"></div>
-                      <div className="text-5xl my-4">🎉</div>
+                      {mysteryBoxReward.imageUrl ? (
+                        <div className="w-20 h-20 mx-auto my-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 relative shadow-md">
+                          <Image
+                            src={mysteryBoxReward.imageUrl}
+                            alt={mysteryBoxReward.name}
+                            fill
+                            sizes="80px"
+                            unoptimized
+                            className="object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-5xl my-4">🎉</div>
+                      )}
                       <h4 className="text-lg font-black text-slate-900">Bạn Đã Nhận Được Quà!</h4>
-                      <p className="text-base font-black text-amber-400 mt-2">{mysteryBoxReward.name}</p>
+                      <p className="text-base font-black text-amber-500 mt-2">{mysteryBoxReward.name}</p>
                       <p className="text-xs text-slate-500 mt-2">
                         Phần thưởng đã được cộng trực tiếp vào tài khoản của bạn.
                       </p>
@@ -1518,7 +1565,7 @@ export default function ProfilePage() {
                           </div>
 
                           <div className="flex gap-3">
-                            {isPhysical && item.image_url ? (
+                            {item.image_url ? (
                               <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-50 relative">
                                 <Image
                                   src={item.image_url}
@@ -1532,7 +1579,11 @@ export default function ProfilePage() {
                               </div>
                             ) : (
                               <div className="w-20 h-20 rounded-xl bg-black/5 border border-slate-200 flex items-center justify-center shrink-0 text-black">
-                                <Trophy className="w-8 h-8" />
+                                {item.name.toLowerCase().includes('khiên') ? (
+                                  <Shield className="w-8 h-8 text-cyan-600" />
+                                ) : (
+                                  <Trophy className="w-8 h-8" />
+                                )}
                               </div>
                             )}
 
