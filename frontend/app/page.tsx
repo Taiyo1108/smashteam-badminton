@@ -88,6 +88,11 @@ export default function Home() {
     siteSettings.social_links, [...SOCIAL_FALLBACK]
   ).filter((s) => s && String(s.label || "").trim());
 
+  // Tiêu đề Hero trang chủ do admin cấu hình trong Quản lý nội dung
+  const heroTitleLine1 = (siteSettings.homepage_hero_title_line1 || "").trim() || "ĐAM MÊ DẪN LỐI";
+  const heroTitleLine2 = (siteSettings.homepage_hero_title_line2 !== undefined ? siteSettings.homepage_hero_title_line2 : "ĐẬP TAN GIỚI HẠN").trim();
+  const heroSubtitle = (siteSettings.homepage_hero_subtitle || "").trim() || "Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!";
+
   // User auth and profile state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState("");
@@ -561,7 +566,7 @@ export default function Home() {
                   <motion.div
                     key={coverUrl}
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.35 }}
+                    animate={{ opacity: 0.65 }}
                     transition={{ duration: 0.8 }}
                     className="absolute inset-0"
                   >
@@ -570,7 +575,7 @@ export default function Home() {
                       alt="SmashTeam Hero Badminton"
                       fill
                       sizes="100vw"
-                      className="object-cover"
+                      className="object-cover brightness-110 contrast-105"
                       priority
                     />
                   </motion.div>
@@ -582,7 +587,7 @@ export default function Home() {
                 <div className="absolute inset-0 bg-[radial-gradient(#7A22E0_1px,transparent_1px)] [background-size:32px_32px] opacity-15 pointer-events-none" />
                 <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-primary/30 rounded-full blur-[140px] pointer-events-none" />
                 <div className="absolute bottom-0 right-1/4 w-[400px] h-[300px] bg-fuchsia-600/20 rounded-full blur-[120px] pointer-events-none" />
-                <div className="absolute inset-0 bg-gradient-to-t from-secondary via-secondary/70 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-secondary via-secondary/40 to-black/20" />
               </div>
 
               <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto py-16 sm:py-20 space-y-7">
@@ -600,26 +605,32 @@ export default function Home() {
                   <span>Chiến Dịch Tuyển Vợt Thủ Mùa Giải {new Date().getFullYear()}</span>
                 </motion.div>
 
-                {/* Primary H1 Heading */}
+                {/* Primary H1 Heading - Hollow Outline Athletic Style */}
                 <motion.h1 
                   id="hero-title"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.1 }}
-                  className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight leading-[1.08]"
+                  className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.15] sm:leading-[1.12]"
                 >
-                  ĐAM MÊ DẪN LỐI <br className="hidden sm:inline" />
-                  <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent">ĐẬP TAN GIỚI HẠN</span>
+                  <span className="hero-hollow-text-white block sm:inline-block">{heroTitleLine1}</span>
+                  {heroTitleLine2 && (
+                    <>
+                      {" "}
+                      <br className="hidden sm:inline" />
+                      <span className="hero-hollow-text-glow block sm:inline-block">{heroTitleLine2}</span>
+                    </>
+                  )}
                 </motion.h1>
                 
-                {/* Value Proposition Subtitle */}
+                {/* Value Proposition Subtitle (Smaller size) */}
                 <motion.p 
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.2 }}
-                  className="text-base sm:text-lg md:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-normal"
+                  className="text-xs sm:text-sm md:text-base text-slate-300/90 max-w-2xl mx-auto leading-relaxed font-normal"
                 >
-                  Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!
+                  {heroSubtitle}
                 </motion.p>
 
                 {/* 2 Prominent Action CTA Buttons */}

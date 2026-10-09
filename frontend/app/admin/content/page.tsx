@@ -12,6 +12,16 @@ export default function ContentManagementPage() {
   const [coverSuccess, setCoverSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
+  // States for Hero Titles (Tiêu đề chính & Tiêu đề phụ Trang chủ)
+  const [heroForm, setHeroForm] = useState({
+    titleLine1: "",
+    titleLine2: "",
+    subtitle: "",
+  });
+  const [heroLoading, setHeroLoading] = useState(false);
+  const [heroSuccess, setHeroSuccess] = useState(false);
+  const [heroError, setHeroError] = useState("");
+
   // States for Media Posts
   const [mediaPosts, setMediaPosts] = useState<any[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -50,9 +60,58 @@ export default function ContentManagementPage() {
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
+        setHeroForm({
+          titleLine1: data.homepage_hero_title_line1 ?? "ĐAM MÊ DẪN LỐI",
+          titleLine2: data.homepage_hero_title_line2 ?? "ĐẬP TAN GIỚI HẠN",
+          subtitle: data.homepage_hero_subtitle ?? "Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!",
+        });
       }
     } catch (e) {
       console.error("Error fetching settings:", e);
+    }
+  };
+
+  // Save hero titles (batch update settings)
+  const handleSaveHeroTitles = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setHeroLoading(true);
+    setHeroSuccess(false);
+    setHeroError("");
+
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          settings: {
+            homepage_hero_title_line1: heroForm.titleLine1.trim(),
+            homepage_hero_title_line2: heroForm.titleLine2.trim(),
+            homepage_hero_subtitle: heroForm.subtitle.trim()
+          }
+        })
+      });
+
+      if (res.ok) {
+        setHeroSuccess(true);
+        setSettings((prev: any) => ({
+          ...prev,
+          homepage_hero_title_line1: heroForm.titleLine1.trim(),
+          homepage_hero_title_line2: heroForm.titleLine2.trim(),
+          homepage_hero_subtitle: heroForm.subtitle.trim()
+        }));
+        setTimeout(() => setHeroSuccess(false), 3500);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setHeroError(data.error || "Không thể lưu tiêu đề.");
+      }
+    } catch (err) {
+      setHeroError("Lỗi kết nối khi lưu tiêu đề.");
+    } finally {
+      setHeroLoading(false);
     }
   };
 
@@ -249,8 +308,106 @@ export default function ContentManagementPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* CỘT TRÁI: THAY THẾ ẢNH BÌA */}
+        {/* CỘT TRÁI: TIÊU ĐỀ HERO, THAY THẾ ẢNH BÌA & MODULES */}
         <div className="lg:col-span-1 space-y-6">
+          {/* CẤU HÌNH TIÊU ĐỀ HERO TRANG CHỦ */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <h2 className="text-lg font-bold text-secondary flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" /> Tiêu đề Hero Trang chủ
+            </h2>
+            <p className="text-xs text-slate-500">
+              Tùy chỉnh tiêu đề chính (hiển thị hiệu ứng chữ rỗng thể thao) và tiêu đề phụ giới thiệu câu lạc bộ trên trang chủ.
+            </p>
+
+            <form onSubmit={handleSaveHeroTitles} className="space-y-4 pt-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Tiêu đề chính - Dòng 1 (Viền trắng rỗng)
+                </label>
+                <input
+                  type="text"
+                  value={heroForm.titleLine1}
+                  onChange={(e) => setHeroForm({ ...heroForm, titleLine1: e.target.value })}
+                  placeholder="Ví dụ: ĐAM MÊ DẪN LỐI"
+                  className="w-full p-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Tiêu đề chính - Dòng 2 (Viền neon phát sáng)
+                </label>
+                <input
+                  type="text"
+                  value={heroForm.titleLine2}
+                  onChange={(e) => setHeroForm({ ...heroForm, titleLine2: e.target.value })}
+                  placeholder="Ví dụ: ĐẬP TAN GIỚI HẠN"
+                  className="w-full p-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Tiêu đề phụ (Mô tả nhỏ ở dưới)
+                </label>
+                <textarea
+                  rows={3}
+                  value={heroForm.subtitle}
+                  onChange={(e) => setHeroForm({ ...heroForm, subtitle: e.target.value })}
+                  placeholder="Mô tả ngắn gọn về câu lạc bộ..."
+                  className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-700 leading-relaxed outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
+                />
+              </div>
+
+              {/* Live Preview Box */}
+              <div className="p-3.5 bg-secondary rounded-xl border border-primary/30 space-y-1.5 shadow-inner">
+                <span className="text-[10px] uppercase font-black tracking-wider text-purple-300 block">
+                  Xem trước tiêu đề
+                </span>
+                <div className="text-sm font-black tracking-tight leading-tight">
+                  <span className="hero-hollow-text-white block">
+                    {heroForm.titleLine1 || "ĐAM MÊ DẪN LỐI"}
+                  </span>
+                  {heroForm.titleLine2 && (
+                    <span className="hero-hollow-text-glow block mt-0.5">
+                      {heroForm.titleLine2}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-300/80 line-clamp-2 leading-relaxed pt-1">
+                  {heroForm.subtitle || "Smash Team - Câu lạc bộ cầu lông sinh viên..."}
+                </p>
+              </div>
+
+              {/* Success / Error Alerts */}
+              {heroSuccess && (
+                <div className="p-3 bg-green-50 text-green-700 rounded-xl text-xs flex items-center gap-2 border border-green-200">
+                  <Check className="w-4 h-4 shrink-0" /> Cập nhật tiêu đề trang chủ thành công!
+                </div>
+              )}
+
+              {heroError && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+                  <AlertCircle className="w-4 h-4 shrink-0" /> {heroError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={heroLoading}
+                className="w-full py-2.5 px-4 bg-primary hover:bg-primary-hover text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {heroLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang lưu...
+                  </>
+                ) : (
+                  <>Lưu thay đổi tiêu đề</>
+                )}
+              </button>
+            </form>
+          </div>
+
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-secondary mb-4 flex items-center gap-2">
               <ImageIcon className="w-5 h-5 text-primary" /> Ảnh bìa Trang chủ

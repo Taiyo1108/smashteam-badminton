@@ -19,10 +19,25 @@ router.get('/', async (req, res) => {
   }
 });
 
-// PUT /api/settings - Cập nhật cấu hình key-value (yêu cầu Admin)
+// PUT /api/settings - Cập nhật cấu hình key-value (yêu cầu Admin, hỗ trợ 1 key hoặc nhiều key)
 router.put('/', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { key, value } = req.body;
+    const { key, value, settings } = req.body;
+
+    if (settings && typeof settings === 'object') {
+      const keys = Object.keys(settings);
+      for (const k of keys) {
+        await db.query(
+          `INSERT INTO site_settings (key, value, updated_at)
+           VALUES ($1, $2, CURRENT_TIMESTAMP)
+           ON CONFLICT (key)
+           DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+          [k, String(settings[k] ?? '')]
+        );
+      }
+      return res.json({ message: 'Cập nhật cấu hình thành công' });
+    }
+
     if (!key || value === undefined) {
       return res.status(400).json({ error: 'Key and value are required' });
     }

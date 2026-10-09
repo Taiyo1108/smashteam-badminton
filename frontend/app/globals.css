@@ -221,4 +221,36 @@ body {
   top: env(safe-area-inset-top, 0px);
 }
 
+/* Hollow Outline Typography for Hero Titles (Chữ rỗng ruột) */
+.hero-hollow-text-white {
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.95);
+  paint-order: stroke fill;
+  letter-spacing: -0.01em;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.65));
+}
+
+@media (min-width: 640px) {
+  .hero-hollow-text-white {
+    -webkit-text-stroke: 2.2px rgba(255, 255, 255, 0.95);
+    filter: drop-shadow(0 3px 12px rgba(0, 0, 0, 0.75));
+  }
+}
+
+.hero-hollow-text-glow {
+  color: transparent;
+  -webkit-text-stroke: 1.5px #d946ef;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 0 16px rgba(217, 70, 239, 0.6)) drop-shadow(0 2px 8px rgba(0, 0, 0, 0.65));
+  letter-spacing: -0.01em;
+}
+
+@media (min-width: 640px) {
+  .hero-hollow-text-glow {
+    -webkit-text-stroke: 2.2px #d946ef;
+    filter: drop-shadow(0 0 24px rgba(217, 70, 239, 0.75)) drop-shadow(0 3px 12px rgba(0, 0, 0, 0.75));
+  }
+}
+
+
 
