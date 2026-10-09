@@ -74,7 +74,7 @@ export default function ClubStats({
       {/* Outer Glow Container */}
       <div className="relative rounded-3xl p-[1px] bg-gradient-to-r from-primary/40 via-purple-500/20 to-primary/40 shadow-[0_10px_35px_rgba(122,34,224,0.15)]">
         {/* Inner Card Grid */}
-        <div className="rounded-3xl bg-secondary/90 backdrop-blur-xl border border-white/10 p-4 sm:p-6 md:p-8">
+        <div className="rounded-3xl bg-secondary/85 backdrop-blur-lg border border-white/10 p-4 sm:p-6 md:p-8">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 divide-y sm:divide-y-0 sm:divide-x divide-white/10">
             {stats.map((stat, index) => {
               const Icon = stat.icon;
