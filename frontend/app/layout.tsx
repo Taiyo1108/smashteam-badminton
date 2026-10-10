@@ -55,6 +55,11 @@ export default function RootLayout({
       className={`${inter.variable} font-sans h-full antialiased`}
     >
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var s=localStorage.getItem("site_settings_cache");if(s)window.__INITIAL_SITE_SETTINGS__=JSON.parse(s);}catch(e){}`,
+          }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

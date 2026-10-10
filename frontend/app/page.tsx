@@ -73,7 +73,20 @@ export default function Home() {
   const [activeCampaign, setActiveCampaign] = useState<any>(null);
 
   // Site Settings (Featured event, cover, config)
-  const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
+  const [siteSettings, setSiteSettings] = useState<Record<string, string>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        if ((window as any).__INITIAL_SITE_SETTINGS__) {
+          return (window as any).__INITIAL_SITE_SETTINGS__;
+        }
+        const cached = localStorage.getItem("site_settings_cache");
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return {};
+  });
+  const [isMounted, setIsMounted] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [featuredEvent, setFeaturedEvent] = useState<any>(null);
 
   // Số liệu thật cho dải stats (rớt về số mặc định của ClubStats khi API lỗi)
@@ -94,6 +107,7 @@ export default function Home() {
   const heroSubtitle = (siteSettings.homepage_hero_subtitle || "").trim() || "Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!";
   const heroFont = siteSettings.homepage_hero_font || "inter";
   const heroStyle = siteSettings.homepage_hero_style || "classic";
+  const isHeroReady = isMounted && (settingsLoaded || Object.keys(siteSettings).length > 0);
 
   const getHeroFontClass = (fontKey?: string) => {
     switch (fontKey) {
@@ -183,6 +197,18 @@ export default function Home() {
         .catch(e => console.error("Error loading user profile:", e));
     }
 
+    setIsMounted(true);
+
+    // Sync with cached settings if state was empty during hydration
+    try {
+      const cached = (window as any).__INITIAL_SITE_SETTINGS__ ||
+        (localStorage.getItem("site_settings_cache") ? JSON.parse(localStorage.getItem("site_settings_cache")!) : null);
+      if (cached) {
+        setSiteSettings((prev) => Object.keys(prev).length === 0 ? cached : prev);
+        setSettingsLoaded(true);
+      }
+    } catch {}
+
     const cachedCover = localStorage.getItem("homepage_cover_url");
     if (cachedCover) setCoverUrl(cachedCover);
 
@@ -191,13 +217,20 @@ export default function Home() {
       .then(data => {
         if (data) {
           setSiteSettings(data);
+          setSettingsLoaded(true);
+          try {
+            localStorage.setItem("site_settings_cache", JSON.stringify(data));
+          } catch {}
           if (data.homepage_cover_url) {
             setCoverUrl(data.homepage_cover_url);
             localStorage.setItem("homepage_cover_url", data.homepage_cover_url);
           }
         }
       })
-      .catch(e => console.error("Error loading settings:", e));
+      .catch(e => {
+        console.error("Error loading settings:", e);
+        setSettingsLoaded(true);
+      });
 
     fetch(`${API_URL}/api/media?t=${Date.now()}`)
       .then(res => res.json())
@@ -581,7 +614,7 @@ export default function Home() {
                   <motion.div
                     key={coverUrl}
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.65 }}
+                    animate={{ opacity: 0.75 }}
                     transition={{ duration: 0.8 }}
                     className="absolute inset-0"
                   >
@@ -602,7 +635,7 @@ export default function Home() {
                 <div className="absolute inset-0 bg-[radial-gradient(#7A22E0_1px,transparent_1px)] [background-size:32px_32px] opacity-15 pointer-events-none" />
                 <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-primary/30 rounded-full blur-[140px] pointer-events-none" />
                 <div className="absolute bottom-0 right-1/4 w-[400px] h-[300px] bg-fuchsia-600/20 rounded-full blur-[120px] pointer-events-none" />
-                <div className="absolute inset-0 bg-gradient-to-t from-secondary via-secondary/40 to-black/20" />
+                <div className="absolute inset-0 bg-gradient-to-t from-secondary/85 via-secondary/25 to-black/20" />
               </div>
 
               <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto py-16 sm:py-20 space-y-7">
@@ -623,9 +656,10 @@ export default function Home() {
                 {/* Primary H1 Heading - Customizable Font & Style */}
                 <motion.h1 
                   id="hero-title"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.1 }}
+                  suppressHydrationWarning
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: isHeroReady ? 1 : 0, y: isHeroReady ? 0 : 15 }}
+                  transition={{ duration: 0.35 }}
                   className={`text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.15] sm:leading-[1.12] ${getHeroFontClass(heroFont)}`}
                 >
                   {heroStyle === "hollow" ? (
@@ -680,9 +714,10 @@ export default function Home() {
                 
                 {/* Value Proposition Subtitle (Smaller size) */}
                 <motion.p 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
+                  suppressHydrationWarning
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: isHeroReady ? 1 : 0, y: isHeroReady ? 0 : 15 }}
+                  transition={{ duration: 0.35, delay: 0.05 }}
                   className="text-xs sm:text-sm md:text-base text-slate-300/90 max-w-2xl mx-auto leading-relaxed font-normal"
                 >
                   {heroSubtitle}

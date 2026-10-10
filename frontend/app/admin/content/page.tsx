@@ -62,6 +62,9 @@ export default function ContentManagementPage() {
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
+        try {
+          localStorage.setItem("site_settings_cache", JSON.stringify(data));
+        } catch (e) {}
         setHeroForm({
           titleLine1: data.homepage_hero_title_line1 ?? "ĐAM MÊ DẪN LỐI",
           titleLine2: data.homepage_hero_title_line2 ?? "ĐẬP TAN GIỚI HẠN",
@@ -103,14 +106,18 @@ export default function ContentManagementPage() {
 
       if (res.ok) {
         setHeroSuccess(true);
-        setSettings((prev: any) => ({
-          ...prev,
+        const updated = {
+          ...settings,
           homepage_hero_title_line1: heroForm.titleLine1.trim(),
           homepage_hero_title_line2: heroForm.titleLine2.trim(),
           homepage_hero_subtitle: heroForm.subtitle.trim(),
           homepage_hero_font: heroForm.font,
           homepage_hero_style: heroForm.style,
-        }));
+        };
+        setSettings(updated);
+        try {
+          localStorage.setItem("site_settings_cache", JSON.stringify(updated));
+        } catch (e) {}
         setTimeout(() => setHeroSuccess(false), 3500);
       } else {
         const data = await res.json().catch(() => ({}));
