@@ -111,15 +111,15 @@ function calculateElo(
  * - Diamond: 1600+
  * - Platinum: 1400+
  * - Gold: 1200+
- * - Silver: 1100+
- * - Bronze: < 1100
+ * - Silver: 1000+
+ * - Bronze: < 1000
  */
 const RANK_TIERS = [
   { name: 'Challenger', label: 'Thách Đấu', minElo: 1800 },
   { name: 'Diamond', label: 'Kim Cương', minElo: 1600 },
   { name: 'Platinum', label: 'Bạch Kim', minElo: 1400 },
   { name: 'Gold', label: 'Vàng', minElo: 1200 },
-  { name: 'Silver', label: 'Bạc', minElo: 1100 },
+  { name: 'Silver', label: 'Bạc', minElo: 1000 },
   { name: 'Bronze', label: 'Đồng', minElo: 0 }
 ];
 
@@ -129,7 +129,7 @@ function getRankName(elo) {
   if (score >= 1600) return 'Diamond';
   if (score >= 1400) return 'Platinum';
   if (score >= 1200) return 'Gold';
-  if (score >= 1100) return 'Silver';
+  if (score >= 1000) return 'Silver';
   return 'Bronze';
 }
 
@@ -139,7 +139,7 @@ function getRankLabel(elo) {
   if (score >= 1600) return 'Kim Cương';
   if (score >= 1400) return 'Bạch Kim';
   if (score >= 1200) return 'Vàng';
-  if (score >= 1100) return 'Bạc';
+  if (score >= 1000) return 'Bạc';
   return 'Đồng';
 }
 

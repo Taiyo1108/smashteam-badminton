@@ -5,6 +5,7 @@ const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
 const { getPlayerProfileStats } = require('../services/playerStatsService');
+const { calculateReliabilityScore } = require('../services/memberManagementService');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const { cloudinary } = require('../utils/cloudinary');
@@ -313,7 +314,109 @@ router.get('/me', authenticateToken, async (req, res) => {
     );
     const attendanceHistory = attendanceHistoryRes.rows;
 
-    // 5. Fetch comprehensive competitive stats & achievements from playerStatsService
+    // 5. Tính điểm hoạt động tích cực / uy tín & lịch sử biến động điểm
+    const reliability = await calculateReliabilityScore(userId);
+
+    // Truy vấn lịch sử kỷ luật
+    const disciplineHistoryRes = await db.query(
+      `SELECT id, type, reason, status, issued_at, revoked_at, revoked_reason
+       FROM member_discipline_records
+       WHERE user_id = $1::uuid
+       ORDER BY issued_at DESC`,
+      [userId]
+    );
+
+    const reputationEvents = [];
+
+    // Từ attendances
+    attendanceHistoryRes.rows.forEach(a => {
+      const sessionTitle = a.title || 'Buổi tập CLB';
+      const eventDate = a.checked_in_at || a.date_time || a.rsvp_date;
+
+      if (a.status === 'NO_SHOW') {
+        reputationEvents.push({
+          id: `att_noshow_${a.rsvp_date}`,
+          delta: -20,
+          type: 'NO_SHOW',
+          title: 'Vắng mặt không báo trước',
+          sessionTitle,
+          reason: 'Đặt chỗ nhưng không đến sân',
+          date: eventDate
+        });
+      } else if (a.is_late_cancellation || (a.status === 'CANCELLED' && a.is_late_cancellation)) {
+        reputationEvents.push({
+          id: `att_late_${a.rsvp_date}`,
+          delta: -10,
+          type: 'LATE_CANCEL',
+          title: 'Hủy lịch tập sát giờ',
+          sessionTitle,
+          reason: 'Hủy giữ chỗ quá hạn cho phép',
+          date: eventDate
+        });
+      } else if (a.status === 'MISSING_CHECKOUT') {
+        reputationEvents.push({
+          id: `att_missout_${a.rsvp_date}`,
+          delta: -5,
+          type: 'MISSING_CHECKOUT',
+          title: 'Quên check-out khi ra về',
+          sessionTitle,
+          reason: 'Không quét mã check-out kết thúc',
+          date: eventDate
+        });
+      } else if (['CHECKED_OUT', 'CHECKED_IN', 'going'].includes(a.status)) {
+        reputationEvents.push({
+          id: `att_ok_${a.rsvp_date}`,
+          delta: 2,
+          type: 'ATTENDANCE_SUCCESS',
+          title: 'Tham gia buổi tập đầy đủ',
+          sessionTitle,
+          reason: 'Có mặt tại sân và hoàn thành buổi tập',
+          date: eventDate
+        });
+      }
+    });
+
+    // Từ discipline
+    disciplineHistoryRes.rows.forEach(d => {
+      if (d.type === 'YELLOW') {
+        reputationEvents.push({
+          id: `disc_${d.id}`,
+          delta: -15,
+          type: 'YELLOW_CARD',
+          title: 'Thẻ vàng kỷ luật',
+          sessionTitle: null,
+          reason: d.reason || 'Vi phạm nội quy sân bãi',
+          date: d.issued_at
+        });
+      } else if (d.type === 'RED') {
+        reputationEvents.push({
+          id: `disc_${d.id}`,
+          delta: -40,
+          type: 'RED_CARD',
+          title: 'Thẻ đỏ kỷ luật',
+          sessionTitle: null,
+          reason: d.reason || 'Vi phạm kỷ luật nghiêm trọng',
+          date: d.issued_at
+        });
+      }
+
+      if (d.status === 'REVOKED' && d.revoked_at) {
+        reputationEvents.push({
+          id: `disc_rev_${d.id}`,
+          delta: d.type === 'YELLOW' ? 15 : 40,
+          type: 'REVOKED_CARD',
+          title: `Gỡ bỏ thẻ phạt ${d.type}`,
+          sessionTitle: null,
+          reason: d.revoked_reason || 'Ban Quản Trị đã xóa bỏ án kỷ luật',
+          date: d.revoked_at
+        });
+      }
+    });
+
+    // Sắp xếp sự kiện mới nhất lên trước
+    reputationEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // 6. Fetch comprehensive competitive stats & achievements from playerStatsService
     const stats = await getPlayerProfileStats(userId);
 
     res.json({
@@ -332,7 +435,15 @@ router.get('/me', authenticateToken, async (req, res) => {
       matches: formattedMatches,
       matchStats: lifetimeMatchStats,
       upcomingSession,
-      attendanceHistory
+      attendanceHistory,
+      reputation: {
+        score: reliability.score,
+        label: reliability.label,
+        level: reliability.level,
+        color: reliability.color,
+        breakdown: reliability.breakdown,
+        history: reputationEvents
+      }
     });
   } catch (error) {
     console.error('Error fetching player profile:', error);

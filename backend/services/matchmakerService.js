@@ -25,13 +25,23 @@ function calculateMatchQuality(eloGap) {
  * @param {number} [limit=6]
  * @returns {Array<object>} Sorted suggestions
  */
+const normalizeId = (id) => String(id || '').trim().toLowerCase();
+
+/**
+ * Suggest opponents for Singles mode
+ * @param {object} player1 - Selected player 1 object
+ * @param {Array<object>} availablePlayers - Candidate players pool (excluding player1 and active drafts)
+ * @param {number} [limit=6]
+ * @returns {Array<object>} Sorted suggestions
+ */
 function suggestSinglesOpponents(player1, availablePlayers, limit = 6) {
   if (!player1 || !Array.isArray(availablePlayers)) return [];
 
+  const p1Id = normalizeId(player1.id);
   const p1Elo = Number(player1.elo_singles) || 1000;
 
   const suggestions = availablePlayers
-    .filter(p => p.id !== player1.id)
+    .filter(p => p && normalizeId(p.id) && normalizeId(p.id) !== p1Id)
     .map(p => {
       const pElo = Number(p.elo_singles) || 1000;
       const eloGap = Math.abs(p1Elo - pElo);
@@ -68,8 +78,8 @@ function suggestDoublesOpponents(player1, partner1, availablePlayers, limit = 8)
   const p1pElo = Number(partner1.elo_doubles) || 1000;
   const team1Elo = Math.round((p1Elo + p1pElo) / 2);
 
-  const excludedIds = new Set([player1.id, partner1.id]);
-  const candidates = availablePlayers.filter(p => !excludedIds.has(p.id));
+  const excludedIds = new Set([normalizeId(player1.id), normalizeId(partner1.id)]);
+  const candidates = availablePlayers.filter(p => p && normalizeId(p.id) && !excludedIds.has(normalizeId(p.id)));
 
   const pairSuggestions = [];
 
@@ -78,6 +88,9 @@ function suggestDoublesOpponents(player1, partner1, availablePlayers, limit = 8)
     for (let j = i + 1; j < candidates.length; j++) {
       const c = candidates[i];
       const d = candidates[j];
+
+      // Không cho phép cặp có cùng ID
+      if (normalizeId(c.id) === normalizeId(d.id)) continue;
 
       const cElo = Number(c.elo_doubles) || 1000;
       const dElo = Number(d.elo_doubles) || 1000;
@@ -115,10 +128,11 @@ function suggestDoublesOpponents(player1, partner1, availablePlayers, limit = 8)
 function suggestDoublesPartners(player1, availablePlayers, limit = 6) {
   if (!player1 || !Array.isArray(availablePlayers)) return [];
 
+  const p1Id = normalizeId(player1.id);
   const p1Elo = Number(player1.elo_doubles) || 1000;
 
   return availablePlayers
-    .filter(p => p.id !== player1.id)
+    .filter(p => p && normalizeId(p.id) && normalizeId(p.id) !== p1Id)
     .map(p => {
       const pElo = Number(p.elo_doubles) || 1000;
       const eloGap = Math.abs(p1Elo - pElo);

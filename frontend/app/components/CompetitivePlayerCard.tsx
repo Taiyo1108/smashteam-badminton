@@ -6,9 +6,10 @@ import {
   Target, Swords, Crown, Award, ChevronRight,
   TrendingUp, Users, User, Zap, ShieldAlert,
   Camera, Paintbrush, Calendar, Code, CheckCircle2,
-  Coins
+  Coins, Star, ShieldCheck
 } from "lucide-react";
 import AvatarWithFrame from "./AvatarWithFrame";
+import { calculateRankStars } from "@/app/utils/rank";
 
 export interface CompetitiveCardProps {
   player: {
@@ -111,8 +112,10 @@ export interface CompetitiveCardProps {
     smashCoins: number;
     dailyStreak?: number;
   };
+  reputationScore?: number;
   onOpenSettings?: () => void;
   onOpenShareModal?: () => void;
+  onOpenReputationModal?: () => void;
 }
 
 // Icon mapper for achievements
@@ -142,8 +145,10 @@ export default function CompetitivePlayerCard({
   streak,
   title,
   meta,
+  reputationScore,
   onOpenSettings,
-  onOpenShareModal
+  onOpenShareModal,
+  onOpenReputationModal
 }: CompetitiveCardProps) {
   // Mode selection: default to doubles
   const [activeMode, setActiveMode] = useState<"singles" | "doubles">("doubles");
@@ -152,9 +157,10 @@ export default function CompetitivePlayerCard({
   const currentModeStats = activeMode === "doubles" ? doubles : singles;
   const otherModeStats = activeMode === "doubles" ? singles : doubles;
 
-  const tier = currentModeStats?.tier || "Bronze";
-  const tierLabel = currentModeStats?.tierLabel || "Đồng";
   const elo = currentModeStats?.elo || 1000;
+  const starInfo = calculateRankStars(elo);
+  const tier = starInfo.tierName;
+  const tierLabel = starInfo.tierLabel;
   const peakElo = currentModeStats?.peakElo || elo;
   const matches = currentModeStats?.matches || 0;
   const wins = currentModeStats?.wins || 0;
@@ -171,13 +177,19 @@ export default function CompetitivePlayerCard({
     : (streak?.singles?.current || 0);
 
   // Next tier progress
-  const nextTierMinElo = activeMode === "doubles"
-    ? (doubles?.tier === "Challenger" ? 2500 : (doubles?.tier === "Diamond" ? 1800 : (doubles?.tier === "Platinum" ? 1600 : (doubles?.tier === "Gold" ? 1400 : (doubles?.tier === "Silver" ? 1200 : 1100)))))
-    : (singles?.tier === "Challenger" ? 2500 : (singles?.tier === "Diamond" ? 1800 : (singles?.tier === "Platinum" ? 1600 : (singles?.tier === "Gold" ? 1400 : (singles?.tier === "Silver" ? 1200 : 1100)))));
+  const nextTierMinElo = 
+    tier === "Challenger" ? 2500 : 
+    tier === "Diamond" ? 1800 : 
+    tier === "Platinum" ? 1600 : 
+    tier === "Gold" ? 1400 : 
+    tier === "Silver" ? 1200 : 1000;
   
-  const prevTierMinElo = activeMode === "doubles"
-    ? (doubles?.tier === "Challenger" ? 1800 : (doubles?.tier === "Diamond" ? 1600 : (doubles?.tier === "Platinum" ? 1400 : (doubles?.tier === "Gold" ? 1200 : (doubles?.tier === "Silver" ? 1100 : 800)))))
-    : (singles?.tier === "Challenger" ? 1800 : (singles?.tier === "Diamond" ? 1600 : (singles?.tier === "Platinum" ? 1400 : (singles?.tier === "Gold" ? 1200 : (singles?.tier === "Silver" ? 1100 : 800)))));
+  const prevTierMinElo = 
+    tier === "Challenger" ? 1800 : 
+    tier === "Diamond" ? 1600 : 
+    tier === "Platinum" ? 1400 : 
+    tier === "Gold" ? 1200 : 
+    tier === "Silver" ? 1000 : 800;
 
   const tierSpan = nextTierMinElo - prevTierMinElo;
   const tierProgress = tierSpan > 0 ? Math.min(100, Math.max(0, Math.round(((elo - prevTierMinElo) / tierSpan) * 100))) : 100;
@@ -254,38 +266,17 @@ export default function CompetitivePlayerCard({
         <div className="absolute top-0 right-0 w-32 h-32 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-100 to-transparent pointer-events-none -z-0" />
 
         {/* 1. TOP HEADER: Tier & Quick Actions */}
-        <div className="flex items-center justify-between relative z-10 mb-4">
-          <div className="flex items-center gap-2">
-            {/* Tier Badge */}
-            <span className={`text-[12px] font-black uppercase tracking-wider px-3.5 py-1 rounded-full ${tierTheme.badgeColor} flex items-center gap-1.5 shadow-sm`}>
-              <Trophy className="w-3.5 h-3.5 shrink-0" />
+        <div className="flex items-center justify-between relative z-10 mb-4 gap-3">
+          {/* Tier Badge: stretched to fill space previously occupied by Top% & Tập sự */}
+          <div className="flex-1 min-w-0">
+            <span className={`w-full text-[12px] font-black uppercase tracking-wider px-4 py-2 rounded-full ${tierTheme.badgeColor} flex items-center justify-center gap-2 shadow-sm truncate`}>
+              <Trophy className="w-4 h-4 shrink-0" />
               <span>HẠNG {tierLabel.toUpperCase()}</span>
             </span>
-
-            {/* Standing or Percentile */}
-            {percentile ? (
-              <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full bg-slate-900 text-white tracking-wider shadow-sm">
-                {percentile}
-              </span>
-            ) : rankNumber ? (
-              <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                #{rankNumber} CLB
-              </span>
-            ) : null}
-
-            {/* Provisional Pill */}
-            {isProvisional && (
-              <span 
-                className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1"
-                title={`Cần đấu tối thiểu ${currentModeStats?.provisionalThreshold || 3} trận để xác lập thứ hạng chính thức`}
-              >
-                <ShieldAlert className="w-3 h-3 text-amber-600" /> TẬP SỰ
-              </span>
-            )}
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {onOpenShareModal && (
               <button
                 onClick={onOpenShareModal}
@@ -320,7 +311,6 @@ export default function CompetitivePlayerCard({
             >
               <User className="w-3.5 h-3.5" />
               <span>ĐẤU ĐƠN</span>
-              <span className="text-[10px] font-semibold opacity-70">({singles?.elo || 1000})</span>
             </button>
 
             <button
@@ -333,7 +323,6 @@ export default function CompetitivePlayerCard({
             >
               <Users className="w-3.5 h-3.5" />
               <span>ĐẤU ĐÔI</span>
-              <span className="text-[10px] font-semibold opacity-70">({doubles?.elo || 1000})</span>
             </button>
           </div>
         </div>
@@ -479,29 +468,47 @@ export default function CompetitivePlayerCard({
           </div>
         </div>
 
-        {/* 6. NEXT MILESTONES (MOTIVATIONAL GOALS) */}
-        {progression?.milestones && progression.milestones.length > 0 && (
-          <div className="relative z-10 mb-4 p-3 rounded-2xl bg-slate-900 text-white flex items-center justify-between gap-3 shadow-md">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-                <Target className="w-4 h-4 text-amber-400" />
-              </div>
-              <div className="text-left">
-                <p className="text-[11px] font-black uppercase tracking-wider text-amber-400">
-                  {progression.milestones[0].title}
-                </p>
-                <p className="text-[10px] text-slate-300 line-clamp-1">
-                  {progression.milestones[0].description}
-                </p>
-              </div>
-            </div>
-            <div className="shrink-0 text-right">
-              <span className="text-[11px] font-black text-white px-2 py-0.5 bg-white/10 rounded-lg">
-                {progression.milestones[0].progressPercent}%
+        {/* 6. RANK STARS PROGRESSION (LIÊN QUÂN MOBA STYLE) */}
+        <div className="relative z-10 mb-4 p-3.5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-lg border border-slate-700/60">
+          <div className="flex items-center justify-between mb-2.5 px-1">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-300">
+                HẠNG {starInfo.tierLabel.toUpperCase()} • {starInfo.stars}/5 SAO
               </span>
             </div>
+            <div className="text-[10px] font-bold text-slate-300">
+              {starInfo.eloToNextStar > 0 ? (
+                <span>
+                  Cần <strong className="text-amber-400 font-black">+{starInfo.eloToNextStar} ELO</strong> lên{" "}
+                  {starInfo.stars >= 5 ? "bậc tiếp" : `${starInfo.stars + 1}★`}
+                </span>
+              ) : (
+                <span className="text-emerald-400 font-bold">Đỉnh cao bậc xếp hạng</span>
+              )}
+            </div>
           </div>
-        )}
+
+          {/* 5 Stars Visual Row */}
+          <div className="flex items-center justify-center gap-3 py-2 bg-black/40 rounded-xl border border-white/5 backdrop-blur-sm">
+            {[1, 2, 3, 4, 5].map((index) => {
+              const isFilled = index <= starInfo.stars;
+              return (
+                <div key={index} className="relative flex items-center justify-center transition-all duration-300">
+                  {isFilled ? (
+                    <Star
+                      className="w-6 h-6 fill-amber-400 text-amber-300 filter drop-shadow-[0_0_8px_rgba(251,191,36,0.65)]"
+                    />
+                  ) : (
+                    <Star
+                      className="w-6 h-6 text-slate-600/70 fill-slate-800/60"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {/* 7. FEATURED BADGES SHOWCASE (TOP 3 REAL BADGES) */}
         {achievements.length > 0 && (
@@ -529,7 +536,7 @@ export default function CompetitivePlayerCard({
                     {ach.name}
                   </span>
                   <span className="text-[8px] text-slate-500 line-clamp-1 uppercase">
-                    {ach.category === "contribution" ? "Đóng góp" : "Thi đấu"}
+                    Thi đấu
                   </span>
                 </div>
               ))}
@@ -537,13 +544,13 @@ export default function CompetitivePlayerCard({
           </div>
         )}
 
-        {/* 8. REFINED META FOOTER (LEVEL, XP, COINS) - NO 0 SHIELDS */}
-        <div className="relative z-10 pt-3 border-t border-slate-200 mt-auto flex items-center justify-between text-xs text-slate-500">
+        {/* 8. REFINED META FOOTER (LEVEL, XP, REPUTATION, COINS) */}
+        <div className="relative z-10 pt-3 border-t border-slate-200 mt-auto flex items-center justify-between text-xs text-slate-500 gap-2">
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-slate-900 text-[11px]">
               CẤP {meta?.level ?? 1}
             </span>
-            <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div className="w-14 sm:w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-emerald-500 rounded-full" 
                 style={{ width: `${Math.min(100, ((meta?.xp || 0) % 100))}%` }} 
@@ -551,9 +558,23 @@ export default function CompetitivePlayerCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 text-[11px]">
-            <Coins className="w-3.5 h-3.5 text-amber-500" />
-            <span>{meta?.smashCoins ?? 0} xu</span>
+          <div className="flex items-center gap-2 shrink-0">
+            {reputationScore !== undefined && (
+              <button
+                type="button"
+                onClick={onOpenReputationModal}
+                className="flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200 text-[11px] transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Bấm để xem lịch sử điểm hoạt động & uy tín"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{reputationScore}đ Uy tín</span>
+              </button>
+            )}
+
+            <div className="flex items-center gap-1.5 font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 text-[11px]">
+              <Coins className="w-3.5 h-3.5 text-amber-500" />
+              <span>{meta?.smashCoins ?? 0} xu</span>
+            </div>
           </div>
         </div>
       </div>

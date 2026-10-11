@@ -9,13 +9,14 @@ import {
   Camera, Paintbrush, Shield, CalendarDays, Activity, 
   MapPin, Clock, LogOut, Edit2, Home, Loader2, Settings,
   ShoppingBag, Lock, Gift, Coins,
-  Users, User, Swords, TrendingUp, TrendingDown, CheckCircle2, XCircle, Filter
+  Users, User, Swords, TrendingUp, TrendingDown, CheckCircle2, XCircle, Filter, ShieldCheck
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
 import CompetitivePlayerCard from "@/app/components/CompetitivePlayerCard";
 import SharePlayerCard from "@/app/components/SharePlayerCard";
+import ReputationHistoryModal from "@/app/components/ReputationHistoryModal";
 import { formatVietnamDate } from "@/app/utils/date";
 import SessionReservationWidget from "@/app/components/SessionReservationWidget";
 
@@ -26,6 +27,7 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingRsvp, setUpdatingRsvp] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isReputationModalOpen, setIsReputationModalOpen] = useState(false);
 
   // Gamification states
   const [gamProfile, setGamProfile] = useState<any>(null);
@@ -666,14 +668,14 @@ export default function ProfilePage() {
       nextElo: 1400,
       prevElo: 1200
     };
-    if (elo >= 1100) return {
+    if (elo >= 1000) return {
       name: "Silver",
       label: "Bạc",
       borderClass: "border-4 border-slate-300",
       glowClass: "rank-glow-silver",
       badgeClass: "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 font-black shadow-md border border-slate-300",
       nextElo: 1200,
-      prevElo: 1100
+      prevElo: 1000
     };
     return {
       name: "Bronze",
@@ -681,7 +683,7 @@ export default function ProfilePage() {
       borderClass: "border-4 border-amber-800",
       glowClass: "rank-glow-bronze",
       badgeClass: "bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 font-black shadow-md border border-amber-600",
-      nextElo: 1100,
+      nextElo: 1000,
       prevElo: 800
     };
   };
@@ -743,35 +745,7 @@ export default function ProfilePage() {
 
   const { player, upcomingSession, attendanceHistory } = playerData;
 
-  // Phân tích kỹ năng đóng góp
-  let softSkills: string[] = [];
-  if (player.soft_skills) {
-    try {
-      softSkills = typeof player.soft_skills === "string" 
-        ? JSON.parse(player.soft_skills) 
-        : player.soft_skills;
-    } catch (e) {
-      softSkills = Array.isArray(player.soft_skills) ? player.soft_skills : [];
-    }
-  }
 
-  // Map huy hiệu đóng góp
-  const getBadgeIcon = (skill: string) => {
-    const s = skill.toLowerCase();
-    if (s.includes("chụp") || s.includes("ảnh") || s.includes("media") || s.includes("quay")) {
-      return { icon: <Camera className="w-5 h-5" />, label: "Nhiếp ảnh gia", color: "from-cyan-500 to-blue-500" };
-    }
-    if (s.includes("thiết kế") || s.includes("design") || s.includes("cọ") || s.includes("vẽ")) {
-      return { icon: <Paintbrush className="w-5 h-5" />, label: "Nhà thiết kế", color: "from-pink-500 to-purple-500" };
-    }
-    if (s.includes("tổ chức") || s.includes("sự kiện") || s.includes("event")) {
-      return { icon: <CalendarDays className="w-5 h-5" />, label: "Tổ chức sự kiện", color: "from-amber-500 to-orange-500" };
-    }
-    if (s.includes("code") || s.includes("lập trình") || s.includes("dev") || s.includes("web") || s.includes("phát triển")) {
-      return { icon: <Shield className="w-5 h-5" />, label: "Lập trình viên", color: "from-emerald-500 to-teal-500" };
-    }
-    return { icon: <Activity className="w-5 h-5" />, label: skill, color: "from-slate-900 to-black" };
-  };
 
   // Real-time password validations
   const isPasswordLengthValid = newPassword.length >= 6;
@@ -833,7 +807,7 @@ export default function ProfilePage() {
       {/* Main Grid Content */}
       <div className="max-w-7xl w-full mx-auto px-4 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8 flex-grow">
         
-        {/* LEFT COLUMN: Player Card & Badges */}
+        {/* LEFT COLUMN: Player Card & Reputation Score */}
         <div className="lg:col-span-1 space-y-8">
           
           {/* COMPETITIVE PLAYER CARD */}
@@ -852,40 +826,11 @@ export default function ProfilePage() {
               smashCoins: gamProfile?.smash_coins ?? 0,
               dailyStreak: gamProfile?.current_streak ?? 0
             }}
+            reputationScore={playerData.reputation?.score}
             onOpenSettings={() => setIsSettingsModalOpen(true)}
             onOpenShareModal={() => setIsShareModalOpen(true)}
+            onOpenReputationModal={() => setIsReputationModalOpen(true)}
           />
-
-          {/* BADGES WIDGET */}
-          <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
-            <h3 className="font-extrabold text-slate-900 text-lg mb-4 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-black" /> Huy hiệu Đóng góp
-            </h3>
-            
-            {softSkills.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                {softSkills.map((skill, index) => {
-                  const b = getBadgeIcon(skill);
-                  return (
-                    <div key={index} className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-center hover:border-black/30 transition-colors group">
-                      <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${b.color} text-white flex items-center justify-center mb-2 shadow-lg group-hover:scale-110 transition-transform`}>
-                        {b.icon}
-                      </div>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{b.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
-                <div className="w-10 h-10 rounded-full bg-black/5 text-black flex items-center justify-center mb-2">
-                  <Trophy className="w-5 h-5" />
-                </div>
-                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Thành viên tích cực</span>
-                <p className="text-[9px] text-slate-500 mt-1 max-w-[150px]">Hãy tích cực tham gia CLB để nhận các huy hiệu đóng góp nhé!</p>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* RIGHT COLUMN: RSVP & Match History */}
@@ -2073,6 +2018,13 @@ export default function ProfilePage() {
         achievements={playerData.achievements}
         streak={playerData.streak}
         title={playerData.title}
+      />
+
+      {/* REPUTATION HISTORY MODAL */}
+      <ReputationHistoryModal
+        isOpen={isReputationModalOpen}
+        onClose={() => setIsReputationModalOpen(false)}
+        reputation={playerData.reputation}
       />
 
       <footer className="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-xs">

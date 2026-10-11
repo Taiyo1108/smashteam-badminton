@@ -38,35 +38,53 @@ router.get('/', async (req, res) => {
 // POST /api/matches - Nhập kết quả trận đấu (Đơn hoặc Đôi), tính Elo và cập nhật thống kê (tách biệt Đơn/Đôi)
 router.post('/', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { player1_id, player2_id, player1_partner_id, player2_partner_id, score_p1, score_p2, winner_id } = req.body;
+    const normalizeId = (id) => String(id || '').trim().toLowerCase();
+    const { player1_id, player2_id, player1_partner_id, player2_partner_id, score_p1, score_p2, winner_id, occupied_player_ids = [] } = req.body;
 
-    if (!player1_id || !player2_id || score_p1 === undefined || score_p2 === undefined || !winner_id) {
+    const p1_id = normalizeId(player1_id);
+    const p2_id = normalizeId(player2_id);
+    const p1_p_id = player1_partner_id ? normalizeId(player1_partner_id) : null;
+    const p2_p_id = player2_partner_id ? normalizeId(player2_partner_id) : null;
+    const w_id = normalizeId(winner_id);
+
+    if (!p1_id || !p2_id || score_p1 === undefined || score_p2 === undefined || !w_id) {
       return res.status(400).json({ error: 'Missing required match details' });
     }
 
-    const isDoubles = !!(player1_partner_id && player2_partner_id);
+    const isDoubles = !!(p1_p_id && p2_p_id);
 
     // Thu thập danh sách ID người chơi thực tế
-    const activePlayerIds = [player1_id, player2_id];
-    if (player1_partner_id) activePlayerIds.push(player1_partner_id);
-    if (player2_partner_id) activePlayerIds.push(player2_partner_id);
+    const activePlayerIds = [p1_id, p2_id];
+    if (p1_p_id) activePlayerIds.push(p1_p_id);
+    if (p2_p_id) activePlayerIds.push(p2_p_id);
 
-    // Xác nhận không trùng ID người chơi
+    // Xác nhận không trùng ID người chơi trong cùng trận
     const uniqueIds = new Set(activePlayerIds);
     if (uniqueIds.size !== activePlayerIds.length) {
       return res.status(400).json({ error: 'All player IDs in a match must be unique' });
     }
 
-    // Đội 1: player1_id & player1_partner_id
-    // Đội 2: player2_id & player2_partner_id
-    const team1Ids = [player1_id];
-    if (player1_partner_id) team1Ids.push(player1_partner_id);
+    // Kiểm tra VĐV có bị chiếm dụng ở sân khác được truyền từ Match Desk không
+    const cleanOccupied = (Array.isArray(occupied_player_ids) ? occupied_player_ids : [])
+      .map(normalizeId)
+      .filter(Boolean);
+    const occupiedSet = new Set(cleanOccupied);
+    for (const pId of activePlayerIds) {
+      if (occupiedSet.has(pId)) {
+        return res.status(409).json({ error: 'Xung đột: Tuyển thủ hiện đang tham gia trận đấu tại sân khác.' });
+      }
+    }
 
-    const team2Ids = [player2_id];
-    if (player2_partner_id) team2Ids.push(player2_partner_id);
+    // Đội 1: p1_id & p1_p_id
+    // Đội 2: p2_id & p2_p_id
+    const team1Ids = [p1_id];
+    if (p1_p_id) team1Ids.push(p1_p_id);
 
-    const team1Won = team1Ids.includes(winner_id);
-    const team2Won = team2Ids.includes(winner_id);
+    const team2Ids = [p2_id];
+    if (p2_p_id) team2Ids.push(p2_p_id);
+
+    const team1Won = team1Ids.includes(w_id);
+    const team2Won = team2Ids.includes(w_id);
 
     if (!team1Won && !team2Won) {
       return res.status(400).json({ error: 'Winner must be one of the active players' });
@@ -82,7 +100,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
          AND score_p1 = $5 AND score_p2 = $6 AND winner_id = $7::uuid
          AND created_at >= NOW() - INTERVAL '3 seconds'
        LIMIT 1`,
-      [player1_id, player2_id, player1_partner_id || null, player2_partner_id || null, score_p1, score_p2, winner_id]
+      [p1_id, p2_id, p1_p_id || null, p2_p_id || null, score_p1, score_p2, w_id]
     );
     if (dupCheckRes.rows.length > 0) {
       return res.status(400).json({ error: 'Trận đấu này vừa được gửi lên hệ thống. Vui lòng không nhấn liên tiếp để tránh trùng lặp!' });
@@ -90,6 +108,24 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
 
     // Bắt đầu một transaction
     await db.query('BEGIN');
+
+    // Khóa Race Condition: Kiểm tra xem có tuyển thủ nào vừa tham gia trận khác trong 5 giây qua không
+    const raceCheckRes = await db.query(
+      `SELECT id FROM matches 
+       WHERE (
+         player1_id = ANY($1::uuid[]) OR 
+         player2_id = ANY($1::uuid[]) OR 
+         COALESCE(player1_partner_id, '00000000-0000-0000-0000-000000000000'::uuid) = ANY($1::uuid[]) OR 
+         COALESCE(player2_partner_id, '00000000-0000-0000-0000-000000000000'::uuid) = ANY($1::uuid[])
+       )
+       AND created_at >= NOW() - INTERVAL '5 seconds'
+       LIMIT 1`,
+      [activePlayerIds]
+    );
+    if (raceCheckRes.rows.length > 0) {
+      await db.query('ROLLBACK');
+      return res.status(409).json({ error: 'Xung đột: Một hoặc nhiều tuyển thủ vừa được ghi nhận kết quả ở một trận đấu khác.' });
+    }
 
     // Truy vấn khóa dòng (FOR UPDATE) cho tất cả người chơi hoạt động
     const playersData = {};
@@ -100,13 +136,18 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
                 win_singles, loss_singles,
                 win_doubles, loss_doubles,
                 streak_singles, max_streak_singles,
-                streak_doubles, max_streak_doubles
+                streak_doubles, max_streak_doubles,
+                status, is_blocked
          FROM users WHERE id = $1::uuid FOR UPDATE`, 
         [pId]
       );
       if (pRes.rows.length === 0) {
         await db.query('ROLLBACK');
         return res.status(404).json({ error: `Player with ID ${pId} not found` });
+      }
+      if (pRes.rows[0].status !== 'active' || pRes.rows[0].is_blocked) {
+        await db.query('ROLLBACK');
+        return res.status(400).json({ error: `Tuyển thủ ${pId} không ở trạng thái hoạt động hợp lệ.` });
       }
       playersData[pId] = pRes.rows[0];
     }
@@ -216,7 +257,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       ) 
        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
       [
-        player1_id, player2_id, player1_partner_id || null, player2_partner_id || null, winner_id,
+        p1_id, p2_id, p1_p_id || null, p2_p_id || null, w_id,
         score_p1, score_p2, elo1, elo2, elo1New, elo2New,
         elo1_p, elo2_p, elo1_partnerNew, elo2_partnerNew,
         eloExchanged
@@ -247,11 +288,13 @@ router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
           u.matches_singles, u.matches_doubles,
           u.win_rate_singles, u.win_rate_doubles,
           u.streak_singles, u.streak_doubles,
-          COALESCE(a.checked_in_at, a.created_at) AS checked_in_at
+          a.checked_in_at
          FROM attendances a
          JOIN users u ON a.user_id = u.id
-         WHERE a.session_id = $1 AND a.status IN ('going', 'CHECKED_IN') 
-           AND u.status = 'active' AND (u.is_blocked IS FALSE OR u.is_blocked IS NULL)
+         WHERE a.session_id = $1 
+           AND a.status = 'CHECKED_IN' 
+           AND u.status = 'active' 
+           AND (u.is_blocked IS FALSE OR u.is_blocked IS NULL)
          ORDER BY u.full_name ASC`,
         [session_id]
       );
@@ -376,34 +419,44 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
 // POST /api/matches/suggestions - Gợi ý đối thủ cân bằng ELO cho Match Desk
 router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { session_id, mode = 'doubles', team1_player_ids = [], excluded_player_ids = [] } = req.body;
+    const normalizeId = (id) => String(id || '').trim().toLowerCase();
+    const { session_id, mode = 'doubles', team1_player_ids = [], excluded_player_ids = [], use_all = false } = req.body;
 
-    if (!Array.isArray(team1_player_ids) || team1_player_ids.length === 0) {
+    const cleanTeam1Ids = (Array.isArray(team1_player_ids) ? team1_player_ids : [])
+      .map(normalizeId)
+      .filter(Boolean);
+
+    if (cleanTeam1Ids.length === 0) {
       return res.status(400).json({ error: 'Vui lòng chọn ít nhất 1 tuyển thủ ở Đội A để nhận gợi ý đối thủ.' });
     }
 
     const t1Res = await db.query(
       `SELECT id, full_name, nickname, avatar_url, elo_singles, elo_doubles, matches_singles, matches_doubles, win_rate_singles, win_rate_doubles, streak_singles, streak_doubles
        FROM users WHERE id = ANY($1::uuid[])`,
-      [team1_player_ids]
+      [cleanTeam1Ids]
     );
 
     if (t1Res.rows.length === 0) {
       return res.status(404).json({ error: 'Không tìm thấy tuyển thủ Đội A.' });
     }
 
-    const player1 = t1Res.rows.find(p => p.id === team1_player_ids[0]);
-    const partner1 = team1_player_ids[1] ? t1Res.rows.find(p => p.id === team1_player_ids[1]) : null;
+    const player1 = t1Res.rows.find(p => normalizeId(p.id) === cleanTeam1Ids[0]);
+    const partner1 = cleanTeam1Ids[1] ? t1Res.rows.find(p => normalizeId(p.id) === cleanTeam1Ids[1]) : null;
 
     let candidateRows = [];
-    if (session_id) {
+    const shouldUseAll = use_all === true || use_all === 'true' || !session_id;
+
+    if (!shouldUseAll && session_id) {
       const sessionAttRes = await db.query(
         `SELECT u.id, u.full_name, u.nickname, u.avatar_url, u.badminton_level,
                 u.elo_singles, u.elo_doubles, u.matches_singles, u.matches_doubles,
                 u.win_rate_singles, u.win_rate_doubles, u.streak_singles, u.streak_doubles
          FROM attendances a
          JOIN users u ON a.user_id = u.id
-         WHERE a.session_id = $1 AND a.status IN ('going', 'CHECKED_IN') AND u.status = 'active'
+         WHERE a.session_id = $1 
+           AND a.status = 'CHECKED_IN' 
+           AND u.status = 'active'
+           AND (u.is_blocked IS FALSE OR u.is_blocked IS NULL)
          ORDER BY u.full_name ASC`,
         [session_id]
       );
@@ -420,8 +473,13 @@ router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
       candidateRows = allActiveRes.rows;
     }
 
-    const allExcluded = new Set([...team1_player_ids, ...(excluded_player_ids || [])]);
-    const availablePool = candidateRows.filter(p => !allExcluded.has(p.id));
+    const cleanExcludedIds = (Array.isArray(excluded_player_ids) ? excluded_player_ids : [])
+      .map(normalizeId)
+      .filter(Boolean);
+
+    // Luôn loại trừ cả team 1 và các VĐV đã bị chiếm dụng kể cả khi bật use_all
+    const allExcluded = new Set([...cleanTeam1Ids, ...cleanExcludedIds]);
+    const availablePool = candidateRows.filter(p => !allExcluded.has(normalizeId(p.id)));
 
     const { suggestSinglesOpponents, suggestDoublesOpponents, suggestDoublesPartners } = require('../services/matchmakerService');
 
@@ -439,6 +497,8 @@ router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
     res.json({
       success: true,
       mode,
+      available_pool_size: availablePool.length,
+      excluded_count: allExcluded.size,
       team1: partner1 ? [player1, partner1] : [player1],
       suggestions
     });
@@ -450,6 +510,7 @@ router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
 
 // POST /api/matches/batch - Ghi nhận đồng loạt nhiều trận đấu trong 1 Database Transaction nguyên tử (All-or-Nothing)
 router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
+  const normalizeId = (id) => String(id || '').trim().toLowerCase();
   const { session_id, matches } = req.body;
 
   if (!Array.isArray(matches) || matches.length === 0) {
@@ -466,7 +527,13 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
     const m = matches[idx];
     const courtLabel = m.court_id || `Sân ${idx + 1}`;
 
-    if (!m.player1_id || !m.player2_id || m.score_p1 === undefined || m.score_p2 === undefined || !m.winner_id) {
+    const p1_id = normalizeId(m.player1_id);
+    const p2_id = normalizeId(m.player2_id);
+    const p1_p_id = m.player1_partner_id ? normalizeId(m.player1_partner_id) : null;
+    const p2_p_id = m.player2_partner_id ? normalizeId(m.player2_partner_id) : null;
+    const w_id = normalizeId(m.winner_id);
+
+    if (!p1_id || !p2_id || m.score_p1 === undefined || m.score_p2 === undefined || !w_id) {
       return res.status(400).json({ 
         error: `Trận đấu tại ${courtLabel} bị thiếu thông tin người chơi, điểm số hoặc đội thắng.` 
       });
@@ -480,10 +547,9 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
       });
     }
 
-    const isDoubles = !!(m.player1_partner_id && m.player2_partner_id);
-    const matchPlayers = [m.player1_id, m.player2_id];
-    if (m.player1_partner_id) matchPlayers.push(m.player1_partner_id);
-    if (m.player2_partner_id) matchPlayers.push(m.player2_partner_id);
+    const matchPlayers = [p1_id, p2_id];
+    if (p1_p_id) matchPlayers.push(p1_p_id);
+    if (p2_p_id) matchPlayers.push(p2_p_id);
 
     // Không được self-match trong cùng 1 trận
     if (new Set(matchPlayers).size !== matchPlayers.length) {
@@ -493,7 +559,7 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
     }
 
     // Đảm bảo winner_id là một trong các player tham gia
-    if (!matchPlayers.includes(m.winner_id)) {
+    if (!matchPlayers.includes(w_id)) {
       return res.status(400).json({ 
         error: `Tại ${courtLabel}, đội thắng không thuộc danh sách tuyển thủ thi đấu.` 
       });
@@ -506,8 +572,8 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
   const seenPlayerIds = new Set();
   for (const pId of allBatchPlayerIds) {
     if (seenPlayerIds.has(pId)) {
-      return res.status(400).json({
-        error: `Vi phạm nguyên tắc Batch: Một tuyển thủ không được thi đấu ở nhiều sân trong cùng một lượt commit! Hãy commit từng trận hoặc tách người chơi.`
+      return res.status(409).json({
+        error: `Xung đột Batch: Một tuyển thủ không được thi đấu ở nhiều sân trong cùng một lượt commit! Hãy commit từng trận hoặc tách người chơi.`
       });
     }
     seenPlayerIds.add(pId);

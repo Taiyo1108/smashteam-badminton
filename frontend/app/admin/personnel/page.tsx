@@ -1165,8 +1165,8 @@ export default function PersonnelPage() {
               <option value="Diamond">Kim Cương (1600+)</option>
               <option value="Platinum">Bạch Kim (1400+)</option>
               <option value="Gold">Vàng (1200+)</option>
-              <option value="Silver">Bạc (1100+)</option>
-              <option value="Bronze">Đồng (&lt; 1100)</option>
+              <option value="Silver">Bạc (1000+)</option>
+              <option value="Bronze">Đồng (&lt; 1000)</option>
             </select>
 
             <select 

@@ -21,6 +21,10 @@ export default function UnifiedLogin() {
       if (phoneParam) {
         setPhone(phoneParam);
       }
+      const expiredParam = searchParams.get("expired");
+      if (expiredParam) {
+        setError("Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.");
+      }
     }
   }, []);
 

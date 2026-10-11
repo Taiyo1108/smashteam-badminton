@@ -10,6 +10,7 @@ import { API_URL } from "@/app/config";
 import { formatVietnamDate } from "@/app/utils/date";
 import confetti from "canvas-confetti";
 import { Html5Qrcode } from "html5-qrcode";
+import { isTokenExpired, redirectToLogin, clearAuthSession, getAuthToken } from "@/app/utils/auth";
 
 function CheckInContent() {
   const searchParams = useSearchParams();
@@ -70,9 +71,10 @@ function CheckInContent() {
 
   // Khởi tạo kiểm tra Auth
   useEffect(() => {
-    const token = localStorage.getItem("admin_token");
-    if (!token) {
+    const token = getAuthToken();
+    if (!token || isTokenExpired(token)) {
       setHasToken(false);
+      clearAuthSession();
     } else {
       setHasToken(true);
       try {
@@ -92,10 +94,10 @@ function CheckInContent() {
       return;
     }
 
-    const token = localStorage.getItem("admin_token");
-    if (!token) {
-      const currentUrl = window.location.pathname + window.location.search;
-      router.push(`/login?redirect=${encodeURIComponent(currentUrl)}`);
+    const token = getAuthToken();
+    const currentUrl = window.location.pathname + window.location.search;
+    if (!token || isTokenExpired(token)) {
+      redirectToLogin(currentUrl, Boolean(token));
       return;
     }
 
@@ -132,6 +134,12 @@ function CheckInContent() {
 
       const data = await res.json();
 
+      if (res.status === 401 || (data && (data.code === "TOKEN_EXPIRED" || data.code === "INVALID_TOKEN"))) {
+        const currentUrl = window.location.pathname + window.location.search;
+        redirectToLogin(currentUrl, true);
+        return;
+      }
+
       if (res.ok) {
         setStatus("success");
         setSuccessData(data);
@@ -163,9 +171,9 @@ function CheckInContent() {
       return;
     }
 
-    const token = localStorage.getItem("admin_token");
-    if (!token) {
-      router.push(`/login?redirect=${encodeURIComponent("/check-in")}`);
+    const token = getAuthToken();
+    if (!token || isTokenExpired(token)) {
+      redirectToLogin("/check-in", Boolean(token));
       return;
     }
 
@@ -195,6 +203,11 @@ function CheckInContent() {
       }
 
       const data = await res.json();
+
+      if (res.status === 401 || (data && (data.code === "TOKEN_EXPIRED" || data.code === "INVALID_TOKEN"))) {
+        redirectToLogin("/check-in", true);
+        return;
+      }
 
       if (res.ok) {
         setStatus("success");
@@ -318,9 +331,9 @@ function CheckInContent() {
       return;
     }
 
-    const token = localStorage.getItem("admin_token");
-    if (!token) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+    const token = getAuthToken();
+    if (!token || isTokenExpired(token)) {
+      redirectToLogin(window.location.pathname, Boolean(token));
       return;
     }
 

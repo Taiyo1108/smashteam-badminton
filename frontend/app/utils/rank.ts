@@ -4,8 +4,8 @@
  * - Diamond (Kim Cương): 1600 - 1799 ELO
  * - Platinum (Bạch Kim): 1400 - 1599 ELO
  * - Gold (Vàng): 1200 - 1399 ELO
- * - Silver (Bạc): 1100 - 1199 ELO
- * - Bronze (Đồng): < 1100 ELO
+ * - Silver (Bạc): 1000 - 1199 ELO
+ * - Bronze (Đồng): < 1000 ELO
  */
 
 export interface RankTier {
@@ -63,12 +63,12 @@ export const RANK_TIERS: RankTier[] = [
   {
     name: "Silver",
     label: "Bạc",
-    minElo: 1100,
+    minElo: 1000,
     badgeClass: "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 shadow-md shadow-slate-300/40 border border-slate-300 font-black",
     glowClass: "rank-glow-silver",
     borderClass: "border-4 border-slate-300",
     nextElo: 1200,
-    prevElo: 1100
+    prevElo: 1000
   },
   {
     name: "Bronze",
@@ -77,7 +77,7 @@ export const RANK_TIERS: RankTier[] = [
     badgeClass: "bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 shadow-md shadow-amber-900/40 border border-amber-600 font-black",
     glowClass: "rank-glow-bronze",
     borderClass: "border-4 border-amber-800",
-    nextElo: 1100,
+    nextElo: 1000,
     prevElo: 800
   }
 ];
@@ -88,7 +88,7 @@ export const getRankName = (elo: number | null | undefined): string => {
   if (score >= 1600) return "Diamond";
   if (score >= 1400) return "Platinum";
   if (score >= 1200) return "Gold";
-  if (score >= 1100) return "Silver";
+  if (score >= 1000) return "Silver";
   return "Bronze";
 };
 
@@ -98,7 +98,7 @@ export const getRankLabel = (rankOrElo: string | number | null | undefined): str
     if (rankOrElo >= 1600) return "Kim Cương";
     if (rankOrElo >= 1400) return "Bạch Kim";
     if (rankOrElo >= 1200) return "Vàng";
-    if (rankOrElo >= 1100) return "Bạc";
+    if (rankOrElo >= 1000) return "Bạc";
     return "Đồng";
   }
   if (!rankOrElo) return "Đồng";
@@ -152,5 +152,136 @@ export const getShortName = (fullName: string | null | undefined): string => {
   if (!trimmed) return "";
   const parts = trimmed.split(/\s+/);
   return parts[parts.length - 1];
+};
+
+export interface RankStarInfo {
+  tierName: string;
+  tierLabel: string;
+  stars: number; // 0 đến 5
+  maxStars: number; // 5
+  eloToNextStar: number; // ELO cần thêm để đạt sao kế tiếp (hoặc thăng hạng)
+  nextTargetElo: number; // Mốc ELO tiếp theo
+  isMaxRank: boolean;
+  starStepElo: number;
+}
+
+/**
+ * Quy đổi điểm ELO thành hệ thống 5 sao theo từng bậc rank (phong cách MOBA / Liên Quân Mobile):
+ * - Dưới 900: Mặc định Đồng 0 sao
+ * - Đồng (900 - 999): 5 sao (mỗi sao 20 ELO, đạt 900 = 1★, 920 = 2★,... 980 = 5★)
+ * - Bạc (1000 - 1199): 5 sao (mỗi sao 40 ELO, đạt 1000 = 1★, 1040 = 2★,... 1160 = 5★)
+ * - Vàng (1200 - 1399): 5 sao (mỗi sao 40 ELO, đạt 1200 = 1★, 1240 = 2★,... 1360 = 5★)
+ * - Bạch Kim (1400 - 1599): 5 sao (mỗi sao 40 ELO, đạt 1400 = 1★,... 1560 = 5★)
+ * - Kim Cương (1600 - 1799): 5 sao (mỗi sao 40 ELO, đạt 1600 = 1★,... 1760 = 5★)
+ * - Thách Đấu (1800+): Max 5 sao đầy sáng rực rỡ
+ */
+export const calculateRankStars = (elo: number | null | undefined): RankStarInfo => {
+  const score = Math.max(0, Number(elo) || 0);
+
+  // 1. Dưới 900: Đồng 0 sao
+  if (score < 900) {
+    return {
+      tierName: "Bronze",
+      tierLabel: "Đồng",
+      stars: 0,
+      maxStars: 5,
+      eloToNextStar: Math.max(1, 900 - score),
+      nextTargetElo: 900,
+      isMaxRank: false,
+      starStepElo: 20
+    };
+  }
+
+  // 2. Đồng (900 - 999): mỗi sao 20 ELO
+  if (score < 1000) {
+    const stars = Math.min(5, 1 + Math.floor((score - 900) / 20));
+    const nextTargetElo = stars < 5 ? 900 + stars * 20 : 1000;
+    return {
+      tierName: "Bronze",
+      tierLabel: "Đồng",
+      stars,
+      maxStars: 5,
+      eloToNextStar: Math.max(0, nextTargetElo - score),
+      nextTargetElo,
+      isMaxRank: false,
+      starStepElo: 20
+    };
+  }
+
+  // 3. Bạc (1000 - 1199): mỗi sao 40 ELO
+  if (score < 1200) {
+    const stars = Math.min(5, 1 + Math.floor((score - 1000) / 40));
+    const nextTargetElo = stars < 5 ? 1000 + stars * 40 : 1200;
+    return {
+      tierName: "Silver",
+      tierLabel: "Bạc",
+      stars,
+      maxStars: 5,
+      eloToNextStar: Math.max(0, nextTargetElo - score),
+      nextTargetElo,
+      isMaxRank: false,
+      starStepElo: 40
+    };
+  }
+
+  // 4. Vàng (1200 - 1399): mỗi sao 40 ELO
+  if (score < 1400) {
+    const stars = Math.min(5, 1 + Math.floor((score - 1200) / 40));
+    const nextTargetElo = stars < 5 ? 1200 + stars * 40 : 1400;
+    return {
+      tierName: "Gold",
+      tierLabel: "Vàng",
+      stars,
+      maxStars: 5,
+      eloToNextStar: Math.max(0, nextTargetElo - score),
+      nextTargetElo,
+      isMaxRank: false,
+      starStepElo: 40
+    };
+  }
+
+  // 5. Bạch Kim (1400 - 1599): mỗi sao 40 ELO
+  if (score < 1600) {
+    const stars = Math.min(5, 1 + Math.floor((score - 1400) / 40));
+    const nextTargetElo = stars < 5 ? 1400 + stars * 40 : 1600;
+    return {
+      tierName: "Platinum",
+      tierLabel: "Bạch Kim",
+      stars,
+      maxStars: 5,
+      eloToNextStar: Math.max(0, nextTargetElo - score),
+      nextTargetElo,
+      isMaxRank: false,
+      starStepElo: 40
+    };
+  }
+
+  // 6. Kim Cương (1600 - 1799): mỗi sao 40 ELO
+  if (score < 1800) {
+    const stars = Math.min(5, 1 + Math.floor((score - 1600) / 40));
+    const nextTargetElo = stars < 5 ? 1600 + stars * 40 : 1800;
+    return {
+      tierName: "Diamond",
+      tierLabel: "Kim Cương",
+      stars,
+      maxStars: 5,
+      eloToNextStar: Math.max(0, nextTargetElo - score),
+      nextTargetElo,
+      isMaxRank: false,
+      starStepElo: 40
+    };
+  }
+
+  // 7. Thách Đấu (1800+): Max 5 sao
+  return {
+    tierName: "Challenger",
+    tierLabel: "Thách Đấu",
+    stars: 5,
+    maxStars: 5,
+    eloToNextStar: 0,
+    nextTargetElo: 1800,
+    isMaxRank: true,
+    starStepElo: 40
+  };
 };
 

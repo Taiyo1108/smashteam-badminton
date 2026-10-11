@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Users, Swords, LogOut, Loader2, Menu, X,
   Image as ImageIcon, Calendar, Sparkles, ShoppingBag, Home, Trophy, Mail
 } from "lucide-react";
+import { isTokenExpired, redirectToLogin, clearAuthSession } from "@/app/utils/auth";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -15,14 +16,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
-    // Auth check for Admin role
-    const token = localStorage.getItem("admin_token");
-    const role = localStorage.getItem("user_role");
-    if ((!token || role !== "admin") && !pathname.includes("/admin/login")) {
-      router.push("/login");
-    } else {
-      setIsAuthenticated(true);
+    if (pathname.includes("/admin/login")) {
+      return;
     }
+
+    // Auth check for Admin role & Token validity
+    const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+    const role = localStorage.getItem("user_role");
+
+    // Nếu không có token hoặc token đã quá hạn exp: Xóa ngay Zombie Session và redirect
+    if (!token || isTokenExpired(token)) {
+      redirectToLogin(pathname, Boolean(token));
+      return;
+    }
+
+    // Nếu có token còn hạn nhưng không phải admin
+    if (role !== "admin") {
+      router.push("/profile");
+      return;
+    }
+
+    setIsAuthenticated(true);
   }, [pathname, router]);
 
   if (!isAuthenticated && !pathname.includes("/admin/login")) {
@@ -51,8 +65,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   ];
 
   const handleLogout = () => {
-    localStorage.removeItem("admin_token");
-    localStorage.removeItem("user_role");
+    clearAuthSession();
     router.push("/login");
   };
 

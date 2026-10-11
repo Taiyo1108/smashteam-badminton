@@ -37,11 +37,12 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Số điện thoại hoặc mật khẩu không chính xác.' });
     }
 
-    // Generate JWT
+    // Generate JWT (7d for admin, 30d for member)
+    const expiresIn = user.role === 'admin' ? '7d' : '30d';
     const token = jwt.sign(
       { id: user.id, role: user.role, name: user.full_name },
       process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn }
     );
 
     res.json({ token, user: { id: user.id, name: user.full_name, role: user.role } });

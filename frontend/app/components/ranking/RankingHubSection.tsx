@@ -235,10 +235,10 @@ export default function RankingHubSection() {
                 Vàng: 1200+
               </span>
               <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 font-black shadow-sm border border-slate-300">
-                Bạc: 1100+
+                Bạc: 1000+
               </span>
               <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 font-black shadow-sm border border-amber-600">
-                Đồng: &lt; 1100
+                Đồng: &lt; 1000
               </span>
             </div>
           </div>

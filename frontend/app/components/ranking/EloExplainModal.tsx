@@ -108,10 +108,10 @@ export default function EloExplainModal({ isOpen, onClose }: EloExplainModalProp
                 Vàng: 1200+
               </div>
               <div className="p-2.5 rounded-xl bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 text-xs font-black text-center shadow-sm border border-slate-300">
-                Bạc: 1100+
+                Bạc: 1000+
               </div>
               <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 text-xs font-black text-center shadow-sm border border-amber-600">
-                Đồng: &lt; 1100
+                Đồng: &lt; 1000
               </div>
             </div>
           </div>

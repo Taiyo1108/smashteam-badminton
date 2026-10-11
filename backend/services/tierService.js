@@ -39,7 +39,7 @@ const RANK_TIERS = [
     label: 'Vàng',
     minElo: 1200,
     maxElo: 1399,
-    prevTierMin: 1100,
+    prevTierMin: 1000,
     badgeClass: 'bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/30 border border-yellow-300',
     glowClass: 'shadow-[0_0_15px_rgba(245,158,11,0.35)]',
     borderClass: 'border-amber-400'
@@ -47,9 +47,9 @@ const RANK_TIERS = [
   {
     name: 'Silver',
     label: 'Bạc',
-    minElo: 1100,
+    minElo: 1000,
     maxElo: 1199,
-    prevTierMin: 1000,
+    prevTierMin: 900,
     badgeClass: 'bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 font-black shadow-md shadow-slate-300/40 border border-slate-300',
     glowClass: 'shadow-[0_0_12px_rgba(148,163,184,0.25)]',
     borderClass: 'border-slate-300'
@@ -58,7 +58,7 @@ const RANK_TIERS = [
     name: 'Bronze',
     label: 'Đồng',
     minElo: 0,
-    maxElo: 1099,
+    maxElo: 999,
     prevTierMin: 0,
     badgeClass: 'bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 font-black shadow-md shadow-amber-900/40 border border-amber-600',
     glowClass: 'shadow-[0_0_10px_rgba(180,83,9,0.3)]',

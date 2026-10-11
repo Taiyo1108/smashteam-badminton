@@ -19,7 +19,7 @@ export function getRankName(elo: number): string {
   if (elo >= 1600) return "Kim Cương";
   if (elo >= 1400) return "Bạch Kim";
   if (elo >= 1200) return "Vàng";
-  if (elo >= 1100) return "Bạc";
+  if (elo >= 1000) return "Bạc";
   return "Đồng";
 }
 

@@ -49,7 +49,7 @@ const TIER_CONFIG: Record<RankTierName, { label: string; badgeClass: string; bgS
 export const getTierFromElo = (elo: number): RankTierName => {
   if (elo >= 1800) return "Master";
   if (elo >= 1400) return "Elite";
-  if (elo >= 1100) return "Challenger";
+  if (elo >= 1000) return "Challenger";
   return "Rookie";
 };
 
@@ -289,8 +289,8 @@ export default function Leaderboard() {
               <option value="all">Tất cả thứ hạng</option>
               <option value="Master">Master (1800+)</option>
               <option value="Elite">Elite (1400 - 1799)</option>
-              <option value="Challenger">Challenger (1100 - 1399)</option>
-              <option value="Rookie">Rookie (&lt; 1100)</option>
+              <option value="Challenger">Challenger (1000 - 1399)</option>
+              <option value="Rookie">Rookie (&lt; 1000)</option>
             </select>
           </div>
 
