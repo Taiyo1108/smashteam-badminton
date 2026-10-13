@@ -152,7 +152,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header (Desktop & Mobile) */}
         <header 
-          className="bg-white/95 backdrop-blur-md border-b border-purple-100 flex items-center px-4 lg:px-8 justify-between shrink-0 shadow-xs pt-safe"
+          className="bg-white border-b border-purple-100 flex items-center px-4 lg:px-8 justify-between shrink-0 shadow-xs pt-safe z-30"
           style={{ paddingTop: "env(safe-area-inset-top, 0px)", height: "calc(4rem + env(safe-area-inset-top, 0px))" }}
         >
           <div className="flex items-center gap-2.5">

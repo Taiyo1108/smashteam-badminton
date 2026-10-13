@@ -393,7 +393,7 @@ adminRouter.get('/', authenticateToken, isAdmin, async (req, res) => {
     const sql = `
       SELECT 
         a.*,
-        u.name AS creator_name,
+        u.full_name AS creator_name,
         u.email AS creator_email,
         (
           SELECT COUNT(*)::int 
