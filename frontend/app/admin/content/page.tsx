@@ -1,10 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, AlertCircle, Eye, EyeOff, Clock, Sparkles } from "lucide-react";
+import { 
+  Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, 
+  AlertCircle, Eye, EyeOff, Clock, Sparkles, Bell, Edit3, ChevronUp, ChevronDown, X, Save 
+} from "lucide-react";
 import { API_URL } from "@/app/config";
+import AnnouncementsTab from "./AnnouncementsTab";
 
 export default function ContentManagementPage() {
+  // Sub-tabs State
+  const [activeSubTab, setActiveSubTab] = useState<"announcements" | "media" | "hero_settings">("announcements");
+
   // States for Site settings (Cover Image)
   const [settings, setSettings] = useState<any>({});
   const [coverLoading, setCoverLoading] = useState(false);
@@ -39,6 +46,20 @@ export default function ContentManagementPage() {
   });
   const [postFile, setPostFile] = useState<File | null>(null);
   const postFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Edit Post Modal State
+  const [editingPost, setEditingPost] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({
+    title: "",
+    type: "image", // "image" | "video"
+    videoUrl: "",
+    isFeatured: false,
+  });
+  const [editFile, setEditFile] = useState<File | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [movingId, setMovingId] = useState<string | null>(null);
 
   // Parse YouTube URL to Standard Embed URL
   const normalizeYoutubeUrl = (url: string): string => {
@@ -315,6 +336,116 @@ export default function ContentManagementPage() {
     }
   };
 
+  // Handle Open Edit Post Modal
+  const handleOpenEditPost = (post: any) => {
+    const isVideo = post.content_url.includes("youtube.com") || 
+                    post.content_url.includes("youtu.be") || 
+                    post.content_url.includes("embed");
+    setEditingPost(post);
+    setEditForm({
+      title: post.title || "",
+      type: isVideo ? "video" : "image",
+      videoUrl: isVideo ? post.content_url : "",
+      isFeatured: Boolean(post.is_featured),
+    });
+    setEditFile(null);
+    setEditError("");
+    if (editFileInputRef.current) editFileInputRef.current.value = "";
+  };
+
+  // Handle Save Edit Post
+  const handleSaveEditPost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPost) return;
+    setEditError("");
+
+    if (!editForm.title.trim()) {
+      setEditError("Vui lòng nhập tiêu đề bài đăng.");
+      return;
+    }
+
+    if (editForm.type === "video" && !editForm.videoUrl.trim()) {
+      setEditError("Vui lòng nhập đường dẫn video YouTube.");
+      return;
+    }
+
+    setEditLoading(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const formData = new FormData();
+      formData.append("title", editForm.title.trim());
+      formData.append("is_featured", String(editForm.isFeatured));
+
+      if (editForm.type === "image") {
+        if (editFile) {
+          formData.append("image", editFile);
+        }
+      } else {
+        const embedUrl = normalizeYoutubeUrl(editForm.videoUrl);
+        formData.append("video_url", embedUrl);
+      }
+
+      const res = await fetch(`${API_URL}/api/media/${editingPost.id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (res.ok) {
+        setEditingPost(null);
+        fetchMediaPosts();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setEditError(err.error || "Không thể cập nhật bài viết.");
+      }
+    } catch (e) {
+      setEditError("Lỗi kết nối mạng khi cập nhật bài viết.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Handle Move Post Up or Down (Reorder)
+  const handleMovePost = async (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= mediaPosts.length) return;
+
+    const currentItem = mediaPosts[index];
+    const targetItem = mediaPosts[targetIndex];
+
+    // Optimistic UI Update
+    const newPosts = [...mediaPosts];
+    newPosts[index] = targetItem;
+    newPosts[targetIndex] = currentItem;
+    setMediaPosts(newPosts);
+    setMovingId(currentItem.id);
+
+    try {
+      const token = localStorage.getItem("admin_token");
+      const ordered_ids = newPosts.map((p) => p.id);
+      const res = await fetch(`${API_URL}/api/media/reorder`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ordered_ids }),
+      });
+
+      if (!res.ok) {
+        // Rollback upon error
+        fetchMediaPosts();
+      }
+    } catch (e) {
+      console.error("Lỗi khi sắp xếp thứ tự bài viết:", e);
+      fetchMediaPosts();
+    } finally {
+      setMovingId(null);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -322,9 +453,54 @@ export default function ContentManagementPage() {
         <p className="text-slate-500">Cập nhật ảnh bìa giao diện và đăng các hoạt động truyền thông của câu lạc bộ.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* CỘT TRÁI: TIÊU ĐỀ HERO, THAY THẾ ẢNH BÌA & MODULES */}
-        <div className="lg:col-span-1 space-y-6">
+      {/* Sub-tabs Navigation */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-3 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("announcements")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+            activeSubTab === "announcements"
+              ? "bg-primary text-white shadow-md shadow-primary/20"
+              : "text-slate-600 hover:bg-slate-100 hover:text-secondary"
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          <span>📢 Thông Báo Website</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("media")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+            activeSubTab === "media"
+              ? "bg-primary text-white shadow-md shadow-primary/20"
+              : "text-slate-600 hover:bg-slate-100 hover:text-secondary"
+          }`}
+        >
+          <ImageIcon className="w-4 h-4" />
+          <span>📸 Thư Viện Bài Viết & Hoạt Động</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("hero_settings")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+            activeSubTab === "hero_settings"
+              ? "bg-primary text-white shadow-md shadow-primary/20"
+              : "text-slate-600 hover:bg-slate-100 hover:text-secondary"
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>🎨 Tiêu Đề Hero & Giao Diện Trang Chủ</span>
+        </button>
+      </div>
+
+      {/* SUB-TAB 1: THÔNG BÁO WEBSITE */}
+      {activeSubTab === "announcements" && <AnnouncementsTab />}
+
+      {/* SUB-TAB 3: CẤU HÌNH TIÊU ĐỀ HERO & ẢNH BÌA */}
+      {activeSubTab === "hero_settings" && (
+        <div className="max-w-4xl space-y-6">
           {/* CẤU HÌNH TIÊU ĐỀ HERO TRANG CHỦ */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
             <h2 className="text-lg font-bold text-secondary flex items-center gap-2">
@@ -674,9 +850,11 @@ export default function ContentManagementPage() {
             </div>
           </div>
         </div>
+      )}
 
-        {/* CỘT PHẢI: ĐĂNG BÀI MỚI & DANH SÁCH BÀI VIẾT */}
-        <div className="lg:col-span-2 space-y-6">
+      {/* SUB-TAB 2: THƯ VIỆN BÀI VIẾT & MEDIA */}
+      {activeSubTab === "media" && (
+        <div className="space-y-6 max-w-5xl">
           {/* Biểu mẫu đăng bài */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-secondary mb-4 flex items-center gap-2">
@@ -780,8 +958,18 @@ export default function ContentManagementPage() {
           </div>
 
           {/* Danh sách bài viết */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-secondary mb-4">Danh sách Hoạt động nổi bật</h2>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+              <div>
+                <h2 className="text-lg font-bold text-secondary">Danh sách Hoạt động nổi bật</h2>
+                <p className="text-xs text-slate-500">
+                  Trang chủ sẽ ưu tiên hiển thị 6 bài viết đầu tiên theo thứ tự sắp xếp bên dưới.
+                </p>
+              </div>
+              <span className="text-xs font-bold px-3 py-1 bg-purple-50 text-primary rounded-full shrink-0">
+                Tổng cộng: {mediaPosts.length} bài
+              </span>
+            </div>
 
             {postsLoading ? (
               <div className="py-12 flex justify-center">
@@ -791,15 +979,18 @@ export default function ContentManagementPage() {
               <p className="text-sm text-slate-400 italic text-center py-8">Chưa có bài viết nào được đăng.</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {mediaPosts.map((post) => {
+                {mediaPosts.map((post, index) => {
                   const isVideo = post.content_url.includes("youtube.com") || 
                                   post.content_url.includes("youtu.be") || 
                                   post.content_url.includes("embed");
+                  const isTop6 = index < 6;
 
                   return (
                     <div
                       key={post.id}
-                      className="border border-slate-100 rounded-xl overflow-hidden hover:shadow-md transition-shadow flex flex-col justify-between bg-slate-50/50"
+                      className={`border rounded-2xl overflow-hidden hover:shadow-md transition-all flex flex-col justify-between bg-white ${
+                        isTop6 ? "border-purple-200/80 shadow-xs" : "border-slate-200"
+                      }`}
                     >
                       {/* Media Preview Thumbnail */}
                       <div className="relative aspect-[16/10] bg-slate-900 flex items-center justify-center overflow-hidden border-b border-slate-100">
@@ -824,13 +1015,28 @@ export default function ContentManagementPage() {
                           />
                         )}
 
-                        {post.is_featured && (
-                          <span className="absolute top-2 left-2 bg-amber-500 text-white p-1 rounded-lg shadow-sm" title="Bài đăng nổi bật">
-                            <Star className="w-4 h-4 fill-white text-white" />
+                        {/* Huy hiệu thứ tự hiển thị */}
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-black shadow-sm flex items-center gap-1 ${
+                              isTop6
+                                ? "bg-emerald-600 text-white"
+                                : "bg-slate-700/80 text-slate-200"
+                            }`}
+                          >
+                            <span>#{index + 1}</span>
+                            <span>•</span>
+                            <span>{isTop6 ? "Trang Chủ" : "Mở rộng"}</span>
                           </span>
-                        )}
 
-                        <span className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                          {post.is_featured && (
+                            <span className="bg-amber-500 text-white p-1 rounded-lg shadow-sm" title="Bài đăng nổi bật">
+                              <Star className="w-3.5 h-3.5 fill-white text-white" />
+                            </span>
+                          )}
+                        </div>
+
+                        <span className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider backdrop-blur-xs">
                           {isVideo ? "Video" : "Hình ảnh"}
                         </span>
                       </div>
@@ -852,17 +1058,53 @@ export default function ContentManagementPage() {
                           </p>
                         </div>
 
-                        <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-                          <span className="text-[11px] text-slate-500 truncate max-w-[70%]" title={post.content_url}>
-                            {post.content_url}
-                          </span>
-                          <button
-                            onClick={() => handleDeletePost(post.id)}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Xóa bài viết"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        {/* Thanh điều khiển Thứ tự hiển thị & Chỉnh sửa */}
+                        <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
+                          {/* Nút Sắp xếp thứ tự Lên / Xuống */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-slate-400 mr-1 hidden sm:inline">Thứ tự:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleMovePost(index, "up")}
+                              disabled={index === 0 || movingId !== null}
+                              className="p-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                              title="Đẩy lên trước (Hiển thị ưu tiên hơn)"
+                            >
+                              <ChevronUp className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleMovePost(index, "down")}
+                              disabled={index === mediaPosts.length - 1 || movingId !== null}
+                              className="p-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                              title="Hạ xuống sau"
+                            >
+                              <ChevronDown className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Nút Sửa & Xóa */}
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditPost(post)}
+                              className="px-2.5 py-1.5 rounded-lg bg-purple-50 text-primary hover:bg-purple-100 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                              title="Chỉnh sửa bài viết"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Sửa</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePost(post.id)}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Xóa bài viết"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -872,7 +1114,174 @@ export default function ContentManagementPage() {
             )}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* MODAL CHỈNH SỬA NỘI DUNG BÀI VIẾT ĐÃ ĐĂNG */}
+      {editingPost && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setEditingPost(null)}
+        >
+          <div
+            className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-100 text-primary flex items-center justify-center">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-secondary leading-tight">Chỉnh sửa nội dung bài đăng</h3>
+                  <p className="text-[11px] text-slate-400">Cập nhật tiêu đề, ảnh hoặc liên kết video</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingPost(null)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                aria-label="Đóng"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body / Form */}
+            <form onSubmit={handleSaveEditPost} className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Tiêu đề bài đăng *</label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  placeholder="Nhập tiêu đề bài đăng..."
+                  className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Loại nội dung</label>
+                  <select
+                    value={editForm.type}
+                    onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+                    className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-primary bg-white"
+                  >
+                    <option value="image">Hình ảnh (Upload)</option>
+                    <option value="video">Video (YouTube URL)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-end pb-3">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={editForm.isFeatured}
+                      onChange={(e) => setEditForm({ ...editForm, isFeatured: e.target.checked })}
+                      className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary"
+                    />
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      Đánh dấu nổi bật <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Tùy biến input theo loại Image / Video */}
+              {editForm.type === "image" ? (
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-600">Hình ảnh</label>
+                  
+                  {/* Xem trước ảnh hiện tại */}
+                  {editingPost.content_url && !editForm.videoUrl && (
+                    <div className="relative aspect-[16/9] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 max-h-44">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={editingPost.content_url}
+                        alt="Ảnh hiện tại"
+                        className="w-full h-full object-cover"
+                      />
+                      <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold bg-black/60 text-white">
+                        Ảnh đang dùng
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="pt-1">
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                      Tải ảnh mới để thay thế (để trống nếu muốn giữ nguyên ảnh hiện tại):
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={editFileInputRef}
+                      onChange={(e) => setEditFile(e.target.files?.[0] || null)}
+                      className="w-full p-2 border border-slate-200 rounded-xl text-xs outline-none bg-slate-50"
+                    />
+                    {editFile && (
+                      <p className="text-xs text-emerald-600 font-semibold mt-1">
+                        ✓ Đã chọn ảnh mới: {editFile.name} ({(editFile.size / 1024 / 1024).toFixed(2)} MB)
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Đường dẫn video YouTube *</label>
+                  <input
+                    type="text"
+                    required={editForm.type === "video"}
+                    placeholder="https://www.youtube.com/watch?v=... hoặc https://youtu.be/..."
+                    value={editForm.videoUrl}
+                    onChange={(e) => setEditForm({ ...editForm, videoUrl: e.target.value })}
+                    className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-primary"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    * Hệ thống sẽ tự động chuyển đổi thành đường dẫn Embed chuẩn.
+                  </p>
+                </div>
+              )}
+
+              {editError && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+                  <AlertCircle className="w-4 h-4 shrink-0" /> {editError}
+                </div>
+              )}
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingPost(null)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  {editLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Đang lưu...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Lưu thay đổi</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -23,6 +23,7 @@ import EventRecruitmentCard from "@/app/components/recruitment/EventRecruitmentC
 import RegistrationModal from "@/app/components/recruitment/RegistrationModal";
 import { formatVietnamDate } from "@/app/utils/date";
 import { format } from "date-fns";
+import NotificationBell from "@/app/components/notifications/NotificationBell";
 import SessionReservationWidget from "@/app/components/SessionReservationWidget";
 
 // ===== Giới thiệu & Liên hệ động từ site_settings (admin chỉnh ở Quản lý nội dung) =====
@@ -461,6 +462,9 @@ export default function Home() {
 
           {/* RIGHT ACTIONS: AUTH BUTTONS / USER PROFILE */}
           <div className="flex gap-2 sm:gap-3 items-center">
+            {/* Chuông Thông Báo Website */}
+            <NotificationBell />
+
             {isLoggedIn ? (
               <div className="flex items-center gap-2 sm:gap-3">
                 {/* Nút Quản trị cho Admin */}

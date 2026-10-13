@@ -17,6 +17,7 @@ const statsRoutes = require('./routes/stats');
 const eventRoutes = require('./routes/events');
 const emailRoutes = require('./routes/emails');
 const rankingRoutes = require('./routes/ranking');
+const announcementRoutes = require('./routes/announcements');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -90,6 +91,8 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/admin/emails', emailRoutes);
 app.use('/api/ranking', rankingRoutes);
+app.use('/api/announcements', announcementRoutes.publicRouter);
+app.use('/api/admin/announcements', announcementRoutes.adminRouter);
 
 // Base route
 app.get('/', (req, res) => {

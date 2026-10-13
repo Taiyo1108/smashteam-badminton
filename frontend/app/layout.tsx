@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import BgmPlayer from "./components/BgmPlayer";
 import PwaInstallPrompt from "./components/PwaInstallPrompt";
+import NotificationCenter from "./components/notifications/NotificationCenter";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -68,7 +69,9 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
-        {children}
+        <NotificationCenter>
+          {children}
+        </NotificationCenter>
         <BgmPlayer />
         <PwaInstallPrompt />
       </body>

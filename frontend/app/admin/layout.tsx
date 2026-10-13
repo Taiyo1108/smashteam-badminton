@@ -8,6 +8,7 @@ import {
   Image as ImageIcon, Calendar, Sparkles, ShoppingBag, Home, Trophy, Mail
 } from "lucide-react";
 import { isTokenExpired, redirectToLogin, clearAuthSession } from "@/app/utils/auth";
+import NotificationBell from "@/app/components/notifications/NotificationBell";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -149,24 +150,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Main Content Area — cột duy nhất được cuộn, sidebar giữ cố định */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile Header (iOS Safe Area Notch Support) */}
+        {/* Header (Desktop & Mobile) */}
         <header 
-          className="lg:hidden bg-white/95 backdrop-blur-md border-b border-purple-100 flex items-center px-4 justify-between shrink-0 shadow-xs pt-safe"
+          className="bg-white/95 backdrop-blur-md border-b border-purple-100 flex items-center px-4 lg:px-8 justify-between shrink-0 shadow-xs pt-safe"
           style={{ paddingTop: "env(safe-area-inset-top, 0px)", height: "calc(4rem + env(safe-area-inset-top, 0px))" }}
         >
           <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden p-2 text-slate-700 hover:bg-purple-50 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center focus-ring cursor-pointer"
+              aria-label="Mở menu quản trị"
+            >
+              <Menu className="w-6 h-6" aria-hidden="true" />
+            </button>
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-bold text-white shadow-xs">
               S
             </div>
             <span className="font-bold text-secondary text-sm">Quản Trị SmashTeam</span>
           </div>
-          <button
-            onClick={() => setIsSidebarOpen(true)}
-            className="p-2 text-slate-700 hover:bg-purple-50 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center focus-ring cursor-pointer"
-            aria-label="Mở menu quản trị"
-          >
-            <Menu className="w-6 h-6" aria-hidden="true" />
-          </button>
+
+          <div className="flex items-center gap-3">
+            <NotificationBell />
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 lg:p-8">

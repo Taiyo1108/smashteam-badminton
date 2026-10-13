@@ -19,6 +19,7 @@ import SharePlayerCard from "@/app/components/SharePlayerCard";
 import ReputationHistoryModal from "@/app/components/ReputationHistoryModal";
 import { formatVietnamDate } from "@/app/utils/date";
 import SessionReservationWidget from "@/app/components/SessionReservationWidget";
+import NotificationBell from "@/app/components/notifications/NotificationBell";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -782,6 +783,7 @@ export default function ProfilePage() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
+            <NotificationBell />
             <Link href="/">
               <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all text-sm font-semibold">
                 <Home className="w-4 h-4" /> Trang chủ
