@@ -315,7 +315,7 @@ export default function ProfilePage() {
     
     setBuyingItemId(itemId);
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const url = `${API_URL}/api/shop/buy`;
       const res = await fetch(url, {
         method: "POST",
@@ -327,9 +327,26 @@ export default function ProfilePage() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast(data.message || `Đổi thành công: ${itemName}!`);
+        const item = shopItems.find((i: any) => i.id === itemId);
         await fetchGamificationData();
         await fetchProfileData();
+
+        setRewardCelebration({
+          isOpen: true,
+          type: "shop_purchase",
+          title: item?.name || itemName,
+          subtitle: item?.item_type === "physical"
+            ? "Đổi quà thành công! Hãy xuất trình mã nhận quà trong Túi đồ tại sân CLB."
+            : "Mua thành công! Trang bị đã sẵn sàng sử dụng trong Túi đồ của bạn.",
+          item: {
+            name: item?.name || itemName,
+            imageUrl: item?.image_url || null,
+            description: item?.description || (item?.item_type === "physical" ? "Vật phẩm lưu niệm / nước uống CLB" : "Trang bị hỗ trợ thi đấu"),
+            type: item?.item_type || "virtual"
+          },
+          couponCode: data.couponCode || null,
+          spentCoins: price
+        });
       } else {
         showToast(data.error || "Lỗi khi đổi quà.", "error");
       }
@@ -411,7 +428,7 @@ export default function ProfilePage() {
   }, [inventory]);
 
   // Hàm chạy thử nghiệm hiệu ứng nhận thưởng lộng lẫy trên local
-  const handleTestRewardEffect = (type: "quest" | "coins" | "shield") => {
+  const handleTestRewardEffect = (type: "quest" | "coins" | "shield" | "shop") => {
     if (type === "quest") {
       setRewardCelebration({
         isOpen: true,
@@ -433,7 +450,7 @@ export default function ProfilePage() {
         subtitle: "🔥 CHÚC MỪNG BẠN TRÚNG JACKPOT HỘP QUÀ BÍ ẨN! 🔥",
         coins: 50,
       });
-    } else {
+    } else if (type === "shield") {
       setRewardCelebration({
         isOpen: true,
         type: "mystery_box",
@@ -445,6 +462,21 @@ export default function ProfilePage() {
           description: "Tự động bảo vệ chuỗi thắng của bạn khi thua trận trong đấu xếp hạng!",
           type: "streak_shield",
         },
+      });
+    } else if (type === "shop") {
+      setRewardCelebration({
+        isOpen: true,
+        type: "shop_purchase",
+        title: "🐉 Long Bào Smash Team",
+        subtitle: "Đổi quà thành công! Hãy xuất trình mã nhận quà trong Túi đồ tại sân CLB.",
+        item: {
+          name: "🐉 Long Bào Smash Team",
+          imageUrl: "https://res.cloudinary.com/skdav4ik/image/upload/v1783008571/smashteam/imnss0sgahnx2phzgxjo.png",
+          description: "Áo đấu rồng thiêng cao cấp phiên bản giới hạn của CLB SmashTeam.",
+          type: "physical",
+        },
+        couponCode: "SM-TEE-VIP888",
+        spentCoins: 2000,
       });
     }
   };
@@ -999,6 +1031,12 @@ export default function ProfilePage() {
                         className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1"
                       >
                         <Shield className="w-3.5 h-3.5" /> Hộp Quà (Khiên Hộ Mệnh)
+                      </button>
+                      <button
+                        onClick={() => handleTestRewardEffect("shop")}
+                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1"
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5" /> Mua Hàng Cửa Hàng
                       </button>
                     </div>
                   </div>

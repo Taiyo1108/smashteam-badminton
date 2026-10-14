@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import { Sparkles, Trophy, X, Coins, Shield, ArrowUpCircle, Check } from "lucide-react";
+import { Sparkles, Trophy, X, Coins, Shield, ArrowUpCircle, Check, ShoppingBag, Ticket } from "lucide-react";
 import confetti from "canvas-confetti";
 
 export interface RewardItem {
@@ -16,12 +16,14 @@ export interface RewardItem {
 
 export interface RewardCelebrationData {
   isOpen: boolean;
-  type: "quest" | "mystery_box" | "level_up" | "generic";
+  type: "quest" | "mystery_box" | "shop_purchase" | "level_up" | "generic";
   title: string;
   subtitle?: string;
   coins?: number;
+  spentCoins?: number;
   xp?: number;
   item?: RewardItem;
+  couponCode?: string | null;
   levelUp?: {
     leveledUp: boolean;
     currentLevel?: number;
@@ -42,7 +44,7 @@ function playRewardChime(isJackpot = false) {
     const ctx = new AudioCtx();
     const now = ctx.currentTime;
 
-    // Hợp âm Trưởng tươi vui (C5, E5, G5, B5, C6)
+    // Hợp âm Trưởng tươi vui (C5, E5, G5, B5, C6, E6)
     const freqs = isJackpot
       ? [523.25, 659.25, 783.99, 987.77, 1046.5, 1318.51] // C5, E5, G5, B5, C6, E6
       : [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
@@ -115,6 +117,7 @@ export default function RewardCelebrationModal({ data, onClose }: RewardCelebrat
     const isJackpot = Boolean(
       (data.coins && data.coins >= 40) ||
       data.levelUp?.leveledUp ||
+      data.type === "shop_purchase" ||
       data.item
     );
 
@@ -171,7 +174,7 @@ export default function RewardCelebrationModal({ data, onClose }: RewardCelebrat
       clearTimeout(timer1);
       clearTimeout(timer2);
     };
-  }, [data?.isOpen, data?.coins, data?.levelUp, data?.item]);
+  }, [data?.isOpen, data?.coins, data?.levelUp, data?.item, data?.type]);
 
   // Phím tắt Enter, Space, Escape để đóng modal tiện lợi
   useEffect(() => {
@@ -202,6 +205,7 @@ export default function RewardCelebrationModal({ data, onClose }: RewardCelebrat
   const hasXp = typeof data.xp === "number" && data.xp > 0;
   const isLevelUp = Boolean(data.levelUp?.leveledUp);
   const isJackpot = Boolean(hasCoins && (data.coins || 0) >= 40);
+  const isShopPurchase = data.type === "shop_purchase";
 
   return createPortal(
     <div
@@ -225,7 +229,7 @@ export default function RewardCelebrationModal({ data, onClose }: RewardCelebrat
       {/* ÁNH SÁNG TÂM ĐIỂM (AMBIENT RADIAL GLOW) */}
       <div
         className={`absolute pointer-events-none w-96 h-96 rounded-full filter blur-3xl opacity-60 transition-all duration-700 animate-pulse ${
-          isJackpot
+          isJackpot || isShopPurchase
             ? "bg-amber-400/40"
             : isLevelUp
             ? "bg-purple-500/40"
@@ -260,6 +264,8 @@ export default function RewardCelebrationModal({ data, onClose }: RewardCelebrat
             ? "Hoàn Thành Nhiệm Vụ"
             : data.type === "mystery_box"
             ? "Hộp Quà May Mắn"
+            : data.type === "shop_purchase"
+            ? "Mua Hàng Thành Công"
             : "Phần Thưởng Độc Quyền"}
           <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
         </div>
@@ -286,7 +292,7 @@ export default function RewardCelebrationModal({ data, onClose }: RewardCelebrat
 
         {/* KHU VỰC HIỂN THỊ PHẦN THƯỞNG TRỌNG TÂM (HERO REWARD SHOWCASE) */}
         <div className="mt-6 mb-6 flex flex-col sm:flex-row items-center justify-center gap-3.5">
-          {/* 1. HIỂN THỊ COIN (NẾU CÓ) */}
+          {/* 1. HIỂN THỊ COIN (NẾU CÓ TỪ NHIỆM VỤ HOẶC HỘP QUÀ) */}
           {hasCoins && (
             <div className="relative group flex-1 w-full p-4 rounded-2xl bg-gradient-to-b from-amber-500/15 to-purple-950/40 border border-amber-400/40 shadow-[0_0_30px_rgba(245,158,11,0.25)] flex flex-col items-center justify-center gap-2 hover:scale-102 transition-transform">
               {/* Icon đồng xu 3D vàng óng */}
@@ -319,7 +325,7 @@ export default function RewardCelebrationModal({ data, onClose }: RewardCelebrat
             </div>
           )}
 
-          {/* 2. HIỂN THỊ EXP (NẾU CÓ) */}
+          {/* 2. HIỂN THỊ EXP (NẾU CÓ TỪ NHIỆM VỤ) */}
           {hasXp && (
             <div className="relative group flex-1 w-full p-4 rounded-2xl bg-gradient-to-b from-purple-500/15 to-purple-950/40 border border-purple-400/40 shadow-[0_0_30px_rgba(168,85,247,0.25)] flex flex-col items-center justify-center gap-2 hover:scale-102 transition-transform">
               {/* Icon viên đá EXP phát sáng tím */}
@@ -339,34 +345,57 @@ export default function RewardCelebrationModal({ data, onClose }: RewardCelebrat
             </div>
           )}
 
-          {/* 3. HIỂN THỊ VẬT PHẨM (NẾU CÓ, VÍ DỤ: KHIÊN HỘ MỆNH TỪ HỘP QUÀ) */}
+          {/* 3. HIỂN THỊ VẬT PHẨM (VẬT PHẨM TỪ CỬA HÀNG HOẶC HỘP QUÀ) */}
           {data.item && (
-            <div className="relative group flex-1 w-full p-5 rounded-2xl bg-gradient-to-b from-emerald-500/15 to-purple-950/40 border border-emerald-400/40 shadow-[0_0_30px_rgba(16,185,129,0.25)] flex flex-col items-center justify-center gap-2.5">
+            <div className="relative group flex-1 w-full p-5 rounded-2xl bg-gradient-to-b from-purple-500/20 via-[#1a0c36] to-purple-950/50 border border-purple-400/50 shadow-[0_0_35px_rgba(168,85,247,0.3)] flex flex-col items-center justify-center gap-3">
               {data.item.imageUrl ? (
-                <div className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-emerald-400/50 bg-purple-950/60 p-1 shadow-[0_0_20px_rgba(16,185,129,0.5)]">
+                <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-amber-400/60 bg-purple-950/70 p-1.5 shadow-[0_0_25px_rgba(251,191,36,0.4)]">
                   <Image
                     src={data.item.imageUrl}
                     alt={data.item.name}
                     fill
-                    sizes="80px"
+                    sizes="112px"
                     unoptimized
-                    className="object-contain p-1"
+                    className="object-contain p-1 hover:scale-105 transition-transform"
                   />
                 </div>
               ) : (
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-600 flex items-center justify-center shadow-[0_0_25px_rgba(16,185,129,0.6)] border-2 border-emerald-200">
-                  <Shield className="w-8 h-8 text-white drop-shadow-md" />
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 via-purple-600 to-indigo-700 flex items-center justify-center shadow-[0_0_25px_rgba(168,85,247,0.6)] border-2 border-purple-300">
+                  <ShoppingBag className="w-9 h-9 text-white drop-shadow-md" />
                 </div>
               )}
 
               <div className="space-y-1">
-                <div className="text-base sm:text-lg font-black text-emerald-300 leading-tight">
+                <div className="text-base sm:text-lg font-black text-amber-300 leading-tight">
                   {data.item.name}
                 </div>
-                <p className="text-[11px] text-slate-300 max-w-xs">
-                  {data.item.description || "Phần quà đặc biệt may mắn đã được gửi vào Túi đồ!"}
+                <p className="text-[11px] text-purple-200/80 max-w-xs">
+                  {data.item.description || "Vật phẩm đã sẵn sàng sử dụng trong Túi đồ của bạn!"}
                 </p>
               </div>
+
+              {/* Thông tin số xu đã thanh toán (khi mua hàng) */}
+              {typeof data.spentCoins === "number" && data.spentCoins > 0 && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold">
+                  <Coins className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Đã thanh toán: {data.spentCoins} Smash Coins</span>
+                </div>
+              )}
+
+              {/* Mã nhận quà vật lý (nếu có Coupon Code) */}
+              {data.couponCode && (
+                <div className="w-full mt-1 p-2.5 rounded-xl bg-purple-900/50 border border-purple-400/40 flex flex-col items-center gap-1 shadow-inner">
+                  <span className="text-[10px] text-purple-200 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Ticket className="w-3 h-3 text-amber-300" /> Mã nhận tại sân CLB:
+                  </span>
+                  <span className="font-mono text-sm sm:text-base font-black text-amber-300 tracking-widest px-3 py-0.5 rounded bg-black/50 border border-amber-400/50">
+                    {data.couponCode}
+                  </span>
+                  <span className="text-[9px] text-purple-300/70">
+                    Mã này đã được lưu trong Túi Đồ để bạn xuất trình nhận đồ
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -380,7 +409,7 @@ export default function RewardCelebrationModal({ data, onClose }: RewardCelebrat
           <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/40 to-transparent" />
           <span className="relative z-10 flex items-center justify-center gap-2 drop-shadow-xs">
             <Check className="w-4 h-4 stroke-[3]" />
-            Tuyệt vời / Nhận thưởng
+            Tuyệt vời / Hoàn tất
           </span>
         </button>
 
