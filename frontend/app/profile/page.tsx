@@ -20,6 +20,7 @@ import ReputationHistoryModal from "@/app/components/ReputationHistoryModal";
 import { formatVietnamDate } from "@/app/utils/date";
 import SessionReservationWidget from "@/app/components/SessionReservationWidget";
 import NotificationBell from "@/app/components/notifications/NotificationBell";
+import RewardCelebrationModal, { RewardCelebrationData } from "@/app/components/RewardCelebrationModal";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -45,7 +46,7 @@ export default function ProfilePage() {
   const [buyingItemId, setBuyingItemId] = useState<number | null>(null);
   const [isOpeningBox, setIsOpeningBox] = useState(false);
   const [boxCooldown, setBoxCooldown] = useState<number | null>(null);
-  const [mysteryBoxReward, setMysteryBoxReward] = useState<any | null>(null);
+  const [rewardCelebration, setRewardCelebration] = useState<RewardCelebrationData | null>(null);
   
   // Phân mục kho đồ: "physical" (vật phẩm) | "virtual" (trang bị)
   const [inventorySubTab, setInventorySubTab] = useState<"physical" | "virtual">("physical");
@@ -341,9 +342,8 @@ export default function ProfilePage() {
 
   const handleOpenMysteryBox = async () => {
     setIsOpeningBox(true);
-    setMysteryBoxReward(null);
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const url = `${API_URL}/api/shop/mystery-box`;
       const res = await fetch(url, {
         method: "POST",
@@ -351,11 +351,30 @@ export default function ProfilePage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMysteryBoxReward(data.reward);
         setBoxCooldown(168 * 3600); // 7 ngày = 168 giờ
-        showToast(data.message || "Mở hộp quà thành công!", "success");
         await fetchGamificationData();
         await fetchProfileData();
+
+        const isCoins = data.reward?.type === "coins";
+        const coinVal = isCoins ? parseInt(data.reward?.value, 10) || 0 : 0;
+
+        setRewardCelebration({
+          isOpen: true,
+          type: "mystery_box",
+          title: isCoins ? `+${coinVal} SMASH COINS!` : "VẬT PHẨM BÍ ẨN HIẾM!",
+          subtitle: isCoins
+            ? (coinVal >= 40
+                ? "🔥 CHÚC MỪNG BẠN TRÚNG JACKPOT HỘP QUÀ! 🔥"
+                : "Phần thưởng đã được cộng trực tiếp vào ví xu của bạn!")
+            : "Vật phẩm đã được cất an toàn vào Túi đồ của bạn!",
+          coins: isCoins ? coinVal : 0,
+          item: !isCoins && data.reward ? {
+            name: data.reward.name,
+            imageUrl: data.reward.imageUrl,
+            description: "Bảo vệ chuỗi thắng của bạn khi thua trận (hạn dùng 7 ngày)",
+            type: data.reward.type,
+          } : undefined,
+        });
       } else {
         if (data.remainingMs) {
           setBoxCooldown(Math.ceil(data.remainingMs / 1000));
@@ -391,23 +410,69 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory]);
 
+  // Hàm chạy thử nghiệm hiệu ứng nhận thưởng lộng lẫy trên local
+  const handleTestRewardEffect = (type: "quest" | "coins" | "shield") => {
+    if (type === "quest") {
+      setRewardCelebration({
+        isOpen: true,
+        type: "quest",
+        title: "Chiến Thắng 3 Trận Đấu Xếp Hạng",
+        subtitle: "Chúc mừng bạn đã hoàn thành xuất sắc nhiệm vụ tuần!",
+        coins: 50,
+        xp: 100,
+        levelUp: {
+          leveledUp: true,
+          currentLevel: (gamProfile?.level || 1) + 1,
+        },
+      });
+    } else if (type === "coins") {
+      setRewardCelebration({
+        isOpen: true,
+        type: "mystery_box",
+        title: "+50 SMASH COINS!",
+        subtitle: "🔥 CHÚC MỪNG BẠN TRÚNG JACKPOT HỘP QUÀ BÍ ẨN! 🔥",
+        coins: 50,
+      });
+    } else {
+      setRewardCelebration({
+        isOpen: true,
+        type: "mystery_box",
+        title: "VẬT PHẨM BÍ ẨN HIẾM!",
+        subtitle: "Vật phẩm đã được cất an toàn vào Túi đồ của bạn!",
+        item: {
+          name: "1 Khiên Hộ Mệnh (Hạn dùng 7 ngày)",
+          imageUrl: "https://res.cloudinary.com/skdav4ik/image/upload/v1791398450/smashteam/xvoqoys5kpaeo7qgpne0.png",
+          description: "Tự động bảo vệ chuỗi thắng của bạn khi thua trận trong đấu xếp hạng!",
+          type: "streak_shield",
+        },
+      });
+    }
+  };
+
   // Gamification Claim Handlers
   const handleClaimQuest = async (questId: number) => {
     setClaimingQuestId(questId);
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/gamification/quests/${questId}/claim`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
       if (res.ok) {
-        showToast(data.message || "Nhận thưởng thành công!");
-        if (data.level_up?.leveledUp) {
-          showToast(`LÊN CẤP! Bạn đạt Cấp độ ${data.level_up.currentLevel}!`, "success");
-        }
+        const quest = quests.find((q: any) => q.id === questId);
         await fetchGamificationData();
         await fetchProfileData();
+
+        setRewardCelebration({
+          isOpen: true,
+          type: "quest",
+          title: quest?.title || "Nhiệm Vụ Hoàn Thành!",
+          subtitle: "Chúc mừng bạn đã hoàn thành xuất sắc thử thách!",
+          coins: data.coin_reward ?? quest?.coin_reward ?? 0,
+          xp: data.xp_reward ?? quest?.xp_reward ?? 0,
+          levelUp: data.level_up,
+        });
       } else {
         showToast(data.error || "Lỗi khi nhận thưởng.", "error");
       }
@@ -909,6 +974,36 @@ export default function ProfilePage() {
             {/* TAB CONTENT: QUESTS */}
             {activeGamTab === "quests" && (
               <div className="space-y-4">
+                {/* NÚT THỬ NGHIỆM HIỆU ỨNG NHẬN THƯỞNG (DÀNH CHO ADMIN) */}
+                {playerData?.player?.role === "admin" && (
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-500/10 via-amber-500/10 to-purple-500/10 border border-purple-300/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-500 animate-spin" />
+                      <span className="text-xs font-bold text-slate-800">Demo hiệu ứng nhận thưởng (Admin):</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => handleTestRewardEffect("quest")}
+                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Thưởng Nhiệm Vụ + Lên Cấp
+                      </button>
+                      <button
+                        onClick={() => handleTestRewardEffect("coins")}
+                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1"
+                      >
+                        <Coins className="w-3.5 h-3.5" /> Hộp Quà (Jackpot Xu)
+                      </button>
+                      <button
+                        onClick={() => handleTestRewardEffect("shield")}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1"
+                      >
+                        <Shield className="w-3.5 h-3.5" /> Hộp Quà (Khiên Hộ Mệnh)
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {sortedQuests.length === 0 ? (
                     <div className="text-center py-8 text-slate-500 text-sm">Không có nhiệm vụ khả dụng.</div>
                   ) : (
@@ -1417,39 +1512,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Modal thông báo nhận quà Mystery Box */}
-                {mysteryBoxReward && (
-                  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="p-6 rounded-2xl bg-white border border-slate-200 max-w-sm w-full text-center relative overflow-hidden shadow-2xl">
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-black animate-pulse"></div>
-                      {mysteryBoxReward.imageUrl ? (
-                        <div className="w-20 h-20 mx-auto my-3 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 relative shadow-md">
-                          <Image
-                            src={mysteryBoxReward.imageUrl}
-                            alt={mysteryBoxReward.name}
-                            fill
-                            sizes="80px"
-                            unoptimized
-                            className="object-cover"
-                          />
-                        </div>
-                      ) : (
-                        <div className="text-5xl my-4">🎉</div>
-                      )}
-                      <h4 className="text-lg font-black text-slate-900">Bạn Đã Nhận Được Quà!</h4>
-                      <p className="text-base font-black text-amber-500 mt-2">{mysteryBoxReward.name}</p>
-                      <p className="text-xs text-slate-500 mt-2">
-                        Phần thưởng đã được cộng trực tiếp vào tài khoản của bạn.
-                      </p>
-                      <button
-                        onClick={() => setMysteryBoxReward(null)}
-                        className="mt-6 w-full py-2 bg-black hover:bg-black/85 text-white text-xs font-black rounded-full cursor-pointer transition-colors"
-                      >
-                        Đồng ý
-                      </button>
-                    </div>
-                  </div>
-                )}
+
 
                 {/* 2. Cửa hàng chính */}
                 <div className="flex items-center justify-between">
@@ -2027,6 +2090,12 @@ export default function ProfilePage() {
         isOpen={isReputationModalOpen}
         onClose={() => setIsReputationModalOpen(false)}
         reputation={playerData.reputation}
+      />
+
+      {/* HIỆU ỨNG NHẬN THƯỞNG LỘNG LẪY GIỮA MÀN HÌNH (QUESTS & MYSTERY BOX) */}
+      <RewardCelebrationModal
+        data={rewardCelebration}
+        onClose={() => setRewardCelebration(null)}
       />
 
       <footer className="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-xs">
