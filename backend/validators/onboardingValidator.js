@@ -21,10 +21,10 @@ function normalizeVietnamPhone(phone) {
 
 const onboardingSchema = z.object({
   full_name: z
-    .string({ required_error: 'Họ và tên là bắt buộc.' })
+    .string({ required_error: 'Họ và tên đầy đủ là bắt buộc.' })
     .trim()
-    .min(2, 'Họ và tên phải có ít nhất 2 ký tự.')
-    .max(50, 'Họ và tên không được vượt quá 50 ký tự.'),
+    .min(2, 'Họ và tên đầy đủ phải có ít nhất 2 ký tự.')
+    .max(50, 'Họ và tên đầy đủ không được vượt quá 50 ký tự.'),
   phone_zalo: z
     .string({ required_error: 'Số điện thoại Zalo là bắt buộc.' })
     .transform(normalizeVietnamPhone)
@@ -37,7 +37,9 @@ const onboardingSchema = z.object({
     }),
   avatar_url: z
     .string()
-    .url('Đường dẫn ảnh đại diện không hợp lệ.')
+    .refine((val) => !val || val.startsWith('/') || val.startsWith('http://') || val.startsWith('https://'), {
+      message: 'Đường dẫn ảnh đại diện không hợp lệ.'
+    })
     .nullable()
     .optional(),
   honeypot: z

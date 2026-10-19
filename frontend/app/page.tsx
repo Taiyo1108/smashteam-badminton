@@ -564,13 +564,14 @@ export default function Home() {
                     Đăng nhập
                   </button>
                 </Link>
-                <button 
-                  id="nav-register-btn"
-                  onClick={() => setIsRegisterModalOpen(true)}
-                  className="min-h-[40px] px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform active:scale-95 shadow-md shadow-primary/30 text-xs cursor-pointer focus-ring"
-                >
-                  Gia nhập ngay
-                </button>
+                <Link href="/login?mode=register">
+                  <button 
+                    id="nav-register-btn"
+                    className="min-h-[40px] px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform active:scale-95 shadow-md shadow-primary/30 text-xs cursor-pointer focus-ring"
+                  >
+                    Đăng ký tài khoản vãng lai
+                  </button>
+                </Link>
               </div>
             )}
           </div>
@@ -744,15 +745,16 @@ export default function Home() {
                   transition={{ duration: 0.4, delay: 0.3 }}
                   className="flex flex-wrap items-center justify-center gap-4 pt-2"
                 >
-                  <button 
-                    id="hero-cta-apply-now"
-                    onClick={() => setIsRegisterModalOpen(true)}
-                    className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
-                  >
-                    <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
-                    <span>Ứng tuyển thành viên ngay</span>
-                    <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
-                  </button>
+                  <Link href="/login?mode=register">
+                    <button 
+                      id="hero-cta-apply-now"
+                      className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
+                    >
+                      <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                      <span>Đăng ký tài khoản vãng lai ngay</span>
+                      <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
+                    </button>
+                  </Link>
 
                   <button 
                     id="hero-cta-explore-activities"

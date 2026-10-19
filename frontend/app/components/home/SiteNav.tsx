@@ -76,10 +76,10 @@ function SiteNav() {
                 Đăng nhập
               </Link>
               <Link
-                href="/register"
+                href="/login?mode=register"
                 className="flex items-center gap-2 h-10 pl-5 pr-1.5 rounded-full bg-black text-white text-sm font-semibold hover:bg-black/85 transition-colors"
               >
-                Gia nhập ngay
+                Đăng ký tài khoản vãng lai
                 <span className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center">
                   <ArrowUpRight className="w-4 h-4" />
                 </span>

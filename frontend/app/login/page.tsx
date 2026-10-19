@@ -160,39 +160,13 @@ export default function UnifiedLogin() {
             <Lock className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-secondary">
-            {mode === "login" ? "Đăng Nhập" : "Đăng Ký Tài Khoản Giao Lưu"}
+            {mode === "login" ? "Đăng Nhập" : "Đăng Ký Tài Khoản Vãng Lai"}
           </h1>
           <p className="text-slate-500 text-sm mt-1">
             {mode === "login" 
               ? "Dành cho Quản trị viên, Thành viên & Người chơi vãng lai" 
               : "Khởi tạo tài khoản Guest để tính điểm Elo và lên Bảng Xếp Hạng"}
           </p>
-
-          {/* Mode Switcher Tabs */}
-          <div className="flex bg-slate-100 p-1 rounded-2xl mt-4 border border-slate-200">
-            <button
-              type="button"
-              onClick={() => { setMode("login"); setError(""); }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                mode === "login"
-                  ? "bg-white text-secondary shadow-sm"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              Đăng nhập
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMode("register"); setError(""); }}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                mode === "register"
-                  ? "bg-white text-secondary shadow-sm"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              Đăng ký vãng lai
-            </button>
-          </div>
         </div>
 
         {error && (
@@ -308,15 +282,35 @@ export default function UnifiedLogin() {
         </form>
 
         <div className="text-center mt-6 pt-4 border-t border-slate-100 flex flex-col gap-2.5">
+          {mode === "login" ? (
+            <button
+              type="button"
+              onClick={() => { setMode("register"); setError(""); }}
+              className="text-xs font-bold text-primary hover:text-primary-hover transition-colors cursor-pointer flex items-center justify-center gap-1.5 py-1"
+            >
+              <span>Chưa có tài khoản? Đăng ký tài khoản vãng lai</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setMode("login"); setError(""); }}
+              className="text-xs font-bold text-primary hover:text-primary-hover transition-colors cursor-pointer flex items-center justify-center gap-1.5 py-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Đã có tài khoản? Đăng nhập ngay</span>
+            </button>
+          )}
+
           <Link
             href="/claim-account"
-            className="text-xs font-semibold text-primary hover:text-primary-hover transition-colors"
+            className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
           >
-            Bạn là thành viên cũ? Kích hoạt tài khoản tại đây
+            Kích hoạt tài khoản thành viên cũ SmashTeam
           </Link>
           <Link
             href="/"
-            className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors flex items-center justify-center gap-1"
+            className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors flex items-center justify-center gap-1 pt-0.5"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Quay về Trang chủ
           </Link>

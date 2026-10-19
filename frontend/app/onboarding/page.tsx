@@ -10,12 +10,12 @@ import {
 import confetti from "canvas-confetti";
 import { API_URL } from "@/app/config";
 
-// Danh sách bộ Avatar mặc định cho người chơi vãng lai (không tốn dung lượng upload máy)
+// Danh sách bộ Avatar hoạt hình cầu lông dễ thương cho người chơi vãng lai
 const DEFAULT_AVATARS = [
-  { id: "smash_badminton", label: "Tay vợt Smash", url: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=300&h=300&fit=crop&crop=faces" },
-  { id: "pro_player", label: "Chiến binh Cầu", url: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=300&h=300&fit=crop&crop=faces" },
-  { id: "dragon_badminton", label: "Rồng Lửa Smash", url: "https://res.cloudinary.com/skdav4ik/image/upload/v1783008571/smashteam/imnss0sgahnx2phzgxjo.png" },
-  { id: "shield_guardian", label: "Hộ Vệ Sân Cầu", url: "https://res.cloudinary.com/skdav4ik/image/upload/v1791398450/smashteam/xvoqoys5kpaeo7qgpne0.png" },
+  { id: "avatar_shuttlecock", label: "Bé Trái Cầu", url: "/avatars/avatar_shuttlecock.jpg" },
+  { id: "avatar_boy", label: "Tay Vợt Champion", url: "/avatars/avatar_boy.jpg" },
+  { id: "avatar_girl", label: "Nữ Thần Smash", url: "/avatars/avatar_girl.jpg" },
+  { id: "avatar_tiger", label: "Bé Hổ Con", url: "/avatars/avatar_tiger.jpg" },
 ];
 
 export default function OnboardingPage() {
@@ -66,10 +66,10 @@ export default function OnboardingPage() {
     e.preventDefault();
     setError(null);
 
-    // 1. Kiểm tra Họ và tên
+    // 1. Kiểm tra Họ và tên đầy đủ
     const trimmedName = fullName.trim();
     if (trimmedName.length < 2 || trimmedName.length > 50) {
-      setError("Họ và tên hoặc biệt danh trên sân phải từ 2 đến 50 ký tự.");
+      setError("Họ và Tên đầy đủ phải từ 2 đến 50 ký tự.");
       return;
     }
 
@@ -151,8 +151,13 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#120726] via-[#0b0318] to-black flex items-center justify-center p-4 sm:p-6 text-white relative overflow-hidden">
+      {/* Background hình nền hoạt hình cầu lông dễ thương */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center opacity-25 filter blur-[1px] pointer-events-none scale-105"
+        style={{ backgroundImage: "url('/avatars/cute_badminton_bg.jpg')" }}
+      />
       {/* Background radial glowing ambient */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-600/15 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="relative w-full max-w-lg bg-white/5 backdrop-blur-2xl rounded-3xl border border-purple-500/30 p-6 sm:p-8 shadow-[0_0_60px_rgba(122,34,224,0.35)] overflow-hidden">
         {/* Top glow border */}
@@ -192,26 +197,31 @@ export default function OnboardingPage() {
             />
           </div>
 
-          {/* 1. HỌ VÀ TÊN / BIỆT DANH TRÊN SÂN */}
+          {/* 1. HỌ VÀ TÊN ĐẦY ĐỦ */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-1.5 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-amber-300" />
-                Họ và Tên / Biệt Danh Trên Sân <span className="text-rose-400">*</span>
+                Họ và Tên đầy đủ <span className="text-rose-400">*</span>
               </span>
-              <span className="text-[10px] text-purple-300/60 font-normal">2 - 50 ký tự</span>
+              <span className="text-[10px] text-amber-300 font-bold bg-amber-400/15 px-2 py-0.5 rounded-full border border-amber-400/30">
+                Tên chính chủ bắt buộc
+              </span>
             </label>
             <div className="relative">
               <input
                 type="text"
                 required
                 maxLength={50}
-                placeholder="VD: Nguyễn Văn Nam (Nam Smash)"
+                placeholder="VD: Nguyễn Văn Nam"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-black/40 border border-purple-400/30 text-white placeholder-purple-300/30 text-sm focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner"
+                className="w-full px-4 py-3 rounded-2xl bg-black/50 border border-purple-400/40 text-white placeholder-purple-300/40 text-sm focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner"
               />
             </div>
+            <p className="text-[11px] text-purple-200/60 mt-1">
+              Vui lòng nhập họ và tên thật chính xác để hệ thống lưu hồ sơ thi đấu và xếp hạng.
+            </p>
           </div>
 
           {/* 2. SỐ ĐIỆN THOẠI ZALO ĐỊNH DANH DUY NHẤT */}
@@ -262,11 +272,14 @@ export default function OnboardingPage() {
             </div>
           </div>
 
-          {/* 4. CHỌN ẢNH ĐẠI DIỆN MẶC ĐỊNH */}
+          {/* 4. CHỌN HÌNH ĐẠI DIỆN HOẠT HÌNH CẦU LÔNG DỄ THƯƠNG */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-2 flex items-center justify-between">
-              <span>Chọn Ảnh Đại Diện (Avatar có sẵn)</span>
-              <span className="text-[10px] text-purple-300/60 font-normal">Tránh spam lưu trữ</span>
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                Chọn Hình Nền / Avatar Hoạt Hình Cầu Lông Dễ Thương
+              </span>
+              <span className="text-[10px] text-purple-300/70 font-normal">Chibi độc quyền</span>
             </label>
             <div className="grid grid-cols-4 gap-3">
               {DEFAULT_AVATARS.map((av) => {
@@ -276,25 +289,30 @@ export default function OnboardingPage() {
                     type="button"
                     key={av.id}
                     onClick={() => setSelectedAvatar(av.url)}
-                    className={`relative aspect-square rounded-2xl overflow-hidden border-2 transition-all cursor-pointer group ${
+                    className={`relative aspect-square rounded-2xl overflow-hidden border-2 transition-all cursor-pointer group bg-black/40 ${
                       isChosen
-                        ? "border-amber-400 scale-105 shadow-[0_0_20px_rgba(251,191,36,0.6)]"
-                        : "border-purple-400/30 opacity-70 hover:opacity-100"
+                        ? "border-amber-400 scale-105 shadow-[0_0_20px_rgba(251,191,36,0.6)] ring-2 ring-amber-400/40"
+                        : "border-purple-400/30 opacity-75 hover:opacity-100 hover:border-purple-300"
                     }`}
                   >
                     <Image
                       src={av.url}
                       alt={av.label}
                       fill
-                      sizes="80px"
-                      className="object-cover group-hover:scale-110 transition-transform"
+                      sizes="90px"
+                      className="object-cover group-hover:scale-110 transition-transform duration-300"
                       unoptimized
                     />
                     {isChosen && (
-                      <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center">
-                        <Check className="w-5 h-5 text-amber-300 stroke-[3] drop-shadow-md" />
+                      <div className="absolute inset-0 bg-amber-500/20 backdrop-blur-[0.5px] flex items-center justify-center">
+                        <div className="w-7 h-7 rounded-full bg-amber-400 flex items-center justify-center shadow-lg shadow-amber-400/60">
+                          <Check className="w-4 h-4 text-slate-950 stroke-[3]" />
+                        </div>
                       </div>
                     )}
+                    <span className="absolute bottom-0 inset-x-0 bg-black/75 backdrop-blur-xs text-[9px] font-bold text-center py-0.5 truncate px-1 text-purple-200">
+                      {av.label}
+                    </span>
                   </button>
                 );
               })}
