@@ -6,6 +6,10 @@ const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { onboardingRateLimiter } = require('../middleware/rateLimiter');
 const { validateOnboarding } = require('../validators/onboardingValidator');
+const { OAuth2Client } = require('google-auth-library');
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '924372495544-vtcoadl8go2gf8oqqqhrr0s21fi10ecd.apps.googleusercontent.com';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // POST /api/auth/login - Đăng nhập hệ thống (hỗ trợ Admin, Member và Guest qua SĐT hoặc Email)
 router.post('/login', async (req, res) => {
@@ -160,78 +164,43 @@ router.post('/register-guest', onboardingRateLimiter, async (req, res) => {
   }
 });
 
-// Helper xác thực / decode Google Token
-async function verifyGoogleToken(credential) {
-  if (!credential) return null;
-  try {
-    // 1. Thử gọi API tokeninfo của Google để xác thực chữ ký chính chủ từ Google OAuth
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`, {
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    
-    if (googleRes.ok) {
-      const payload = await googleRes.json();
-      if (payload && payload.email) {
-        return {
-          email: payload.email.toLowerCase(),
-          name: payload.name || payload.given_name || 'Người chơi',
-          picture: payload.picture || null
-        };
-      }
-    }
-  } catch (e) {
-    // Tiếp tục phương án decode JWT payload dự phòng nếu mạng bị chặn
-  }
-
-  // 2. Decode JWT an toàn không throw lỗi
-  try {
-    const parts = credential.split('.');
-    if (parts.length === 3) {
-      const decodedPayload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-      if (decodedPayload && decodedPayload.email) {
-        return {
-          email: decodedPayload.email.toLowerCase(),
-          name: decodedPayload.name || decodedPayload.given_name || 'Người chơi',
-          picture: decodedPayload.picture || null
-        };
-      }
-    }
-  } catch (err) {
-    console.error('Error decoding google credential:', err);
-  }
-  return null;
-}
-
-// POST /api/auth/google - Đăng nhập / Đăng ký nhanh qua Google OAuth
+// POST /api/auth/google - Đăng nhập / Đăng ký chuẩn mật với Google OAuth 2.0 (Xác thực chữ ký số Google ID Token)
 router.post('/google', onboardingRateLimiter, async (req, res) => {
   try {
-    const { credential, email, name, picture } = req.body;
+    const { credential } = req.body;
 
-    let googleData = null;
-    if (credential) {
-      googleData = await verifyGoogleToken(credential);
+    if (!credential || typeof credential !== 'string') {
+      return res.status(400).json({ error: 'Mã xác thực Google (credential) là bắt buộc.' });
     }
 
-    // Nếu gửi direct email (từ Google SDK client-side)
-    if (!googleData && email) {
-      googleData = {
-        email: String(email).trim().toLowerCase(),
-        name: name ? String(name).trim() : 'Người chơi',
-        picture: picture || null
-      };
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (verifyErr) {
+      console.error('Google ID Token verification failed:', verifyErr.message);
+      return res.status(401).json({ error: 'Mã xác thực Google không hợp lệ hoặc đã hết hạn (Invalid Google Token).' });
     }
 
-    if (!googleData || !googleData.email) {
-      return res.status(400).json({ error: 'Không thể xác thực thông tin tài khoản Google.' });
+    if (!payload || !payload.email) {
+      return res.status(401).json({ error: 'Không thể trích xuất địa chỉ email từ Google Token.' });
     }
+
+    if (!payload.email_verified) {
+      return res.status(401).json({ error: 'Địa chỉ email tài khoản Google chưa được xác thực.' });
+    }
+
+    const googleEmail = payload.email.toLowerCase().trim();
+    const googleName = payload.name || payload.given_name || 'Người chơi';
+    const googlePicture = payload.picture || null;
 
     // Kiểm tra xem email đã tồn tại trong DB chưa
     const userRes = await db.query(
       'SELECT id, full_name, email, role, phone_zalo, avatar_url, is_blocked, is_profile_completed FROM users WHERE LOWER(email) = $1',
-      [googleData.email]
+      [googleEmail]
     );
 
     let user;
@@ -243,9 +212,9 @@ router.post('/google', onboardingRateLimiter, async (req, res) => {
       }
 
       // Cập nhật avatar từ Google nếu user chưa có avatar
-      if (!user.avatar_url && googleData.picture) {
-        await db.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [googleData.picture, user.id]);
-        user.avatar_url = googleData.picture;
+      if (!user.avatar_url && googlePicture) {
+        await db.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [googlePicture, user.id]);
+        user.avatar_url = googlePicture;
       }
     } else {
       // Người dùng mới -> Khởi tạo tài khoản Guest
@@ -261,7 +230,7 @@ router.post('/google', onboardingRateLimiter, async (req, res) => {
           0, 0, 0,
           false, 'active'
         ) RETURNING id, full_name, email, avatar_url, role, is_profile_completed`,
-        [googleData.name, googleData.email, googleData.picture]
+        [googleName, googleEmail, googlePicture]
       );
       user = insertRes.rows[0];
     }
@@ -275,7 +244,7 @@ router.post('/google', onboardingRateLimiter, async (req, res) => {
         is_profile_completed: isCompleted
       },
       process.env.JWT_SECRET,
-      { expiresIn: '30d' }
+      { expiresIn: user.role === 'admin' ? '7d' : '30d' }
     );
 
     res.json({
@@ -292,7 +261,7 @@ router.post('/google', onboardingRateLimiter, async (req, res) => {
     });
   } catch (error) {
     console.error('Error in google auth:', error);
-    res.status(500).json({ error: 'Lỗi xác thực Google.' });
+    res.status(500).json({ error: 'Lỗi xác thực hệ thống với Google.' });
   }
 });
 

@@ -4,7 +4,10 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Lock, Phone, ArrowRight, Eye, EyeOff, ArrowLeft, Mail, UserPlus, Sparkles } from "lucide-react";
+import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import { API_URL } from "@/app/config";
+
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "924372495544-vtcoadl8go2gf8oqqqhrr0s21fi10ecd.apps.googleusercontent.com";
 
 export default function UnifiedLogin() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -104,26 +107,22 @@ export default function UnifiedLogin() {
     }
   };
 
-  // Google Login Callback / Trigger
-  const handleGoogleLogin = async () => {
+  // Google OAuth 2.0 Success Handler (Nhận id_token từ Google Popup)
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    if (!credentialResponse?.credential) {
+      setError("Không nhận được mã xác thực Google.");
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
     try {
-      // Prompt quick Google email entry (hoặc Google tokeninfo)
-      const userEmail = prompt("Nhập địa chỉ Email Google của bạn để tiếp tục:");
-      if (!userEmail || !userEmail.includes("@")) {
-        setIsLoading(false);
-        return;
-      }
-
       const res = await fetch(`${API_URL}/api/auth/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: userEmail.trim().toLowerCase(),
-          name: userEmail.split("@")[0],
-          picture: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=300&h=300&fit=crop&crop=faces"
+          credential: credentialResponse.credential
         })
       });
 
@@ -137,68 +136,78 @@ export default function UnifiedLogin() {
         if (data.user.is_profile_completed === false) {
           router.push("/onboarding");
         } else {
-          router.push("/profile");
+          const searchParams = new URLSearchParams(window.location.search);
+          const redirectTo = searchParams.get("redirect");
+          if (redirectTo) {
+            router.push(redirectTo);
+          } else if (data.user.role === "admin") {
+            router.push("/admin");
+          } else {
+            router.push("/profile");
+          }
         }
       } else {
-        setError(data.error || "Không thể xác thực với tài khoản Google.");
+        setError(data.error || "Xác thực tài khoản Google thất bại.");
       }
     } catch (e) {
-      setError("Lỗi kết nối khi đăng nhập Google.");
+      setError("Lỗi kết nối máy chủ khi đăng nhập bằng Google.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleGoogleError = () => {
+    setError("Đăng nhập bằng tài khoản Google bị hủy hoặc gặp sự cố kết nối.");
+  };
+
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background decoration */}
-      <div className="absolute top-0 w-full h-1/2 bg-slate-900 skew-y-[-5deg] origin-top-left -z-10 shadow-xl" />
-      
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 relative z-10">
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-primary rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg transform rotate-3">
-            <Lock className="w-8 h-8 text-white" />
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute top-0 w-full h-1/2 bg-slate-900 skew-y-[-5deg] origin-top-left -z-10 shadow-xl" />
+        
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 relative z-10">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-primary rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg transform rotate-3">
+              <Lock className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-secondary">
+              {mode === "login" ? "Đăng Nhập" : "Đăng Ký Tài Khoản Vãng Lai"}
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">
+              {mode === "login" 
+                ? "Dành cho Quản trị viên, Thành viên & Người chơi vãng lai" 
+                : "Khởi tạo tài khoản Guest để tính điểm Elo và lên Bảng Xếp Hạng"}
+            </p>
           </div>
-          <h1 className="text-2xl font-bold text-secondary">
-            {mode === "login" ? "Đăng Nhập" : "Đăng Ký Tài Khoản Vãng Lai"}
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {mode === "login" 
-              ? "Dành cho Quản trị viên, Thành viên & Người chơi vãng lai" 
-              : "Khởi tạo tài khoản Guest để tính điểm Elo và lên Bảng Xếp Hạng"}
-          </p>
-        </div>
 
-        {error && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium mb-6 text-center border border-red-100">
-            {error}
+          {error && (
+            <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium mb-6 text-center border border-red-100">
+              {error}
+            </div>
+          )}
+
+          {/* NÚT GOOGLE OAUTH 2.0 CHÍNH THỨC */}
+          <div className="w-full mb-5 flex flex-col items-center justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              theme="outline"
+              shape="pill"
+              size="large"
+              text={mode === "login" ? "signin_with" : "signup_with"}
+              width="360"
+            />
           </div>
-        )}
 
-        {/* NÚT GOOGLE OAUTH NHANH */}
-        <button
-          type="button"
-          onClick={handleGoogleLogin}
-          disabled={isLoading}
-          className="w-full mb-5 py-3 px-4 rounded-2xl border border-slate-200 hover:border-purple-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-2.5 shadow-xs transition-all active:scale-95 cursor-pointer"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-          </svg>
-          <span>Tiếp tục với Google OAuth (Đăng ký / Đăng nhập)</span>
-        </button>
+          <div className="relative flex items-center justify-center mb-5">
+            <div className="border-t border-slate-200 w-full" />
+            <span className="bg-white px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider absolute">
+              Hoặc
+            </span>
+          </div>
 
-        <div className="relative flex items-center justify-center mb-5">
-          <div className="border-t border-slate-200 w-full" />
-          <span className="bg-white px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider absolute">
-            Hoặc
-          </span>
-        </div>
-
-        <form onSubmit={handleAuthSubmit} className="space-y-4">
+          <form onSubmit={handleAuthSubmit} className="space-y-4">
           {mode === "register" && (
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
@@ -325,5 +334,6 @@ export default function UnifiedLogin() {
         <ArrowLeft className="w-4 h-4" /> Quay về Trang chủ
       </Link>
     </div>
+  </GoogleOAuthProvider>
   );
 }
