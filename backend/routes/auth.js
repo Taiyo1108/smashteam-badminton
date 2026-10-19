@@ -87,40 +87,58 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// POST /api/auth/register-guest - Đăng ký nhanh tài khoản vãng lai (Guest)
+// POST /api/auth/register-guest - Đăng ký tài khoản vãng lai bằng Số điện thoại & Mật khẩu
 router.post('/register-guest', onboardingRateLimiter, async (req, res) => {
   try {
-    const { email, password, full_name } = req.body;
+    const { full_name, phone_zalo, password, confirm_password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Vui lòng cung cấp email và mật khẩu.' });
+    if (!full_name || !phone_zalo || !password || !confirm_password) {
+      return res.status(400).json({ error: 'Vui lòng điền đầy đủ Họ và tên, Số điện thoại, Mật khẩu và Xác nhận mật khẩu.' });
     }
 
-    const cleanEmail = String(email).trim().toLowerCase();
-    const cleanName = (full_name && String(full_name).trim()) || 'Người chơi Vãng lai';
+    const cleanName = String(full_name).trim();
+    if (cleanName.length < 2 || cleanName.length > 50) {
+      return res.status(400).json({ error: 'Họ và Tên đầy đủ phải từ 2 đến 50 ký tự.' });
+    }
+
+    let cleanPhone = String(phone_zalo).replace(/[\s\.\-\(\)]/g, '');
+    if (cleanPhone.startsWith('+84')) {
+      cleanPhone = '0' + cleanPhone.slice(3);
+    } else if (cleanPhone.startsWith('84') && cleanPhone.length === 11) {
+      cleanPhone = '0' + cleanPhone.slice(2);
+    }
+
+    const phoneRegex = /^(03|05|07|08|09)[0-9]{8}$/;
+    if (!phoneRegex.test(cleanPhone)) {
+      return res.status(400).json({ error: 'Số điện thoại không hợp lệ (phải gồm 10 chữ số chuẩn Việt Nam, đầu số 03, 05, 07, 08, 09).' });
+    }
 
     if (password.length < 6) {
       return res.status(400).json({ error: 'Mật khẩu phải có độ dài tối thiểu là 6 ký tự.' });
     }
 
-    // Check if email already registered
+    if (password !== confirm_password) {
+      return res.status(400).json({ error: 'Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại.' });
+    }
+
+    // Kiểm tra xem số điện thoại đã tồn tại trong DB chưa
     const existingUser = await db.query(
-      'SELECT id FROM users WHERE LOWER(email) = $1',
-      [cleanEmail]
+      'SELECT id FROM users WHERE phone_zalo = $1',
+      [cleanPhone]
     );
 
     if (existingUser.rows.length > 0) {
-      return res.status(409).json({ error: 'Địa chỉ Email này đã được đăng ký trên hệ thống. Vui lòng đăng nhập.' });
+      return res.status(409).json({ error: 'Số điện thoại này đã được đăng ký trên hệ thống. Vui lòng đăng nhập hoặc sử dụng số khác.' });
     }
 
     // Hash password
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    // Insert guest account
+    // Insert guest account với full_name, phone_zalo
     const insertResult = await db.query(
       `INSERT INTO users (
-        full_name, email, password_hash, role,
+        full_name, phone_zalo, password_hash, role,
         elo_singles, elo_doubles, rating_points,
         matches_singles, matches_doubles, matches_played,
         is_profile_completed, status
@@ -129,8 +147,8 @@ router.post('/register-guest', onboardingRateLimiter, async (req, res) => {
         950, 950, 950,
         0, 0, 0,
         false, 'active'
-      ) RETURNING id, full_name, email, role, is_profile_completed`,
-      [cleanName, cleanEmail, passwordHash]
+      ) RETURNING id, full_name, phone_zalo, email, role, is_profile_completed`,
+      [cleanName, cleanPhone, passwordHash]
     );
 
     const newUser = insertResult.rows[0];
@@ -153,7 +171,8 @@ router.post('/register-guest', onboardingRateLimiter, async (req, res) => {
       user: {
         id: newUser.id,
         name: newUser.full_name,
-        email: newUser.email,
+        phone_zalo: newUser.phone_zalo,
+        email: null,
         role: newUser.role,
         is_profile_completed: false
       }
@@ -265,7 +284,7 @@ router.post('/google', onboardingRateLimiter, async (req, res) => {
   }
 });
 
-// POST /api/auth/onboarding - Hoàn tất hồ sơ Onboarding (3 trường bắt buộc: Họ tên, SĐT Zalo, Giới tính)
+// POST /api/auth/onboarding - Hoàn tất hồ sơ Onboarding
 router.post('/onboarding', authenticateToken, onboardingRateLimiter, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -276,32 +295,75 @@ router.post('/onboarding', authenticateToken, onboardingRateLimiter, async (req,
       return res.status(400).json({ error: validation.error, code: validation.code });
     }
 
-    const { full_name, phone_zalo, gender, avatar_url } = validation.data;
+    const { full_name, phone_zalo, nickname, email, gender, avatar_url } = validation.data;
 
-    // 2. Kiểm tra xem phone_zalo đã có người khác sử dụng chưa
-    const duplicateCheck = await db.query(
-      'SELECT id FROM users WHERE phone_zalo = $1 AND id != $2',
-      [phone_zalo, userId]
+    // Lấy thông tin user hiện tại trong database
+    const userCheck = await db.query(
+      'SELECT id, full_name, phone_zalo, email, avatar_url FROM users WHERE id = $1',
+      [userId]
     );
 
-    if (duplicateCheck.rows.length > 0) {
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy thông tin tài khoản.' });
+    }
+
+    const currentUser = userCheck.rows[0];
+
+    const finalFullName = (full_name && full_name.trim()) ? full_name.trim() : currentUser.full_name;
+    const finalPhone = (phone_zalo && phone_zalo.trim()) ? phone_zalo.trim() : currentUser.phone_zalo;
+    const finalNickname = (nickname && nickname.trim()) ? nickname.trim() : null;
+    const finalEmail = (email && email.trim()) ? email.trim().toLowerCase() : (currentUser.email || null);
+    const finalAvatar = avatar_url || currentUser.avatar_url || null;
+
+    if (!finalFullName) {
+      return res.status(400).json({ error: 'Họ và Tên đầy đủ là bắt buộc.' });
+    }
+
+    if (!finalPhone) {
+      return res.status(400).json({ error: 'Số điện thoại Zalo là bắt buộc để hoàn tất hồ sơ.' });
+    }
+
+    // 2. Kiểm tra xem phone_zalo đã có người khác sử dụng chưa
+    const duplicatePhone = await db.query(
+      'SELECT id FROM users WHERE phone_zalo = $1 AND id != $2',
+      [finalPhone, userId]
+    );
+
+    if (duplicatePhone.rows.length > 0) {
       return res.status(400).json({
         error: 'Số điện thoại Zalo này đã được đăng ký bởi một tài khoản khác. Vui lòng kiểm tra lại.',
         code: 'PHONE_ALREADY_EXISTS'
       });
     }
 
-    // 3. Cập nhật thông tin Onboarding vào DB
+    // 3. Kiểm tra xem email đã có người khác sử dụng chưa (nếu có email)
+    if (finalEmail) {
+      const duplicateEmail = await db.query(
+        'SELECT id FROM users WHERE LOWER(email) = $1 AND id != $2',
+        [finalEmail, userId]
+      );
+
+      if (duplicateEmail.rows.length > 0) {
+        return res.status(400).json({
+          error: 'Địa chỉ email này đã được sử dụng bởi một tài khoản khác. Vui lòng sử dụng email khác.',
+          code: 'EMAIL_ALREADY_EXISTS'
+        });
+      }
+    }
+
+    // 4. Cập nhật thông tin Onboarding vào DB
     const updateRes = await db.query(
       `UPDATE users 
        SET full_name = $1, 
            phone_zalo = $2, 
-           gender = $3, 
-           avatar_url = COALESCE($4, avatar_url),
+           nickname = $3,
+           email = $4,
+           gender = $5, 
+           avatar_url = COALESCE($6, avatar_url),
            is_profile_completed = true
-       WHERE id = $5
-       RETURNING id, full_name, phone_zalo, email, role, avatar_url, gender, is_profile_completed`,
-      [full_name, phone_zalo, gender, avatar_url || null, userId]
+       WHERE id = $7
+       RETURNING id, full_name, nickname, phone_zalo, email, role, avatar_url, gender, is_profile_completed`,
+      [finalFullName, finalPhone, finalNickname, finalEmail, gender, finalAvatar, userId]
     );
 
     if (updateRes.rows.length === 0) {
@@ -310,7 +372,7 @@ router.post('/onboarding', authenticateToken, onboardingRateLimiter, async (req,
 
     const updatedUser = updateRes.rows[0];
 
-    // 4. Cấp lại token JWT mới mang cờ is_profile_completed: true
+    // 5. Cấp lại token JWT mới mang cờ is_profile_completed: true
     const freshToken = jwt.sign(
       {
         id: updatedUser.id,
@@ -329,6 +391,7 @@ router.post('/onboarding', authenticateToken, onboardingRateLimiter, async (req,
       user: {
         id: updatedUser.id,
         name: updatedUser.full_name,
+        nickname: updatedUser.nickname,
         phone_zalo: updatedUser.phone_zalo,
         email: updatedUser.email,
         role: updatedUser.role,

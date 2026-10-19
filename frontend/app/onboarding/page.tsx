@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { 
   User, Phone, Sparkles, Check, ArrowRight, 
-  ShieldCheck, AlertCircle, Loader2 
+  ShieldCheck, AlertCircle, Loader2, Mail, BadgeCheck
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { API_URL } from "@/app/config";
@@ -22,12 +22,15 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [phoneZalo, setPhoneZalo] = useState("");
+  const [nickname, setNickname] = useState("");
+  const [email, setEmail] = useState("");
   const [gender, setGender] = useState<"Nam" | "Nữ">("Nam");
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
   const [honeypot, setHoneypot] = useState(""); // Chống bot tự động submit
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [isManualPhoneUser, setIsManualPhoneUser] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token") || localStorage.getItem("admin_token");
@@ -47,9 +50,20 @@ export default function OnboardingPage() {
           return;
         }
 
-        // Khởi tạo các giá trị có sẵn từ Google Auth
+        // Khởi tạo các giá trị có sẵn
         if (user.name) setFullName(user.name);
         if (user.phone_zalo) setPhoneZalo(user.phone_zalo);
+        if (user.nickname) setNickname(user.nickname);
+        if (user.email) setEmail(user.email);
+        if (user.gender) setGender(user.gender);
+
+        // Nhận diện luồng: Nếu đã có số điện thoại (từ đăng ký thủ công)
+        if (user.phone_zalo && !user.email) {
+          setIsManualPhoneUser(true);
+        } else {
+          setIsManualPhoneUser(false);
+        }
+
         if (user.avatar_url) setSelectedAvatar(user.avatar_url);
         else setSelectedAvatar(DEFAULT_AVATARS[0].url);
       } catch (e) {
@@ -66,14 +80,7 @@ export default function OnboardingPage() {
     e.preventDefault();
     setError(null);
 
-    // 1. Kiểm tra Họ và tên đầy đủ
     const trimmedName = fullName.trim();
-    if (trimmedName.length < 2 || trimmedName.length > 50) {
-      setError("Họ và Tên đầy đủ phải từ 2 đến 50 ký tự.");
-      return;
-    }
-
-    // 2. Validate và chuẩn hóa số điện thoại Việt Nam
     let cleanedPhone = phoneZalo.replace(/[\s\.\-\(\)]/g, "");
     if (cleanedPhone.startsWith("+84")) {
       cleanedPhone = "0" + cleanedPhone.slice(3);
@@ -81,10 +88,36 @@ export default function OnboardingPage() {
       cleanedPhone = "0" + cleanedPhone.slice(2);
     }
 
-    const phoneRegex = /^(03|05|07|08|09)[0-9]{8}$/;
-    if (!phoneRegex.test(cleanedPhone)) {
-      setError("Số điện thoại Zalo không đúng chuẩn Việt Nam (10 chữ số, đầu số 03, 05, 07, 08, 09).");
-      return;
+    if (isManualPhoneUser) {
+      // 1. Kiểm tra Họ và tên
+      if (trimmedName.length < 2 || trimmedName.length > 50) {
+        setError("Họ và Tên đầy đủ phải từ 2 đến 50 ký tự.");
+        return;
+      }
+
+      // 2. Kiểm tra định dạng Email cho người dùng đăng ký thủ công
+      const cleanEmail = email.trim().toLowerCase();
+      if (!cleanEmail) {
+        setError("Vui lòng nhập địa chỉ email cá nhân.");
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        setError("Địa chỉ email không đúng định dạng. Vui lòng kiểm tra lại.");
+        return;
+      }
+    } else {
+      // Luồng Google Auth: Cần Họ tên & Số điện thoại Zalo hợp lệ
+      if (trimmedName.length < 2 || trimmedName.length > 50) {
+        setError("Họ và Tên đầy đủ phải từ 2 đến 50 ký tự.");
+        return;
+      }
+
+      const phoneRegex = /^(03|05|07|08|09)[0-9]{8}$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        setError("Số điện thoại Zalo không đúng chuẩn Việt Nam (10 chữ số, đầu số 03, 05, 07, 08, 09).");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -100,6 +133,8 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           full_name: trimmedName,
           phone_zalo: cleanedPhone,
+          nickname: nickname.trim() || null,
+          email: email.trim() ? email.trim().toLowerCase() : null,
           gender,
           avatar_url: selectedAvatar || null,
           honeypot: honeypot || ""
@@ -167,13 +202,15 @@ export default function OnboardingPage() {
         <div className="text-center mb-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-400/30 text-purple-200 text-xs font-bold uppercase tracking-widest mb-3">
             <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
-            <span>Thiết Lập Hồ Sơ Người Chơi (2/2)</span>
+            <span>Thiết Lập Hồ Sơ Tuyển Thủ (2/2)</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
             Chào Mừng Đến Với <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500">Smash Team</span>
           </h1>
           <p className="text-xs sm:text-sm text-purple-200/70 mt-1.5 leading-relaxed">
-            Chỉ còn 3 thông tin cơ bản để hệ thống nhận diện bạn khi ghép trận và tính điểm Bảng Xếp Hạng.
+            {isManualPhoneUser
+              ? "Hoàn tất biệt danh, email nhận thông báo, giới tính và avatar chibi để tạo tài khoản thành công!"
+              : "Chỉ còn 3 thông tin cơ bản để hệ thống nhận diện bạn khi ghép trận và tính điểm Bảng Xếp Hạng."}
           </p>
         </div>
 
@@ -197,58 +234,133 @@ export default function OnboardingPage() {
             />
           </div>
 
-          {/* 1. HỌ VÀ TÊN ĐẦY ĐỦ */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-1.5 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-amber-300" />
-                Họ và Tên đầy đủ <span className="text-rose-400">*</span>
-              </span>
-              <span className="text-[10px] text-amber-300 font-bold bg-amber-400/15 px-2 py-0.5 rounded-full border border-amber-400/30">
-                Tên chính chủ bắt buộc
-              </span>
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                required
-                maxLength={50}
-                placeholder="VD: Nguyễn Văn Nam"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-black/50 border border-purple-400/40 text-white placeholder-purple-300/40 text-sm focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner"
-              />
-            </div>
-            <p className="text-[11px] text-purple-200/60 mt-1">
-              Vui lòng nhập họ và tên thật chính xác để hệ thống lưu hồ sơ thi đấu và xếp hạng.
-            </p>
-          </div>
+          {isManualPhoneUser ? (
+            <>
+              {/* THẺ XÁC NHẬN TÀI KHOẢN ĐÃ ĐĂNG KÝ */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-900/40 to-indigo-900/40 border border-purple-400/30 flex items-center justify-between text-xs shadow-inner">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center shrink-0">
+                    <User className="w-5 h-5 text-amber-300" />
+                  </div>
+                  <div>
+                    <div className="text-white font-bold text-sm leading-tight">{fullName || "Người chơi Smash"}</div>
+                    <div className="text-purple-300/80 font-mono text-xs mt-0.5 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{phoneZalo}</span>
+                    </div>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-400/10 px-2.5 py-1 rounded-full border border-emerald-400/30">
+                  <BadgeCheck className="w-3.5 h-3.5" /> Đã đăng ký
+                </span>
+              </div>
 
-          {/* 2. SỐ ĐIỆN THOẠI ZALO ĐỊNH DANH DUY NHẤT */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-1.5 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <Phone className="w-3.5 h-3.5 text-amber-300" />
-                Số Điện Thoại Zalo <span className="text-rose-400">*</span>
-              </span>
-              <span className="text-[10px] text-purple-300/60 font-normal">Định danh duy nhất</span>
-            </label>
-            <div className="relative">
-              <input
-                type="tel"
-                required
-                placeholder="VD: 0987654321 hoặc +84987654321"
-                value={phoneZalo}
-                onChange={(e) => setPhoneZalo(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-black/40 border border-purple-400/30 text-white placeholder-purple-300/30 text-sm focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner font-mono"
-              />
-            </div>
-            <p className="text-[11px] text-purple-200/60 mt-1">
-              Dùng để tìm kiếm tuyển thủ khi ghép cặp trận đấu và nhận thông báo kết quả.
-            </p>
-          </div>
+              {/* TRƯỜNG 1: BIỆT DANH TRÊN SÂN */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    Biệt danh trên sân (Nickname)
+                  </span>
+                  <span className="text-[10px] text-purple-300/60 font-normal">Tên thi đấu hiển thị</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    maxLength={50}
+                    placeholder="VD: Nam Smash, Hổ Cáp, Sát Thủ Lưới..."
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    className="w-full px-4 py-3 rounded-2xl bg-black/50 border border-purple-400/40 text-white placeholder-purple-300/40 text-sm focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner"
+                  />
+                </div>
+                <p className="text-[11px] text-purple-200/60 mt-1">
+                  Tên gọi thân mật khi vào sân thi đấu và hiển thị trên bảng xếp hạng.
+                </p>
+              </div>
 
-          {/* 3. GIỚI TÍNH */}
+              {/* TRƯỜNG 2: ĐỊA CHỈ EMAIL */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-amber-300" />
+                    Địa chỉ Email <span className="text-rose-400">*</span>
+                  </span>
+                  <span className="text-[10px] text-amber-300 font-bold bg-amber-400/15 px-2 py-0.5 rounded-full border border-amber-400/30">
+                    Nhận thông báo & khôi phục
+                  </span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    placeholder="VD: nguyenvannam@gmail.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full px-4 py-3 rounded-2xl bg-black/50 border border-purple-400/40 text-white placeholder-purple-300/40 text-sm focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner font-mono"
+                  />
+                </div>
+                <p className="text-[11px] text-purple-200/60 mt-1">
+                  Dùng để nhận thông báo giải đấu, kết quả trận và hỗ trợ khôi phục mật khẩu khi cần.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* 1. HỌ VÀ TÊN ĐẦY ĐỦ (LUỒNG GOOGLE) */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-amber-300" />
+                    Họ và Tên đầy đủ <span className="text-rose-400">*</span>
+                  </span>
+                  <span className="text-[10px] text-amber-300 font-bold bg-amber-400/15 px-2 py-0.5 rounded-full border border-amber-400/30">
+                    Tên chính chủ bắt buộc
+                  </span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    maxLength={50}
+                    placeholder="VD: Nguyễn Văn Nam"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-2xl bg-black/50 border border-purple-400/40 text-white placeholder-purple-300/40 text-sm focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner"
+                  />
+                </div>
+                <p className="text-[11px] text-purple-200/60 mt-1">
+                  Vui lòng nhập họ và tên thật chính xác để hệ thống lưu hồ sơ thi đấu và xếp hạng.
+                </p>
+              </div>
+
+              {/* 2. SỐ ĐIỆN THOẠI ZALO ĐỊNH DANH DUY NHẤT (LUỒNG GOOGLE) */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-amber-300" />
+                    Số Điện Thoại Zalo <span className="text-rose-400">*</span>
+                  </span>
+                  <span className="text-[10px] text-purple-300/60 font-normal">Định danh duy nhất</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="tel"
+                    required
+                    placeholder="VD: 0987654321 hoặc +84987654321"
+                    value={phoneZalo}
+                    onChange={(e) => setPhoneZalo(e.target.value)}
+                    className="w-full px-4 py-3 rounded-2xl bg-black/40 border border-purple-400/30 text-white placeholder-purple-300/30 text-sm focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner font-mono"
+                  />
+                </div>
+                <p className="text-[11px] text-purple-200/60 mt-1">
+                  Dùng để tìm kiếm tuyển thủ khi ghép cặp trận đấu và nhận thông báo kết quả.
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* 3. GIỚI TÍNH (DÙNG CHUNG) */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-2">
               Giới Tính (Phục vụ ghép trận Đôi nam / Đôi nữ / Đôi nam-nữ) <span className="text-rose-400">*</span>
@@ -272,12 +384,12 @@ export default function OnboardingPage() {
             </div>
           </div>
 
-          {/* 4. CHỌN HÌNH ĐẠI DIỆN HOẠT HÌNH CẦU LÔNG DỄ THƯƠNG */}
+          {/* 4. CHỌN HÌNH ĐẠI DIỆN HOẠT HÌNH CẦU LÔNG DỄ THƯƠNG (DÙNG CHUNG) */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-purple-200 mb-2 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                Chọn Hình Nền / Avatar Hoạt Hình Cầu Lông Dễ Thương
+                Chọn Avatar Hoạt Hình Cầu Lông Dễ Thương
               </span>
               <span className="text-[10px] text-purple-300/70 font-normal">Chibi độc quyền</span>
             </label>
@@ -332,7 +444,7 @@ export default function OnboardingPage() {
               </>
             ) : (
               <>
-                <span>Hoàn Tất & Vào Sân Ngay</span>
+                <span>{isManualPhoneUser ? "Tạo Tài Khoản Thành Công & Vào Sân Ngay" : "Hoàn Tất & Vào Sân Ngay"}</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}

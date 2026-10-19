@@ -21,15 +21,33 @@ function normalizeVietnamPhone(phone) {
 
 const onboardingSchema = z.object({
   full_name: z
-    .string({ required_error: 'Họ và tên đầy đủ là bắt buộc.' })
+    .string()
     .trim()
     .min(2, 'Họ và tên đầy đủ phải có ít nhất 2 ký tự.')
-    .max(50, 'Họ và tên đầy đủ không được vượt quá 50 ký tự.'),
+    .max(50, 'Họ và tên đầy đủ không được vượt quá 50 ký tự.')
+    .optional()
+    .nullable(),
   phone_zalo: z
-    .string({ required_error: 'Số điện thoại Zalo là bắt buộc.' })
-    .transform(normalizeVietnamPhone)
-    .refine((val) => VIETNAM_PHONE_REGEX.test(val), {
+    .string()
+    .optional()
+    .nullable()
+    .transform((val) => (val ? normalizeVietnamPhone(val) : ''))
+    .refine((val) => !val || VIETNAM_PHONE_REGEX.test(val), {
       message: 'Số điện thoại không hợp lệ. Phải là số điện thoại Việt Nam 10 chữ số (đầu số 03, 05, 07, 08, 09).'
+    }),
+  nickname: z
+    .string()
+    .trim()
+    .max(50, 'Biệt danh không được vượt quá 50 ký tự.')
+    .optional()
+    .nullable(),
+  email: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .refine((val) => !val || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val), {
+      message: 'Địa chỉ email không đúng định dạng.'
     }),
   gender: z
     .enum(['Nam', 'Nữ'], {
