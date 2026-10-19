@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { authenticateToken, isAdmin, requireOfficialMember } = require('../middleware/auth');
 const { upload, cloudinary } = require('../utils/cloudinary');
 
 // GET /api/shop/items - Lấy danh sách sản phẩm hoạt động
@@ -58,7 +58,7 @@ router.get('/items', async (req, res) => {
 });
 
 // POST /api/shop/buy - Mua sản phẩm (Chống spam, Row locking, Giới hạn mua, Cấp độ)
-router.post('/buy', authenticateToken, async (req, res) => {
+router.post('/buy', authenticateToken, requireOfficialMember, async (req, res) => {
   const userId = req.user.id;
   const { itemId } = req.body;
 
@@ -340,7 +340,7 @@ router.put('/redemptions/:id/deliver', authenticateToken, isAdmin, async (req, r
 });
 
 // POST /api/shop/mystery-box - Mở hộp quà bí ẩn hàng tuần (Weekly Box, Cooldown 168h = 7 ngày)
-router.post('/mystery-box', authenticateToken, async (req, res) => {
+router.post('/mystery-box', authenticateToken, requireOfficialMember, async (req, res) => {
   const userId = req.user.id;
 
   const client = await db.connect();

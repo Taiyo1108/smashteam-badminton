@@ -1259,6 +1259,11 @@ export default function PersonnelPage() {
                                       Admin
                                     </span>
                                   )}
+                                  {m.role === "guest" && (
+                                    <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold">
+                                      Vãng lai
+                                    </span>
+                                  )}
                                 </p>
                                 <p className="text-[11px] text-slate-400 flex items-center gap-1 font-mono mt-0.5">
                                   <Phone className="w-3 h-3 text-slate-400" /> {m.phone_zalo}
@@ -1472,6 +1477,7 @@ export default function PersonnelPage() {
                     onChange={e => setQuickRole(e.target.value)} 
                     className="p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none flex-1"
                   >
+                    <option value="guest">Tài khoản Vãng lai (Guest)</option>
                     <option value="member">Thành viên chính thức (Member)</option>
                     <option value="admin">Quản trị viên (Admin)</option>
                     <option value="candidate">Ứng viên Casting (Candidate)</option>

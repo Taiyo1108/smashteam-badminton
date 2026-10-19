@@ -515,6 +515,13 @@ router.post('/upload-avatar', authenticateToken, uploadAvatar.single('avatar'), 
   try {
     const userId = req.user.id;
 
+    if (req.user.role === 'guest') {
+      return res.status(403).json({
+        error: 'Tài khoản vãng lai chưa hỗ trợ tải ảnh từ thiết bị. Hãy chọn avatar từ bộ có sẵn hoặc nâng cấp lên thành viên chính thức.',
+        code: 'GUEST_UPLOAD_RESTRICTED'
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: 'Không tìm thấy file ảnh tải lên.' });
     }

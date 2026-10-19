@@ -72,8 +72,8 @@ async function getRankingHubData({ mode = 'doubles', filter = 'official', curren
   const membersRes = await db.query(
     `SELECT id, full_name, nickname, avatar_url, selected_avatar_frame, selected_title,
             badminton_level, role, academic_info, created_at,
-            COALESCE(${eloCol}, 1000) as elo,
-            COALESCE(${peakCol}, 1000) as peak_elo,
+            COALESCE(${eloCol}, 950) as elo,
+            COALESCE(${peakCol}, 950) as peak_elo,
             COALESCE(${matchesCol}, 0) as matches,
             COALESCE(${winCol}, 0) as wins,
             COALESCE(${lossCol}, 0) as losses,
@@ -81,15 +81,17 @@ async function getRankingHubData({ mode = 'doubles', filter = 'official', curren
             COALESCE(${streakCol}, 0) as streak,
             COALESCE(${maxStreakCol}, 0) as max_streak
      FROM users
-     WHERE role IN ('member', 'admin') 
+     WHERE role IN ('member', 'admin', 'guest') 
        AND full_name != 'Super Admin' 
-       AND phone_zalo != '0999999999'
+       AND (phone_zalo IS NULL OR phone_zalo != '0999999999')
+       AND (role != 'guest' OR COALESCE(${matchesCol}, 0) > 0 OR ($1::uuid IS NOT NULL AND id = $1::uuid))
      ORDER BY 
        ${eloCol} DESC,
        ${matchesCol} DESC,
        ${winRateCol} DESC,
        created_at ASC,
-       id ASC`
+       id ASC`,
+    [currentUserId]
   );
 
   // 4. Separate Established (>= 3 matches) and Provisional (< 3 matches) players
@@ -241,10 +243,11 @@ async function getRankingHubData({ mode = 'doubles', filter = 'official', curren
       maxStreak: Number(p.max_streak),
       isProvisional: true,
       provisionalThreshold: MIN_MATCHES_FOR_ESTABLISHED_RANK,
+      matchesNeeded: neededMatches,
       isTopOne: false,
       gapToNext: 0,
       targetPlayer: null,
-      gapCopy: `Cần đấu thêm ${neededMatches} trận để có thứ hạng`
+      gapCopy: `Đang phân hạng: Hoàn thành thêm ${neededMatches} trận để xuất hiện trên BXH`
     };
   });
 
@@ -312,10 +315,11 @@ async function getRankingHubData({ mode = 'doubles', filter = 'official', curren
             maxStreak: 0,
             isProvisional: true,
             provisionalThreshold: MIN_MATCHES_FOR_ESTABLISHED_RANK,
+            matchesNeeded: MIN_MATCHES_FOR_ESTABLISHED_RANK,
             isTopOne: false,
             gapToNext: 0,
             targetPlayer: null,
-            gapCopy: `Cần đấu thêm ${MIN_MATCHES_FOR_ESTABLISHED_RANK} trận để có thứ hạng`
+            gapCopy: `Đang phân hạng: Hoàn thành thêm ${MIN_MATCHES_FOR_ESTABLISHED_RANK} trận để xuất hiện trên BXH`
           };
         }
       } catch (err) {

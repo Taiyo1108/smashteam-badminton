@@ -580,6 +580,11 @@ export default function Member360Modal({
                         Admin
                       </span>
                     )}
+                    {user.role === "guest" && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        Khách Vãng Lai
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-300 flex-wrap">

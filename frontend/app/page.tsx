@@ -189,6 +189,10 @@ export default function Home() {
         .then(res => res.ok ? res.json() : null)
         .then(data => {
           if (data && data.player) {
+            if (data.player.is_profile_completed === false) {
+              router.push("/onboarding");
+              return;
+            }
             setCurrentUser(data.player);
             if (data.upcomingSession) {
               setUpcomingSessionHighlight(data.upcomingSession);
@@ -482,7 +486,13 @@ export default function Home() {
                 {/* Profile Avatar Chip */}
                 <button
                   id="nav-user-profile"
-                  onClick={() => router.push("/profile")}
+                  onClick={() => {
+                    if (currentUser?.is_profile_completed === false) {
+                      router.push("/onboarding");
+                    } else {
+                      router.push("/profile");
+                    }
+                  }}
                   className="group relative flex items-center gap-2.5 p-1 rounded-full hover:bg-purple-50 transition-all focus-ring cursor-pointer min-h-[44px]"
                   title={`Trang cá nhân: ${currentUser?.full_name || "Hội viên"}`}
                   aria-label={`Trang cá nhân của ${currentUser?.full_name || "Hội viên"}`}

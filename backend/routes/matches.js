@@ -217,13 +217,15 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       await db.query(
         `UPDATE users 
          SET ${elo_col} = $1, 
-             ${peak_col} = GREATEST(COALESCE(${peak_col}, 1000), $1),
+             ${peak_col} = GREATEST(COALESCE(${peak_col}, 950), $1),
              ${matches_col} = $2,
              ${win_col} = $3,
              ${loss_col} = $4,
              ${win_rate_col} = $5,
              ${streak_col} = $6,
-             ${max_streak_col} = $7
+             ${max_streak_col} = $7,
+             rating_points = $1,
+             matches_played = COALESCE(matches_singles, 0) + COALESCE(matches_doubles, 0) + 1
          WHERE id = $8::uuid`,
         [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id]
       );
@@ -636,13 +638,15 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
       await client.query(
         `UPDATE users 
          SET ${elo_col} = $1, 
-             ${peak_col} = GREATEST(COALESCE(${peak_col}, 1000), $1),
+             ${peak_col} = GREATEST(COALESCE(${peak_col}, 950), $1),
              ${matches_col} = $2,
              ${win_col} = $3,
              ${loss_col} = $4,
              ${win_rate_col} = $5,
              ${streak_col} = $6,
-             ${max_streak_col} = $7
+             ${max_streak_col} = $7,
+             rating_points = $1,
+             matches_played = COALESCE(matches_singles, 0) + COALESCE(matches_doubles, 0) + 1
          WHERE id = $8::uuid`,
         [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id]
       );

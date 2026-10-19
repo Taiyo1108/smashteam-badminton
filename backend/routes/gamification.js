@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireOfficialMember } = require('../middleware/auth');
 const { addXpToUser } = require('../utils/gamification');
 
 // Protect all routes
@@ -262,7 +262,7 @@ router.get('/quests', async (req, res) => {
 });
 
 // POST /api/gamification/quests/:id/claim - Nhận thưởng (Race Condition Prevention via DB Transaction)
-router.post('/quests/:id/claim', async (req, res) => {
+router.post('/quests/:id/claim', requireOfficialMember, async (req, res) => {
   const userId = req.user.id;
   const questId = req.params.id;
 

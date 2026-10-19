@@ -343,9 +343,16 @@ export default function CompetitivePlayerCard({
             )}
           </div>
 
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
-            {player.full_name}
-          </h2>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
+              {player.full_name}
+            </h2>
+            {player.role === "guest" && (
+              <span className="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-700 text-[10px] font-black uppercase tracking-wider">
+                Vãng lai
+              </span>
+            )}
+          </div>
 
           {/* Nickname & Academic */}
           <div className="flex items-center gap-2 mt-1 text-slate-500 text-xs">

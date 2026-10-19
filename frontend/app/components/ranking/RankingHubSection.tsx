@@ -190,6 +190,42 @@ export default function RankingHubSection() {
       {/* Main Content Area */}
       {hubData && (
         <>
+          {/* BANNER TIẾN ĐỘ PHÂN HẠNG (NẾU USER CHƯA ĐỦ 3 TRẬN) */}
+          {hubData.myPosition && (hubData.myPosition.isProvisional || (hubData.myPosition.matches ?? 0) < 3) && (
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-500/15 via-purple-600/15 to-amber-500/15 border-2 border-amber-400/50 shadow-lg shadow-amber-500/10 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center text-slate-950 font-black text-xl shadow-md shrink-0">
+                  ⚡
+                </div>
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-900 border border-amber-400/40 text-[10px] font-black uppercase tracking-wider mb-1">
+                    Trạng Thái Phân Hạng
+                  </div>
+                  <h4 className="text-sm sm:text-base font-black text-slate-900">
+                    Đang phân hạng: Hoàn thành thêm {Math.max(0, 3 - (hubData.myPosition.matches || 0))} trận để xuất hiện trên BXH
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Điểm Elo khởi điểm là 950. Cần tối thiểu 3 trận đấu xếp hạng để hệ thống ghi nhận vị trí chính thức.
+                  </p>
+                </div>
+              </div>
+
+              {/* Thanh tiến độ x/3 trận */}
+              <div className="shrink-0 w-full sm:w-48 bg-white/80 p-3 rounded-2xl border border-amber-300/40 shadow-xs">
+                <div className="flex justify-between items-center text-xs font-black mb-1.5">
+                  <span className="text-slate-600 text-[11px]">Tiến độ phân hạng</span>
+                  <span className="text-amber-600 font-black">{Math.min(3, hubData.myPosition.matches || 0)}/3 trận</span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, ((hubData.myPosition.matches || 0) / 3) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 1. SPOTLIGHT BAR (ON FIRE, CLIMBER, RISING, MOST ACTIVE) */}
           <PlayerSpotlightBar
             spotlight={hubData.spotlight}

@@ -104,7 +104,10 @@ router.get('/leaderboard', async (req, res) => {
               ${matches_col} as total_matches, 
               ${win_rate_col} as win_rate 
        FROM users 
-       WHERE role IN ('member', 'admin') AND full_name != 'Super Admin' AND phone_zalo != '0999999999'
+       WHERE role IN ('member', 'admin', 'guest') 
+         AND full_name != 'Super Admin' 
+         AND (phone_zalo IS NULL OR phone_zalo != '0999999999')
+         AND (role != 'guest' OR COALESCE(${matches_col}, 0) >= 3)
        ORDER BY ${elo_col} DESC`
     );
     
@@ -240,7 +243,10 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
       ${join}
       LEFT JOIN discipline_summary disc ON users.id = disc.user_id
       LEFT JOIN attendance_summary att ON users.id = att.user_id
-      WHERE users.role IN ('member', 'admin') AND users.full_name != 'Super Admin' AND users.phone_zalo != '0999999999'${extraWhere}
+      WHERE users.role IN ('member', 'admin', 'guest') 
+        AND users.full_name != 'Super Admin' 
+        AND (users.phone_zalo IS NULL OR users.phone_zalo != '0999999999')
+        AND (users.role != 'guest' OR (COALESCE(users.matches_singles, 0) + COALESCE(users.matches_doubles, 0)) > 0)${extraWhere}
       ORDER BY users.full_name ASC
     `;
 

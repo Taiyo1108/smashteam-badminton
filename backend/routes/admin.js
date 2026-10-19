@@ -125,7 +125,7 @@ router.put('/users/:id/role', async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
 
-    if (!['candidate', 'member', 'admin'].includes(role)) {
+    if (!['candidate', 'member', 'admin', 'guest'].includes(role)) {
       return res.status(400).json({ error: 'Quyền hạn không hợp lệ.' });
     }
 

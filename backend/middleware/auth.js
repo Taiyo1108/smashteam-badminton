@@ -40,4 +40,17 @@ const isAdmin = (req, res, next) => {
   }
 };
 
-module.exports = { authenticateToken, isAdmin };
+const requireOfficialMember = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Access denied. No token provided.', code: 'NO_TOKEN' });
+  }
+  if (req.user.role === 'guest') {
+    return res.status(403).json({ 
+      error: 'Bạn phải là thành viên chính thức mới được sử dụng chức năng này.', 
+      code: 'MEMBER_ONLY' 
+    });
+  }
+  next();
+};
+
+module.exports = { authenticateToken, isAdmin, requireOfficialMember };

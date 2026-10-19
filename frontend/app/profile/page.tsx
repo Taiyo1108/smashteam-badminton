@@ -21,6 +21,7 @@ import { formatVietnamDate } from "@/app/utils/date";
 import SessionReservationWidget from "@/app/components/SessionReservationWidget";
 import NotificationBell from "@/app/components/notifications/NotificationBell";
 import RewardCelebrationModal, { RewardCelebrationData } from "@/app/components/RewardCelebrationModal";
+import MemberOnlyModal from "@/app/components/MemberOnlyModal";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -30,6 +31,7 @@ export default function ProfilePage() {
   const [updatingRsvp, setUpdatingRsvp] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isReputationModalOpen, setIsReputationModalOpen] = useState(false);
+  const [isMemberOnlyModalOpen, setIsMemberOnlyModalOpen] = useState(false);
 
   // Gamification states
   const [gamProfile, setGamProfile] = useState<any>(null);
@@ -185,6 +187,13 @@ export default function ProfilePage() {
       }
 
       const data = await res.json();
+      
+      // Chốt chặn Onboarding: nếu user chưa hoàn tất hồ sơ thì chuyển sang /onboarding
+      if (data?.player && data.player.is_profile_completed === false) {
+        router.replace("/onboarding");
+        return;
+      }
+
       setPlayerData(data);
       
       // Khởi tạo form fields
@@ -247,6 +256,11 @@ export default function ProfilePage() {
   };
 
   const handleUseShield = async () => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     if (!confirm("Xác nhận kích hoạt 1 Khiên Hộ Mệnh để hồi phục điểm ELO và bảo toàn chuỗi thắng cho trận thua gần nhất?")) {
       return;
     }
@@ -309,6 +323,11 @@ export default function ProfilePage() {
   };
 
   const handleBuyItem = async (itemId: number, itemName: string, price: number) => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     if (!confirm(`Xác nhận dùng ${price} xu Smash Coins để đổi "${itemName}"?`)) {
       return;
     }
@@ -358,6 +377,11 @@ export default function ProfilePage() {
   };
 
   const handleOpenMysteryBox = async () => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     setIsOpeningBox(true);
     try {
       const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
@@ -483,6 +507,11 @@ export default function ProfilePage() {
 
   // Gamification Claim Handlers
   const handleClaimQuest = async (questId: number) => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     setClaimingQuestId(questId);
     try {
       const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
@@ -516,6 +545,11 @@ export default function ProfilePage() {
   };
 
   const handleEquipItem = async (itemId: number, isEquipped: boolean) => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     setEquippingItemId(itemId);
     try {
       const token = localStorage.getItem("admin_token");
@@ -540,6 +574,16 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        if (u.is_profile_completed === false) {
+          router.replace("/onboarding");
+          return;
+        }
+      } catch (e) {}
+    }
     fetchProfileData();
     fetchGamificationData();
   }, []);
@@ -637,6 +681,11 @@ export default function ProfilePage() {
   };
 
   const handleUploadAvatar = async () => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     if (!avatarFile || isUploadingAvatar) return;
     setIsUploadingAvatar(true);
 
@@ -907,8 +956,37 @@ export default function ProfilePage() {
       <div className="max-w-7xl w-full mx-auto px-4 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8 flex-grow">
         
         {/* LEFT COLUMN: Player Card & Reputation Score */}
-        <div className="lg:col-span-1 space-y-8">
+        <div className="lg:col-span-1 space-y-6">
           
+          {/* BANNER HIỆU CHUẨN PHÂN HẠNG (NẾU DƯỚI 3 TRẬN) */}
+          {((playerData.player?.matches_played ?? playerData.matchStats?.total ?? 0) < 3) && (
+            <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-500/15 via-purple-600/15 to-amber-500/15 border-2 border-amber-400/50 shadow-md shadow-amber-500/10">
+              <div className="flex items-center gap-2.5 mb-2">
+                <span className="w-7 h-7 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center text-slate-950 font-black text-xs shadow-xs">
+                  ⚡
+                </span>
+                <span className="text-xs font-black uppercase tracking-wider text-amber-600">
+                  Trạng Thái Phân Hạng
+                </span>
+              </div>
+              <h4 className="text-sm font-black text-slate-900 leading-snug">
+                Đang phân hạng: Hoàn thành thêm {Math.max(0, 3 - (playerData.player?.matches_played ?? playerData.matchStats?.total ?? 0))} trận để xuất hiện trên BXH
+              </h4>
+              <div className="mt-3">
+                <div className="flex justify-between items-center text-[11px] font-bold text-slate-500 mb-1">
+                  <span>Tiến độ xếp hạng</span>
+                  <span className="text-amber-600 font-black">{Math.min(3, (playerData.player?.matches_played ?? playerData.matchStats?.total ?? 0))}/3 trận</span>
+                </div>
+                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full"
+                    style={{ width: `${Math.min(100, (((playerData.player?.matches_played ?? playerData.matchStats?.total ?? 0)) / 3) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* COMPETITIVE PLAYER CARD */}
           <CompetitivePlayerCard
             player={playerData.player}
@@ -1909,53 +1987,85 @@ export default function ProfilePage() {
             {/* TAB CONTENTS */}
             {/* 1. Tab Avatar */}
             {activeTab === "avatar" && (
-              <div className="space-y-6 flex flex-col items-center py-4">
-                {/* Preview Circle */}
-                <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-black relative bg-slate-100 flex items-center justify-center">
-                  {avatarPreview ? (
-                    <Image src={avatarPreview} alt="Avatar Preview" fill className="object-cover" />
-                  ) : player.avatar_url ? (
-                    <Image src={player.avatar_url} alt="Current Avatar" fill className="object-cover" unoptimized />
-                  ) : (
-                    <Trophy className="w-12 h-12 text-slate-700" />
+              player.role === "guest" ? (
+                <div className="space-y-4 flex flex-col items-center py-6 text-center">
+                  <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-slate-300 relative bg-slate-100 flex items-center justify-center shadow-inner">
+                    {player.avatar_url ? (
+                      <Image src={player.avatar_url} alt="Current Avatar" fill className="object-cover" unoptimized />
+                    ) : (
+                      <Trophy className="w-12 h-12 text-slate-700" />
+                    )}
+                  </div>
+
+                  <div className="p-4 bg-amber-500/10 border border-amber-400/40 rounded-2xl max-w-sm text-center">
+                    <p className="text-xs font-black text-amber-800 uppercase tracking-wide flex items-center justify-center gap-1.5">
+                      <span>🛡️</span> Tài khoản Vãng lai
+                    </p>
+                    <p className="text-[11px] text-slate-600 mt-1.5 leading-relaxed font-medium">
+                      Tài khoản vãng lai được đồng bộ avatar tự động từ Google hoặc bộ avatar mặc định của CLB để tối ưu lưu trữ. Để tải ảnh đại diện tuỳ chọn từ thiết bị, hãy đăng ký trở thành Thành viên chính thức!
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSettingsModalOpen(false);
+                      setIsMemberOnlyModalOpen(true);
+                    }}
+                    className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs rounded-xl shadow-md hover:opacity-90 transition-all cursor-pointer"
+                  >
+                    Xem đặc quyền Thành viên
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6 flex flex-col items-center py-4">
+                  {/* Preview Circle */}
+                  <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-black relative bg-slate-100 flex items-center justify-center">
+                    {avatarPreview ? (
+                      <Image src={avatarPreview} alt="Avatar Preview" fill className="object-cover" />
+                    ) : player.avatar_url ? (
+                      <Image src={player.avatar_url} alt="Current Avatar" fill className="object-cover" unoptimized />
+                    ) : (
+                      <Trophy className="w-12 h-12 text-slate-700" />
+                    )}
+                  </div>
+
+                  <div className="w-full text-center">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 rounded-xl font-bold text-xs transition-all cursor-pointer active:scale-95"
+                    >
+                      Chọn file ảnh đại diện
+                    </button>
+                    <p className="text-[10px] text-slate-500 mt-2">Định dạng hỗ trợ: JPG, PNG, WEBP. Tối đa 5MB.</p>
+                  </div>
+
+                  {avatarFile && (
+                    <button
+                      onClick={handleUploadAvatar}
+                      disabled={isUploadingAvatar}
+                      className="w-full py-3 bg-black text-white rounded-full font-bold text-xs hover:bg-black/85 transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                    >
+                      {isUploadingAvatar ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Đang tải ảnh lên Cloudinary...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" /> Xác nhận Cập nhật Avatar
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
-
-                <div className="w-full text-center">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="image/*"
-                    className="hidden"
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 rounded-xl font-bold text-xs transition-all cursor-pointer active:scale-95"
-                  >
-                    Chọn file ảnh đại diện
-                  </button>
-                  <p className="text-[10px] text-slate-500 mt-2">Định dạng hỗ trợ: JPG, PNG, WEBP. Tối đa 5MB.</p>
-                </div>
-
-                {avatarFile && (
-                  <button
-                    onClick={handleUploadAvatar}
-                    disabled={isUploadingAvatar}
-                    className="w-full py-3 bg-black text-white rounded-full font-bold text-xs hover:bg-black/85 transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
-                  >
-                    {isUploadingAvatar ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Đang tải ảnh lên Cloudinary...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" /> Xác nhận Cập nhật Avatar
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
+              )
             )}
 
             {/* 2. Tab Profile */}
@@ -2134,6 +2244,12 @@ export default function ProfilePage() {
       <RewardCelebrationModal
         data={rewardCelebration}
         onClose={() => setRewardCelebration(null)}
+      />
+
+      {/* MODAL TEASER & LOCK ĐẶC QUYỀN THÀNH VIÊN CHO TÀI KHOẢN GUEST */}
+      <MemberOnlyModal
+        isOpen={isMemberOnlyModalOpen}
+        onClose={() => setIsMemberOnlyModalOpen(false)}
       />
 
       <footer className="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-xs">

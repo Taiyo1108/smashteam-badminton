@@ -31,6 +31,7 @@ export interface RankedPlayer {
   maxStreak: number;
   isProvisional: boolean;
   provisionalThreshold: number;
+  matchesNeeded?: number;
   isTopOne: boolean;
   gapToNext: number;
   weeklyEloChange?: number;
