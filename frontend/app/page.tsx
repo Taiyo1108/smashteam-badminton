@@ -183,6 +183,13 @@ export default function Home() {
       setIsLoggedIn(true);
       if (role) setUserRole(role);
 
+      try {
+        const cachedUser = localStorage.getItem("user");
+        if (cachedUser) {
+          setCurrentUser(JSON.parse(cachedUser));
+        }
+      } catch {}
+
       fetch(`${API_URL}/api/profile/me?t=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -469,7 +476,9 @@ export default function Home() {
             {/* Chuông Thông Báo Website */}
             <NotificationBell />
 
-            {isLoggedIn ? (
+            {!isMounted ? (
+              <div className="w-20 sm:w-28 h-9 rounded-full bg-slate-100/80 animate-pulse shrink-0" />
+            ) : isLoggedIn ? (
               <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
                 {/* Nút Quản trị cho Admin */}
                 {userRole === "admin" && (
@@ -747,16 +756,31 @@ export default function Home() {
                   transition={{ duration: 0.4, delay: 0.3 }}
                   className="flex flex-wrap items-center justify-center gap-4 pt-2"
                 >
-                  <Link href="/login?mode=register">
-                    <button 
-                      id="hero-cta-apply-now"
-                      className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
-                    >
-                      <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
-                      <span>Đăng ký tài khoản vãng lai ngay</span>
-                      <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
-                    </button>
-                  </Link>
+                  {!isMounted ? (
+                    <div className="min-h-[52px] w-64 bg-white/10 backdrop-blur-md rounded-full animate-pulse" />
+                  ) : isLoggedIn ? (
+                    <Link href={userRole === "admin" || currentUser?.role === "admin" ? "/admin" : (currentUser?.is_profile_completed === false ? "/onboarding" : "/profile")}>
+                      <button 
+                        id="hero-cta-profile"
+                        className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
+                      >
+                        <User className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                        <span>{userRole === "admin" || currentUser?.role === "admin" ? "Vào trang quản trị" : "Trang cá nhân của bạn"}</span>
+                        <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
+                      </button>
+                    </Link>
+                  ) : (
+                    <Link href="/login?mode=register">
+                      <button 
+                        id="hero-cta-apply-now"
+                        className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
+                      >
+                        <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                        <span>Đăng ký tài khoản vãng lai ngay</span>
+                        <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
+                      </button>
+                    </Link>
+                  )}
 
                   <button 
                     id="hero-cta-explore-activities"

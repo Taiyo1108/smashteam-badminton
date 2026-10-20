@@ -33,6 +33,27 @@ export default function UnifiedLogin() {
       const expiredParam = searchParams.get("expired");
       if (expiredParam) {
         setError("Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.");
+        localStorage.removeItem("admin_token");
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("user_role");
+      } else {
+        const token = localStorage.getItem("admin_token");
+        const role = localStorage.getItem("user_role");
+        if (token) {
+          try {
+            const cachedUser = localStorage.getItem("user");
+            if (cachedUser) {
+              const parsed = JSON.parse(cachedUser);
+              if (parsed && parsed.is_profile_completed === false) {
+                router.replace("/onboarding");
+                return;
+              }
+            }
+          } catch {}
+          router.replace(role === "admin" ? "/admin" : "/profile");
+          return;
+        }
       }
       const modeParam = searchParams.get("mode");
       if (modeParam === "register") {
