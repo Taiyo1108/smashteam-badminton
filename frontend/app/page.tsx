@@ -405,7 +405,7 @@ export default function Home() {
         className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-purple-100 shadow-sm transition-all pt-safe"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-18 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 sm:h-18 flex items-center justify-between gap-2 sm:gap-3">
           
           {/* LOGO LINK */}
           <Link 
@@ -415,10 +415,10 @@ export default function Home() {
               setActiveTab("intro");
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            className="flex items-center gap-2.5 group cursor-pointer focus-ring rounded-xl p-1"
+            className="flex items-center gap-2 sm:gap-2.5 group cursor-pointer focus-ring rounded-xl p-1 shrink-0"
             title="SmashTeam - Về trang chủ"
           >
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_15px_rgba(122,34,224,0.35)] border border-primary/30 group-hover:border-primary group-hover:scale-105 transition-all bg-secondary">
+            <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_15px_rgba(122,34,224,0.35)] border border-primary/30 group-hover:border-primary group-hover:scale-105 transition-all bg-secondary shrink-0">
               <Image
                 src="/logo.png"
                 alt="SmashTeam Logo"
@@ -429,10 +429,10 @@ export default function Home() {
               />
             </div>
             <div className="flex flex-col text-left">
-              <span className="font-black text-xl sm:text-2xl tracking-tight text-secondary leading-none group-hover:text-primary transition-colors">
+              <span className="font-black text-lg sm:text-2xl tracking-tight text-secondary leading-none group-hover:text-primary transition-colors whitespace-nowrap">
                 Smash<span className="text-primary">Team</span>
               </span>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Badminton Club</span>
+              <span className="hidden sm:block text-[9px] font-bold uppercase tracking-widest text-slate-400">Badminton Club</span>
             </div>
           </Link>
 
@@ -465,20 +465,21 @@ export default function Home() {
           </nav>
 
           {/* RIGHT ACTIONS: AUTH BUTTONS / USER PROFILE */}
-          <div className="flex gap-2 sm:gap-3 items-center">
+          <div className="flex gap-1.5 sm:gap-3 items-center shrink-0">
             {/* Chuông Thông Báo Website */}
             <NotificationBell />
 
             {isLoggedIn ? (
-              <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
                 {/* Nút Quản trị cho Admin */}
                 {userRole === "admin" && (
                   <Link href="/admin">
                     <button 
                       id="nav-admin-link"
-                      className="min-h-[40px] px-4 py-1.5 bg-secondary hover:bg-slate-900 text-white rounded-full font-bold text-xs shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer focus-ring border border-slate-700"
+                      className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-4 py-1.5 bg-secondary hover:bg-slate-900 text-white rounded-full font-bold text-xs shadow-xs hover:shadow-md transition-all active:scale-95 cursor-pointer focus-ring border border-slate-700 shrink-0 whitespace-nowrap"
                     >
-                      Quản trị
+                      <span className="sm:hidden">Admin</span>
+                      <span className="hidden sm:inline">Quản trị</span>
                     </button>
                   </Link>
                 )}
@@ -493,22 +494,22 @@ export default function Home() {
                       router.push("/profile");
                     }
                   }}
-                  className="group relative flex items-center gap-2.5 p-1 rounded-full hover:bg-purple-50 transition-all focus-ring cursor-pointer min-h-[44px]"
+                  className="group relative flex items-center gap-2 p-0.5 sm:p-1 rounded-full hover:bg-purple-50 transition-all focus-ring cursor-pointer min-h-[36px] sm:min-h-[44px] shrink-0"
                   title={`Trang cá nhân: ${currentUser?.full_name || "Hội viên"}`}
                   aria-label={`Trang cá nhân của ${currentUser?.full_name || "Hội viên"}`}
                 >
                   {currentUser?.selected_avatar_frame ? (
-                    <div className="relative transition-transform group-hover:scale-105">
+                    <div className="relative transition-transform group-hover:scale-105 shrink-0">
                       <AvatarWithFrame
                         avatarUrl={currentUser.avatar_url || ""}
                         frameStyle={currentUser.selected_avatar_frame}
-                        sizeClass="w-9 h-9 sm:w-10 sm:h-10"
+                        sizeClass="w-8 h-8 sm:w-10 sm:h-10"
                         alt={currentUser.full_name || "Profile"}
                       />
                       <span className="absolute bottom-0 right-0 z-30 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-sm" aria-hidden="true" />
                     </div>
                   ) : (
-                    <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full p-0.5 bg-gradient-to-tr from-primary to-smash-violet shadow-sm transition-transform group-hover:scale-105 group-hover:shadow-[0_0_12px_rgba(122,34,224,0.4)]">
+                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-full p-0.5 bg-gradient-to-tr from-primary to-smash-violet shadow-sm transition-transform group-hover:scale-105 group-hover:shadow-[0_0_12px_rgba(122,34,224,0.4)] shrink-0">
                       <div className="w-full h-full rounded-full overflow-hidden bg-secondary flex items-center justify-center relative">
                         {currentUser?.avatar_url ? (
                           <Image
@@ -548,18 +549,18 @@ export default function Home() {
                   onClick={handleLogout}
                   title="Đăng xuất khỏi tài khoản"
                   aria-label="Đăng xuất khỏi tài khoản"
-                  className="min-h-[40px] min-w-[40px] sm:min-w-0 sm:px-4 py-1.5 rounded-full border border-slate-200 hover:border-rose-300 hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer focus-ring"
+                  className="shrink-0 min-h-[36px] min-w-[36px] sm:min-h-[40px] sm:min-w-0 px-2 sm:px-3.5 py-1.5 rounded-full border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer focus-ring shadow-xs"
                 >
-                  <LogOut className="w-4 h-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Đăng xuất</span>
+                  <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500 shrink-0" aria-hidden="true" />
+                  <span className="hidden sm:inline whitespace-nowrap">Đăng xuất</span>
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 <Link href="/login">
                   <button 
                     id="nav-login-btn"
-                    className="min-h-[40px] px-4 py-1.5 text-secondary hover:text-primary transition-all font-bold text-xs cursor-pointer focus-ring rounded-full hover:bg-slate-100"
+                    className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-4 py-1.5 text-secondary hover:text-primary transition-all font-bold text-xs cursor-pointer focus-ring rounded-full hover:bg-slate-100 whitespace-nowrap"
                   >
                     Đăng nhập
                   </button>
@@ -567,9 +568,10 @@ export default function Home() {
                 <Link href="/login?mode=register">
                   <button 
                     id="nav-register-btn"
-                    className="min-h-[40px] px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform active:scale-95 shadow-md shadow-primary/30 text-xs cursor-pointer focus-ring"
+                    className="min-h-[36px] sm:min-h-[40px] px-3 sm:px-5 py-1.5 sm:py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform active:scale-95 shadow-md shadow-primary/30 text-xs cursor-pointer focus-ring whitespace-nowrap flex items-center justify-center"
                   >
-                    Đăng ký tài khoản vãng lai
+                    <span className="sm:hidden">Đăng ký</span>
+                    <span className="hidden sm:inline">Đăng ký tài khoản vãng lai</span>
                   </button>
                 </Link>
               </div>

@@ -918,35 +918,43 @@ export default function ProfilePage() {
         className="w-full bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 pt-safe"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200">
-                <Image src="/logo.png" alt="Logo" fill className="object-cover" />
+              <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                <Image src="/logo.png" alt="Logo" fill className="object-cover" priority />
               </div>
-              <span className="font-extrabold text-lg text-slate-900 tracking-wider">SMASH TEAM</span>
+              <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-wider whitespace-nowrap">
+                <span className="sm:hidden">SMASH</span>
+                <span className="hidden sm:inline">SMASH TEAM</span>
+              </span>
             </Link>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <NotificationBell />
-            <Link href="/">
-              <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all text-sm font-semibold">
-                <Home className="w-4 h-4" /> Trang chủ
+            <Link href="/" title="Quay về Trang chủ">
+              <button className="flex items-center justify-center gap-1.5 p-2 sm:px-3.5 sm:py-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all text-xs sm:text-sm font-semibold cursor-pointer shrink-0 min-h-[38px]">
+                <Home className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline whitespace-nowrap">Trang chủ</span>
               </button>
             </Link>
             {playerData?.player?.role === "admin" && (
-              <Link href="/admin">
-                <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-black/5 text-black hover:bg-black/10 transition-all text-sm font-bold border border-slate-200">
-                  <Shield className="w-4 h-4" /> Trang Admin
+              <Link href="/admin" title="Trang Quản trị Admin">
+                <button className="flex items-center justify-center gap-1.5 p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-all text-xs sm:text-sm font-bold border border-slate-700 cursor-pointer shrink-0 min-h-[38px] shadow-xs">
+                  <Shield className="w-4 h-4 shrink-0 text-amber-300" />
+                  <span className="hidden sm:inline whitespace-nowrap">Trang Admin</span>
                 </button>
               </Link>
             )}
             <button 
               onClick={handleLogout} 
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all text-sm font-bold border border-rose-500/20"
+              title="Đăng xuất khỏi tài khoản"
+              aria-label="Đăng xuất khỏi tài khoản"
+              className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all text-xs sm:text-sm font-bold border border-rose-200 cursor-pointer shrink-0 min-h-[38px] shadow-xs active:scale-95"
             >
-              <LogOut className="w-4 h-4" /> Đăng xuất
+              <LogOut className="w-4 h-4 shrink-0 text-rose-500" />
+              <span className="whitespace-nowrap">Đăng xuất</span>
             </button>
           </div>
         </div>
@@ -2216,6 +2224,21 @@ export default function ProfilePage() {
                 </button>
               </form>
             )}
+
+            {/* Logout Action in Settings */}
+            <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsModalOpen(false);
+                  handleLogout();
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-rose-600 bg-rose-50/60 hover:bg-rose-100 border border-rose-200 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                <LogOut className="w-4 h-4 text-rose-500" />
+                <span>Đăng xuất tài khoản</span>
+              </button>
+            </div>
 
           </div>
         </div>
