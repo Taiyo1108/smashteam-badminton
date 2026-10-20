@@ -229,6 +229,7 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
         users.streak_doubles, users.max_streak_doubles, 
         users.win_singles, users.win_doubles, 
         users.loss_singles, users.loss_doubles,
+        users.created_at, users.is_profile_completed, users.gender,
         (users.password_hash IS NOT NULL) AS is_activated,
         COALESCE(disc.active_yellow_cards, 0) as active_yellow_cards,
         COALESCE(disc.active_red_cards, 0) as active_red_cards,
@@ -245,8 +246,7 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
       LEFT JOIN attendance_summary att ON users.id = att.user_id
       WHERE users.role IN ('member', 'admin', 'guest') 
         AND users.full_name != 'Super Admin' 
-        AND (users.phone_zalo IS NULL OR users.phone_zalo != '0999999999')
-        AND (users.role != 'guest' OR (COALESCE(users.matches_singles, 0) + COALESCE(users.matches_doubles, 0)) > 0)${extraWhere}
+        AND (users.phone_zalo IS NULL OR users.phone_zalo != '0999999999')${extraWhere}
       ORDER BY users.full_name ASC
     `;
 
