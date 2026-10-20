@@ -260,6 +260,86 @@ export default function CompetitivePlayerCard({
     ringColor: "stroke-slate-800"
   };
 
+  // Rank material styling for Rank Stars Box (Authentic metallic & crystal material aesthetics)
+  const rankMaterial = {
+    Gold: {
+      boxBg: "bg-gradient-to-b from-amber-500/10 via-yellow-400/5 to-amber-500/15",
+      boxBorder: "border-2 border-amber-400/60 shadow-[0_4px_25px_rgba(245,158,11,0.18)]",
+      starRowBg: "bg-white/70 border border-amber-300/40",
+      badgeStyle: "bg-gradient-to-r from-amber-400 via-yellow-200 to-amber-500 text-slate-900 border-2 border-yellow-300 shadow-md shadow-amber-500/30 font-black",
+      badgeIcon: "text-amber-700 fill-amber-700",
+      subtextColor: "text-amber-800",
+      starFilled: "fill-amber-400 text-amber-500 filter drop-shadow-[0_0_8px_rgba(245,158,11,0.7)]",
+      starEmpty: "text-amber-300/40 fill-amber-100/30",
+      highlightElo: "text-amber-600 font-black"
+    },
+    Diamond: {
+      boxBg: "bg-gradient-to-b from-cyan-500/10 via-blue-400/5 to-indigo-500/15",
+      boxBorder: "border-2 border-blue-400/60 shadow-[0_4px_25px_rgba(59,130,246,0.2)]",
+      starRowBg: "bg-white/70 border border-blue-300/40",
+      badgeStyle: "bg-gradient-to-r from-cyan-300 via-blue-400 to-indigo-500 text-white border-2 border-cyan-200 shadow-md shadow-blue-500/35 font-black",
+      badgeIcon: "text-cyan-100 fill-cyan-100",
+      subtextColor: "text-blue-800",
+      starFilled: "fill-cyan-400 text-blue-500 filter drop-shadow-[0_0_8px_rgba(59,130,246,0.7)]",
+      starEmpty: "text-blue-300/40 fill-blue-100/30",
+      highlightElo: "text-blue-600 font-black"
+    },
+    Platinum: {
+      boxBg: "bg-gradient-to-b from-emerald-500/10 via-teal-400/5 to-cyan-500/15",
+      boxBorder: "border-2 border-teal-400/60 shadow-[0_4px_25px_rgba(20,184,166,0.2)]",
+      starRowBg: "bg-white/70 border border-teal-300/40",
+      badgeStyle: "bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 text-slate-900 border-2 border-emerald-300 shadow-md shadow-teal-500/30 font-black",
+      badgeIcon: "text-teal-800 fill-teal-800",
+      subtextColor: "text-teal-900",
+      starFilled: "fill-teal-400 text-emerald-500 filter drop-shadow-[0_0_8px_rgba(20,184,166,0.7)]",
+      starEmpty: "text-teal-300/40 fill-teal-100/30",
+      highlightElo: "text-teal-600 font-black"
+    },
+    Silver: {
+      boxBg: "bg-gradient-to-b from-slate-200/50 via-white to-slate-200/60",
+      boxBorder: "border-2 border-slate-300 shadow-[0_4px_20px_rgba(148,163,184,0.2)]",
+      starRowBg: "bg-white/80 border border-slate-200",
+      badgeStyle: "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-800 border-2 border-slate-300 shadow-md shadow-slate-300/40 font-black",
+      badgeIcon: "text-slate-600 fill-slate-600",
+      subtextColor: "text-slate-700",
+      starFilled: "fill-slate-400 text-slate-500 filter drop-shadow-[0_0_8px_rgba(148,163,184,0.65)]",
+      starEmpty: "text-slate-300 fill-slate-100",
+      highlightElo: "text-slate-800 font-black"
+    },
+    Bronze: {
+      boxBg: "bg-gradient-to-b from-orange-500/10 via-amber-700/5 to-amber-900/15",
+      boxBorder: "border-2 border-amber-700/50 shadow-[0_4px_20px_rgba(180,83,9,0.18)]",
+      starRowBg: "bg-white/70 border border-amber-700/20",
+      badgeStyle: "bg-gradient-to-r from-amber-700 via-orange-600 to-amber-800 text-amber-50 border-2 border-amber-600 shadow-md shadow-amber-900/30 font-black",
+      badgeIcon: "text-amber-200 fill-amber-200",
+      subtextColor: "text-amber-900",
+      starFilled: "fill-amber-600 text-amber-700 filter drop-shadow-[0_0_8px_rgba(217,119,6,0.65)]",
+      starEmpty: "text-amber-300/40 fill-amber-100/30",
+      highlightElo: "text-amber-700 font-black"
+    },
+    Challenger: {
+      boxBg: "bg-gradient-to-b from-rose-500/10 via-red-500/5 to-purple-500/15",
+      boxBorder: "border-2 border-rose-500/60 shadow-[0_4px_25px_rgba(244,63,94,0.25)]",
+      starRowBg: "bg-white/70 border border-rose-300/40",
+      badgeStyle: "bg-gradient-to-r from-red-600 via-rose-500 to-purple-600 text-white border-2 border-red-300 shadow-md shadow-red-500/35 font-black",
+      badgeIcon: "text-amber-300 fill-amber-300",
+      subtextColor: "text-rose-900",
+      starFilled: "fill-rose-500 text-rose-600 filter drop-shadow-[0_0_8px_rgba(244,63,94,0.7)]",
+      starEmpty: "text-rose-300/40 fill-rose-100/30",
+      highlightElo: "text-rose-600 font-black"
+    }
+  }[tier] || {
+    boxBg: "bg-slate-50",
+    boxBorder: "border-2 border-slate-200",
+    starRowBg: "bg-white border border-slate-200",
+    badgeStyle: "bg-slate-800 text-white font-black",
+    badgeIcon: "text-white fill-white",
+    subtextColor: "text-slate-600",
+    starFilled: "fill-amber-400 text-amber-500",
+    starEmpty: "text-slate-300 fill-slate-100",
+    highlightElo: "text-slate-800 font-black"
+  };
+
   return (
     <div className="w-full flex flex-col items-center">
       {/* CARD WRAPPER */}
@@ -481,40 +561,41 @@ export default function CompetitivePlayerCard({
           </div>
         </div>
 
-        {/* 6. RANK STARS PROGRESSION (LIÊN QUÂN MOBA STYLE) */}
-        <div className="relative z-10 mb-4 p-3.5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-lg border border-slate-700/60">
-          <div className="flex items-center justify-between mb-2.5 px-1">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[11px] font-black uppercase tracking-wider text-amber-300">
-                HẠNG {starInfo.tierLabel.toUpperCase()} • {starInfo.stars}/5 SAO
-              </span>
+        {/* 6. RANK STARS PROGRESSION (AUTHENTIC MATERIAL THEMED) */}
+        <div className={`relative z-10 mb-4 p-4 rounded-2xl ${rankMaterial.boxBg} ${rankMaterial.boxBorder} transition-all duration-300`}>
+          {/* Centered Rank Title with Material Styled Frame */}
+          <div className="flex flex-col items-center justify-center text-center">
+            <div className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs uppercase tracking-wider ${rankMaterial.badgeStyle}`}>
+              <Sparkles className={`w-3.5 h-3.5 ${rankMaterial.badgeIcon}`} />
+              <span>HẠNG {starInfo.tierLabel.toUpperCase()}</span>
             </div>
-            <div className="text-[10px] font-bold text-slate-300">
+
+            {/* Requirement to Next Star */}
+            <div className={`text-[11px] font-bold ${rankMaterial.subtextColor} mt-1.5`}>
               {starInfo.eloToNextStar > 0 ? (
                 <span>
-                  Cần <strong className="text-amber-400 font-black">+{starInfo.eloToNextStar} ELO</strong> lên{" "}
-                  {starInfo.stars >= 5 ? "bậc tiếp" : `${starInfo.stars + 1}★`}
+                  Cần <strong className={rankMaterial.highlightElo}>+{starInfo.eloToNextStar} ELO</strong> lên{" "}
+                  {starInfo.stars >= 5 ? "bậc tiếp theo" : `${starInfo.stars + 1}★`}
                 </span>
               ) : (
-                <span className="text-emerald-400 font-bold">Đỉnh cao bậc xếp hạng</span>
+                <span className="text-emerald-600 font-bold">Đỉnh cao bậc xếp hạng</span>
               )}
             </div>
           </div>
 
           {/* 5 Stars Visual Row */}
-          <div className="flex items-center justify-center gap-3 py-2 bg-black/40 rounded-xl border border-white/5 backdrop-blur-sm">
+          <div className={`flex items-center justify-center gap-3.5 py-2.5 mt-2.5 rounded-xl border ${rankMaterial.starRowBg} shadow-inner`}>
             {[1, 2, 3, 4, 5].map((index) => {
               const isFilled = index <= starInfo.stars;
               return (
                 <div key={index} className="relative flex items-center justify-center transition-all duration-300">
                   {isFilled ? (
                     <Star
-                      className="w-6 h-6 fill-amber-400 text-amber-300 filter drop-shadow-[0_0_8px_rgba(251,191,36,0.65)]"
+                      className={`w-6 h-6 ${rankMaterial.starFilled}`}
                     />
                   ) : (
                     <Star
-                      className="w-6 h-6 text-slate-600/70 fill-slate-800/60"
+                      className={`w-6 h-6 ${rankMaterial.starEmpty}`}
                     />
                   )}
                 </div>
@@ -523,16 +604,8 @@ export default function CompetitivePlayerCard({
           </div>
         </div>
 
-        {/* 6.1. MOBA RANK GRIND PROGRESSION: THƯỞNG THẮNG X2 & KHIÊN BẢO HỘ THUA */}
-        <div className="relative z-10 mb-4 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3.5">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase tracking-tight">
-              <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-              <span>Tiến Trình Cày Rank (MOBA Style)</span>
-            </div>
-            <span className="text-[10px] font-bold text-slate-400">Chu kỳ 5 trận</span>
-          </div>
-
+        {/* 6.1. THƯỞNG THẮNG X2 & KHIÊN BẢO HỘ THUA (TÍCH HỢP TRỰC TIẾP TRONG THẺ NGƯỜI CHƠI) */}
+        <div className="relative z-10 mb-4 space-y-3 pt-1">
           {/* 1. THƯỞNG THẮNG X2 ELO */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
@@ -562,7 +635,7 @@ export default function CompetitivePlayerCard({
                         ? grindMatchesCount >= 5
                           ? "bg-gradient-to-r from-amber-400 to-yellow-500 shadow-[0_0_8px_rgba(251,191,36,0.6)]"
                           : "bg-amber-400"
-                        : "bg-slate-100 border border-slate-200/60"
+                        : "bg-slate-200/70"
                     }`}
                   />
                 );
@@ -611,7 +684,7 @@ export default function CompetitivePlayerCard({
                         ? grindLossCount >= 5
                           ? "bg-gradient-to-r from-indigo-500 to-purple-600 shadow-[0_0_8px_rgba(99,102,241,0.6)]"
                           : "bg-indigo-500"
-                        : "bg-slate-100 border border-slate-200/60"
+                        : "bg-slate-200/70"
                     }`}
                   />
                 );

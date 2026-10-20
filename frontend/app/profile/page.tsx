@@ -1092,41 +1092,6 @@ export default function ProfilePage() {
             {/* TAB CONTENT: QUESTS */}
             {activeGamTab === "quests" && (
               <div className="space-y-4">
-                {/* NÚT THỬ NGHIỆM HIỆU ỨNG NHẬN THƯỞNG (DÀNH CHO ADMIN) */}
-                {playerData?.player?.role === "admin" && (
-                  <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-500/10 via-amber-500/10 to-purple-500/10 border border-purple-300/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-amber-500 animate-spin" />
-                      <span className="text-xs font-bold text-slate-800">Demo hiệu ứng nhận thưởng (Admin):</span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        onClick={() => handleTestRewardEffect("quest")}
-                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" /> Thưởng Nhiệm Vụ + Lên Cấp
-                      </button>
-                      <button
-                        onClick={() => handleTestRewardEffect("coins")}
-                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1"
-                      >
-                        <Coins className="w-3.5 h-3.5" /> Hộp Quà (Jackpot Xu)
-                      </button>
-                      <button
-                        onClick={() => handleTestRewardEffect("shield")}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1"
-                      >
-                        <Shield className="w-3.5 h-3.5" /> Hộp Quà (Khiên Hộ Mệnh)
-                      </button>
-                      <button
-                        onClick={() => handleTestRewardEffect("shop")}
-                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1"
-                      >
-                        <ShoppingBag className="w-3.5 h-3.5" /> Mua Hàng Cửa Hàng
-                      </button>
-                    </div>
-                  </div>
-                )}
 
                 {sortedQuests.length === 0 ? (
                     <div className="text-center py-8 text-slate-500 text-sm">Không có nhiệm vụ khả dụng.</div>
