@@ -23,6 +23,8 @@ async function getPlayerProfileStats(userId) {
             selected_avatar_frame, selected_title,
             elo_singles, peak_elo_singles, matches_singles, win_rate_singles, win_singles, loss_singles, streak_singles, max_streak_singles,
             elo_doubles, peak_elo_doubles, matches_doubles, win_rate_doubles, win_doubles, loss_doubles, streak_doubles, max_streak_doubles,
+            COALESCE(grind_matches_count, 0) as grind_matches_count,
+            COALESCE(grind_loss_count, 0) as grind_loss_count,
             level, xp, smash_coins, current_streak, max_streak, created_at
      FROM users
      WHERE id = $1`,
@@ -187,6 +189,8 @@ async function getPlayerProfileStats(userId) {
       selected_avatar_frame: user.selected_avatar_frame,
       selected_title: user.selected_title,
       soft_skills: user.soft_skills,
+      grind_matches_count: Number(user.grind_matches_count) || 0,
+      grind_loss_count: Number(user.grind_loss_count) || 0,
       created_at: user.created_at
     },
     singles,

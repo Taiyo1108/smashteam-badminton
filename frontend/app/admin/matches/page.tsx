@@ -11,6 +11,7 @@ import confetti from "canvas-confetti";
 import { API_URL } from "@/app/config";
 import { Player, CourtSlot, CourtStatus, SessionItem, MatchSuggestion, EloPreviewData } from "./types";
 import MatchHistoryView from "./components/MatchHistoryView";
+import { calculateRankMatchElo } from "@/app/utils/elo";
 
 
 const normalizeId = (id: string | null | undefined): string => String(id || '').trim().toLowerCase();
@@ -368,7 +369,7 @@ export default function MatchDeskPage() {
     return { isUsed: false };
   };
 
-  // Tính Preview ELO cho 1 CourtSlot
+  // Tính Preview ELO cho 1 CourtSlot sử dụng thuật toán chuẩn xác từ backend (kèm cơ chế x2 Thắng và Khiên Thua)
   const computeEloPreview = (slot: CourtSlot): EloPreviewData | null => {
     const p1 = members.find(m => m.id === slot.player1Id);
     const p2 = members.find(m => m.id === slot.player2Id);
@@ -382,68 +383,54 @@ export default function MatchDeskPage() {
     const elo2 = isDoubles ? p2.elo_doubles : p2.elo_singles;
     const matches1 = isDoubles ? p1.matches_doubles : p1.matches_singles;
     const matches2 = isDoubles ? p2.matches_doubles : p2.matches_singles;
-    const streak1 = isDoubles ? p1.streak_doubles : p1.streak_singles;
-    const streak2 = isDoubles ? p2.streak_doubles : p2.streak_singles;
 
     const elo1_p = isDoubles && p1p ? p1p.elo_doubles : null;
     const elo2_p = isDoubles && p2p ? p2p.elo_doubles : null;
     const matches1_p = isDoubles && p1p ? p1p.matches_doubles : 0;
     const matches2_p = isDoubles && p2p ? p2p.matches_doubles : 0;
-    const streak1_p = isDoubles && p1p ? p1p.streak_doubles : 0;
-    const streak2_p = isDoubles && p2p ? p2p.streak_doubles : 0;
 
-    const T1 = elo1_p !== null ? (elo1 + elo1_p) / 2 : elo1;
-    const T2 = elo2_p !== null ? (elo2 + elo2_p) / 2 : elo2;
-
-    const getK = (mCount: number, sCount: number) => {
-      return mCount < 10 ? 40 : (sCount >= 3 ? 36 : 24);
-    };
-
-    let K1 = getK(matches1, streak1);
-    let K2 = getK(matches2, streak2);
-
-    let K_team1 = K1;
-    if (elo1_p !== null) {
-      K_team1 = (K1 + getK(matches1_p, streak1_p)) / 2;
-    }
-
-    let K_team2 = K2;
-    if (elo2_p !== null) {
-      K_team2 = (K2 + getK(matches2_p, streak2_p)) / 2;
-    }
-
-    const E1 = 1 / (1 + Math.pow(10, (T2 - T1) / 400));
-    const E2 = 1 - E1;
-
-    // Xác định đội thắng
-    const team1Won = slot.winnerId === slot.player1Id || (isDoubles && slot.winnerId === slot.player1PartnerId);
-    const S1 = team1Won ? 1 : 0;
-    const S2 = 1 - S1;
-
-    const delta1 = Math.round(K_team1 * (S1 - E1));
-    const delta2 = Math.round(K_team2 * (S2 - E2));
-
-    const elo1New = Math.max(100, elo1 + delta1);
-    const elo1_pNew = elo1_p !== null ? Math.max(100, elo1_p + delta1) : 0;
-    const elo2New = Math.max(100, elo2 + delta2);
-    const elo2_pNew = elo2_p !== null ? Math.max(100, elo2_p + delta2) : 0;
-
-    const eloExchanged = team1Won ? Math.abs(delta1) : Math.abs(delta2);
+    const eloResult = calculateRankMatchElo({
+      elo1,
+      elo2,
+      player1Id: slot.player1Id,
+      player2Id: slot.player2Id,
+      winnerId: slot.winnerId,
+      matches1,
+      matches2,
+      elo1Partner: elo1_p,
+      elo2Partner: elo2_p,
+      matches1Partner: matches1_p,
+      matches2Partner: matches2_p,
+      player1PartnerId: slot.player1PartnerId,
+      player2PartnerId: slot.player2PartnerId,
+      grindInfo: {
+        p1: { matchesCount: p1.grind_matches_count, lossCount: p1.grind_loss_count },
+        p2: { matchesCount: p2.grind_matches_count, lossCount: p2.grind_loss_count },
+        p1p: p1p ? { matchesCount: p1p.grind_matches_count, lossCount: p1p.grind_loss_count } : undefined,
+        p2p: p2p ? { matchesCount: p2p.grind_matches_count, lossCount: p2p.grind_loss_count } : undefined,
+      }
+    });
 
     return {
-      team1Elo: Math.round(T1),
-      team2Elo: Math.round(T2),
-      winProb1: Math.round(E1 * 100),
-      winProb2: Math.round(E2 * 100),
-      p1Diff: delta1,
-      p1pDiff: delta1,
-      p2Diff: delta2,
-      p2pDiff: delta2,
-      p1New: elo1New,
-      p1pNew: elo1_pNew,
-      p2New: elo2New,
-      p2pNew: elo2_pNew,
-      eloExchanged
+      team1Elo: eloResult.team1Elo,
+      team2Elo: eloResult.team2Elo,
+      winProb1: eloResult.winProb1,
+      winProb2: eloResult.winProb2,
+      baseDelta: eloResult.baseDelta,
+      p1Diff: eloResult.p1Diff,
+      p1pDiff: eloResult.p1pDiff,
+      p2Diff: eloResult.p2Diff,
+      p2pDiff: eloResult.p2pDiff,
+      p1New: eloResult.elo1New,
+      p1pNew: eloResult.elo1_partnerNew || 0,
+      p2New: eloResult.elo2New,
+      p2pNew: eloResult.elo2_partnerNew || 0,
+      eloExchanged: eloResult.eloExchanged,
+      isWinBoost1: eloResult.p1Outcome.isWinBoost || (eloResult.p1pOutcome?.isWinBoost ?? false),
+      isLossShield1: eloResult.p1Outcome.isLossShield || (eloResult.p1pOutcome?.isLossShield ?? false),
+      isWinBoost2: eloResult.p2Outcome.isWinBoost || (eloResult.p2pOutcome?.isWinBoost ?? false),
+      isLossShield2: eloResult.p2Outcome.isLossShield || (eloResult.p2pOutcome?.isLossShield ?? false),
+      team1Won: eloResult.team1Won
     };
   };
 
@@ -1217,21 +1204,70 @@ export default function MatchDeskPage() {
 
                 {/* LIVE ELO PREVIEW BAR */}
                 {preview && (
-                  <div className="p-2.5 bg-amber-50/50 rounded-2xl border border-amber-200/60 text-[11px] space-y-1">
-                    <div className="flex justify-between items-center text-slate-600 font-bold">
-                      <span>Biến động Elo dự kiến:</span>
-                      <span className="font-mono font-black text-amber-700">±{preview.eloExchanged} ELO</span>
-                    </div>
-                    <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-500">Đội A:</span>
-                      <span className={`font-mono font-bold ${preview.p1Diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                        {preview.p1Diff >= 0 ? `+${preview.p1Diff}` : preview.p1Diff}
+                  <div className="p-3 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl border border-slate-700 shadow-md text-[11px] space-y-2">
+                    <div className="flex justify-between items-center text-slate-300 font-bold border-b border-slate-700/80 pb-1.5">
+                      <span className="flex items-center gap-1.5 text-amber-400">
+                        <Zap className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                        <span>Biến động Elo dự kiến</span>
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-400">
+                        Chuẩn cơ bản: ±{preview.baseDelta} ELO
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-500">Đội B:</span>
-                      <span className={`font-mono font-bold ${preview.p2Diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                        {preview.p2Diff >= 0 ? `+${preview.p2Diff}` : preview.p2Diff}
+
+                    {/* Team A */}
+                    <div className="flex justify-between items-center text-[11px]">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-slate-300 font-semibold">Đội A:</span>
+                        {preview.isWinBoost1 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-[9px] font-black text-amber-300 uppercase tracking-wider animate-pulse">
+                            ⚡ x2 Thưởng
+                          </span>
+                        )}
+                        {preview.isLossShield1 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/50 text-[9px] font-black text-indigo-300 uppercase tracking-wider">
+                            🛡️ Khiên bảo hộ
+                          </span>
+                        )}
+                      </div>
+                      <span className={`font-mono font-black ${
+                        preview.isLossShield1 
+                          ? 'text-indigo-400' 
+                          : preview.p1Diff > 0 
+                            ? 'text-emerald-400' 
+                            : 'text-rose-400'
+                      }`}>
+                        {preview.isLossShield1 
+                          ? '0 ELO (Được bảo hộ)' 
+                          : (preview.p1Diff > 0 ? `+${preview.p1Diff} ELO` : `${preview.p1Diff} ELO`)}
+                      </span>
+                    </div>
+
+                    {/* Team B */}
+                    <div className="flex justify-between items-center text-[11px]">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-slate-300 font-semibold">Đội B:</span>
+                        {preview.isWinBoost2 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-[9px] font-black text-amber-300 uppercase tracking-wider animate-pulse">
+                            ⚡ x2 Thưởng
+                          </span>
+                        )}
+                        {preview.isLossShield2 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/50 text-[9px] font-black text-indigo-300 uppercase tracking-wider">
+                            🛡️ Khiên bảo hộ
+                          </span>
+                        )}
+                      </div>
+                      <span className={`font-mono font-black ${
+                        preview.isLossShield2 
+                          ? 'text-indigo-400' 
+                          : preview.p2Diff > 0 
+                            ? 'text-emerald-400' 
+                            : 'text-rose-400'
+                      }`}>
+                        {preview.isLossShield2 
+                          ? '0 ELO (Được bảo hộ)' 
+                          : (preview.p2Diff > 0 ? `+${preview.p2Diff} ELO` : `${preview.p2Diff} ELO`)}
                       </span>
                     </div>
                   </div>

@@ -347,7 +347,7 @@ export default function MatchHistoryView({
                       <span className={team2Won ? "text-amber-600" : ""}>{m.score_p2}</span>
                     </div>
                     <div className="mt-1 text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                      ±{m.elo_exchanged || 0} ELO
+                      {m.elo_exchanged ? `Biến động: ${m.elo_exchanged} ELO` : "0 ELO"}
                     </div>
                   </div>
 

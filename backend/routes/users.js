@@ -229,6 +229,8 @@ router.get('/members', authenticateToken, isAdmin, async (req, res) => {
         users.streak_doubles, users.max_streak_doubles, 
         users.win_singles, users.win_doubles, 
         users.loss_singles, users.loss_doubles,
+        COALESCE(users.grind_matches_count, 0) as grind_matches_count,
+        COALESCE(users.grind_loss_count, 0) as grind_loss_count,
         users.created_at, users.is_profile_completed, users.gender,
         (users.password_hash IS NOT NULL) AS is_activated,
         COALESCE(disc.active_yellow_cards, 0) as active_yellow_cards,

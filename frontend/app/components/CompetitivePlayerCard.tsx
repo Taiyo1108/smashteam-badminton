@@ -22,6 +22,8 @@ export interface CompetitiveCardProps {
     badminton_level?: string;
     role?: string;
     academic_info?: string;
+    grind_matches_count?: number;
+    grind_loss_count?: number;
   };
   singles?: {
     elo: number;
@@ -175,6 +177,10 @@ export default function CompetitivePlayerCard({
   const modeStreak = activeMode === "doubles" 
     ? (streak?.doubles?.current || 0) 
     : (streak?.singles?.current || 0);
+
+  // MOBA Ranked Grind Metrics (Cơ Chế Cày Cuốc Leo Rank)
+  const grindMatchesCount = Math.max(0, Math.min(5, Number(player?.grind_matches_count) || 0));
+  const grindLossCount = Math.max(0, Math.min(5, Number(player?.grind_loss_count) || 0));
 
   // Next tier progress
   const nextTierMinElo = 
@@ -514,6 +520,115 @@ export default function CompetitivePlayerCard({
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* 6.1. MOBA RANK GRIND PROGRESSION: THƯỞNG THẮNG X2 & KHIÊN BẢO HỘ THUA */}
+        <div className="relative z-10 mb-4 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3.5">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase tracking-tight">
+              <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+              <span>Tiến Trình Cày Rank (MOBA Style)</span>
+            </div>
+            <span className="text-[10px] font-bold text-slate-400">Chu kỳ 5 trận</span>
+          </div>
+
+          {/* 1. THƯỞNG THẮNG X2 ELO */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                <span className="font-bold text-slate-700">Thưởng Thắng x2 ELO</span>
+                {grindMatchesCount >= 5 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-black text-[9px] uppercase tracking-wider animate-pulse">
+                    ⚡ Sẵn Sàng x2
+                  </span>
+                )}
+              </div>
+              <span className="font-mono font-black text-amber-600 text-xs">
+                {grindMatchesCount}/5 trận
+              </span>
+            </div>
+
+            {/* 5-Segment Horizontal Bar */}
+            <div className="grid grid-cols-5 gap-1.5">
+              {[1, 2, 3, 4, 5].map((seg) => {
+                const isFilled = seg <= grindMatchesCount;
+                return (
+                  <div
+                    key={seg}
+                    className={`h-2 rounded-md transition-all duration-300 ${
+                      isFilled
+                        ? grindMatchesCount >= 5
+                          ? "bg-gradient-to-r from-amber-400 to-yellow-500 shadow-[0_0_8px_rgba(251,191,36,0.6)]"
+                          : "bg-amber-400"
+                        : "bg-slate-100 border border-slate-200/60"
+                    }`}
+                  />
+                );
+              })}
+            </div>
+
+            <p className="text-[10px] text-slate-500">
+              {grindMatchesCount >= 5 ? (
+                <span className="text-amber-700 font-bold">
+                  ⚡ Đã đủ 5 trận tích lũy! Trận thắng đầu tiên tiếp theo sẽ được <strong>nhân đôi (+x2) ELO</strong>!
+                </span>
+              ) : (
+                <span>
+                  Đấu thêm <strong className="text-slate-700">{5 - grindMatchesCount} trận</strong> để kích hoạt x2 ELO ở trận thắng tiếp theo.
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* 2. KHIÊN BẢO HỘ THUA */}
+          <div className="space-y-1.5 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="font-bold text-slate-700">Khiên Bảo Hộ Thua</span>
+                {grindLossCount >= 5 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-black text-[9px] uppercase tracking-wider animate-pulse">
+                    🛡️ Khiên Đã Sạc Đầy
+                  </span>
+                )}
+              </div>
+              <span className="font-mono font-black text-indigo-600 text-xs">
+                {grindLossCount}/5 trận thua
+              </span>
+            </div>
+
+            {/* 5-Segment Horizontal Bar */}
+            <div className="grid grid-cols-5 gap-1.5">
+              {[1, 2, 3, 4, 5].map((seg) => {
+                const isFilled = seg <= grindLossCount;
+                return (
+                  <div
+                    key={seg}
+                    className={`h-2 rounded-md transition-all duration-300 ${
+                      isFilled
+                        ? grindLossCount >= 5
+                          ? "bg-gradient-to-r from-indigo-500 to-purple-600 shadow-[0_0_8px_rgba(99,102,241,0.6)]"
+                          : "bg-indigo-500"
+                        : "bg-slate-100 border border-slate-200/60"
+                    }`}
+                  />
+                );
+              })}
+            </div>
+
+            <p className="text-[10px] text-slate-500">
+              {grindLossCount >= 5 ? (
+                <span className="text-indigo-700 font-bold">
+                  🛡️ Khiên đã sạc đầy! Trận thua tiếp theo sẽ được <strong>miễn trừ 0 ELO (không bị trừ điểm)</strong>!
+                </span>
+              ) : (
+                <span>
+                  Tích lũy 5 trận thua để sạc đầy khiên bảo hộ miễn trừ mất điểm ELO ({5 - grindLossCount} trận nữa).
+                </span>
+              )}
+            </p>
           </div>
         </div>
 

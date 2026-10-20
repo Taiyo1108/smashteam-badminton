@@ -72,6 +72,8 @@ router.get('/me', authenticateToken, async (req, res) => {
               selected_avatar_frame, selected_title,
               elo_singles, matches_singles, win_rate_singles, win_singles, loss_singles, streak_singles, max_streak_singles,
               elo_doubles, matches_doubles, win_rate_doubles, win_doubles, loss_doubles, streak_doubles, max_streak_doubles,
+              COALESCE(grind_matches_count, 0) as grind_matches_count,
+              COALESCE(grind_loss_count, 0) as grind_loss_count,
               created_at
        FROM users
        WHERE id = $1`,

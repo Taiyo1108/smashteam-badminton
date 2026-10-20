@@ -137,6 +137,8 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
                 win_doubles, loss_doubles,
                 streak_singles, max_streak_singles,
                 streak_doubles, max_streak_doubles,
+                COALESCE(grind_matches_count, 0) as grind_matches_count,
+                COALESCE(grind_loss_count, 0) as grind_loss_count,
                 status, is_blocked
          FROM users WHERE id = $1::uuid FOR UPDATE`, 
         [pId]
@@ -172,19 +174,30 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const streak1_p = isDoubles && p1_p ? p1_p.streak_doubles : 0;
     const streak2_p = isDoubles && p2_p ? p2_p.streak_doubles : 0;
 
-    // Tính Elo bằng helper calculateElo
-    const { elo1New, elo2New, elo1_partnerNew, elo2_partnerNew, eloExchanged } = calculateElo(
+    const grindInfo = {
+      p1: { matchesCount: p1.grind_matches_count, lossCount: p1.grind_loss_count },
+      p2: { matchesCount: p2.grind_matches_count, lossCount: p2.grind_loss_count },
+      p1p: p1_p ? { matchesCount: p1_p.grind_matches_count, lossCount: p1_p.grind_loss_count } : null,
+      p2p: p2_p ? { matchesCount: p2_p.grind_matches_count, lossCount: p2_p.grind_loss_count } : null,
+    };
+
+    // Tính Elo bằng helper calculateElo (kèm cơ chế cày cuốc x2 Thắng và Khiên Thua)
+    const { 
+      elo1New, elo2New, elo1_partnerNew, elo2_partnerNew, eloExchanged,
+      p1Outcome, p2Outcome, p1pOutcome, p2pOutcome
+    } = calculateElo(
       elo1, elo2, player1_id, player2_id, winner_id,
       streak1, streak2, matches1, matches2,
       elo1_p, elo2_p,
       streak1_p, streak2_p,
       matches1_p, matches2_p,
       player1_partner_id,
-      player2_partner_id
+      player2_partner_id,
+      grindInfo
     );
 
-    // Hàm cập nhật thống kê người chơi (tách biệt Đơn/Đôi)
-    const updateUserStats = async (id, currentStats, newElo, won) => {
+    // Hàm cập nhật thống kê người chơi (tách biệt Đơn/Đôi và lưu tiến trình cày cuốc)
+    const updateUserStats = async (id, currentStats, newElo, won, outcome) => {
       // Xác định tên cột dựa trên thể thức
       const matches_col = isDoubles ? 'matches_doubles' : 'matches_singles';
       const elo_col = isDoubles ? 'elo_doubles' : 'elo_singles';
@@ -214,6 +227,9 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       }
       const newMaxStreak = newStreak > 0 ? Math.max(prevMaxStreak, newStreak) : prevMaxStreak;
 
+      const nextMatchesCount = outcome?.nextMatchesCount !== undefined ? outcome.nextMatchesCount : 0;
+      const nextLossCount = outcome?.nextLossCount !== undefined ? outcome.nextLossCount : 0;
+
       await db.query(
         `UPDATE users 
          SET ${elo_col} = $1, 
@@ -225,9 +241,11 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
              ${streak_col} = $6,
              ${max_streak_col} = $7,
              rating_points = $1,
-             matches_played = COALESCE(matches_singles, 0) + COALESCE(matches_doubles, 0) + 1
+             matches_played = COALESCE(matches_singles, 0) + COALESCE(matches_doubles, 0) + 1,
+             grind_matches_count = $9,
+             grind_loss_count = $10
          WHERE id = $8::uuid`,
-        [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id]
+        [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id, nextMatchesCount, nextLossCount]
       );
 
       // Award 15 XP for match and progress quest
@@ -239,14 +257,14 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     };
 
     // Thực hiện cập nhật cho các người chơi
-    await updateUserStats(player1_id, p1, elo1New, team1Won);
-    await updateUserStats(player2_id, p2, elo2New, team2Won);
+    await updateUserStats(player1_id, p1, elo1New, team1Won, p1Outcome);
+    await updateUserStats(player2_id, p2, elo2New, team2Won, p2Outcome);
 
     if (player1_partner_id && p1_p) {
-      await updateUserStats(player1_partner_id, p1_p, elo1_partnerNew, team1Won);
+      await updateUserStats(player1_partner_id, p1_p, elo1_partnerNew, team1Won, p1pOutcome);
     }
     if (player2_partner_id && p2_p) {
-      await updateUserStats(player2_partner_id, p2_p, elo2_partnerNew, team2Won);
+      await updateUserStats(player2_partner_id, p2_p, elo2_partnerNew, team2Won, p2pOutcome);
     }
 
     // Lưu trận đấu vào DB
@@ -290,6 +308,8 @@ router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
           u.matches_singles, u.matches_doubles,
           u.win_rate_singles, u.win_rate_doubles,
           u.streak_singles, u.streak_doubles,
+          COALESCE(u.grind_matches_count, 0) as grind_matches_count,
+          COALESCE(u.grind_loss_count, 0) as grind_loss_count,
           a.checked_in_at
          FROM attendances a
          JOIN users u ON a.user_id = u.id
@@ -311,6 +331,8 @@ router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
           matches_singles, matches_doubles,
           win_rate_singles, win_rate_doubles,
           streak_singles, streak_doubles,
+          COALESCE(grind_matches_count, 0) as grind_matches_count,
+          COALESCE(grind_loss_count, 0) as grind_loss_count,
           NULL AS checked_in_at
          FROM users
          WHERE status = 'active' AND (is_blocked IS FALSE OR is_blocked IS NULL)
@@ -347,7 +369,9 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
     }
 
     const pRes = await db.query(
-      `SELECT id, full_name, elo_singles, elo_doubles, matches_singles, matches_doubles, streak_singles, streak_doubles
+      `SELECT id, full_name, elo_singles, elo_doubles, matches_singles, matches_doubles, streak_singles, streak_doubles,
+              COALESCE(grind_matches_count, 0) as grind_matches_count,
+              COALESCE(grind_loss_count, 0) as grind_loss_count
        FROM users WHERE id = ANY($1::uuid[])`,
       [activeIds]
     );
@@ -380,6 +404,13 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
 
     const actualWinnerId = winner_id || player1_id;
 
+    const grindInfo = {
+      p1: { matchesCount: p1.grind_matches_count, lossCount: p1.grind_loss_count },
+      p2: { matchesCount: p2.grind_matches_count, lossCount: p2.grind_loss_count },
+      p1p: p1_p ? { matchesCount: p1_p.grind_matches_count, lossCount: p1_p.grind_loss_count } : null,
+      p2p: p2_p ? { matchesCount: p2_p.grind_matches_count, lossCount: p2_p.grind_loss_count } : null,
+    };
+
     const eloResult = calculateElo(
       elo1, elo2, player1_id, player2_id, actualWinnerId,
       streak1, streak2, matches1, matches2,
@@ -387,7 +418,8 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
       streak1_p, streak2_p,
       matches1_p, matches2_p,
       player1_partner_id,
-      player2_partner_id
+      player2_partner_id,
+      grindInfo
     );
 
     const team1Elo = elo1_p !== null ? Math.round((elo1 + elo1_p) / 2) : elo1;
@@ -406,11 +438,44 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
         elo: team2Elo,
         winProb: Math.round(exp2 * 100)
       },
-      p1: { before: elo1, after: eloResult.elo1New, diff: eloResult.elo1New - elo1 },
-      p1_partner: isDoubles ? { before: elo1_p, after: eloResult.elo1_partnerNew, diff: eloResult.elo1_partnerNew - elo1_p } : null,
-      p2: { before: elo2, after: eloResult.elo2New, diff: eloResult.elo2New - elo2 },
-      p2_partner: isDoubles ? { before: elo2_p, after: eloResult.elo2_partnerNew, diff: eloResult.elo2_partnerNew - elo2_p } : null,
-      eloExchanged: eloResult.eloExchanged
+      baseDelta: eloResult.baseDelta,
+      eloExchanged: eloResult.eloExchanged,
+      p1: { 
+        before: elo1, 
+        after: eloResult.elo1New, 
+        diff: eloResult.p1Outcome.delta,
+        isWinBoost: eloResult.p1Outcome.isWinBoost,
+        isLossShield: eloResult.p1Outcome.isLossShield,
+        grindMatches: p1.grind_matches_count,
+        grindLosses: p1.grind_loss_count
+      },
+      p1_partner: isDoubles && p1_p ? { 
+        before: elo1_p, 
+        after: eloResult.elo1_partnerNew, 
+        diff: eloResult.p1pOutcome?.delta ?? 0,
+        isWinBoost: eloResult.p1pOutcome?.isWinBoost ?? false,
+        isLossShield: eloResult.p1pOutcome?.isLossShield ?? false,
+        grindMatches: p1_p.grind_matches_count,
+        grindLosses: p1_p.grind_loss_count
+      } : null,
+      p2: { 
+        before: elo2, 
+        after: eloResult.elo2New, 
+        diff: eloResult.p2Outcome.delta,
+        isWinBoost: eloResult.p2Outcome.isWinBoost,
+        isLossShield: eloResult.p2Outcome.isLossShield,
+        grindMatches: p2.grind_matches_count,
+        grindLosses: p2.grind_loss_count
+      },
+      p2_partner: isDoubles && p2_p ? { 
+        before: elo2_p, 
+        after: eloResult.elo2_partnerNew, 
+        diff: eloResult.p2pOutcome?.delta ?? 0,
+        isWinBoost: eloResult.p2pOutcome?.isWinBoost ?? false,
+        isLossShield: eloResult.p2pOutcome?.isLossShield ?? false,
+        grindMatches: p2_p.grind_matches_count,
+        grindLosses: p2_p.grind_loss_count
+      } : null
     });
   } catch (error) {
     console.error('Error previewing match ELO:', error);
@@ -593,7 +658,9 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
               win_singles, loss_singles,
               win_doubles, loss_doubles,
               streak_singles, max_streak_singles,
-              streak_doubles, max_streak_doubles
+              streak_doubles, max_streak_doubles,
+              COALESCE(grind_matches_count, 0) as grind_matches_count,
+              COALESCE(grind_loss_count, 0) as grind_loss_count
        FROM users WHERE id = ANY($1::uuid[]) FOR UPDATE`,
       [sortedUniqueIds]
     );
@@ -606,7 +673,7 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
     lockedUsersRes.rows.forEach(u => { playersMap[u.id] = u; });
 
     // Helper cập nhật thống kê người chơi (sử dụng PostgreSQL client trong transaction)
-    const updateUserStats = async (id, currentStats, newElo, won, isDoubles) => {
+    const updateUserStats = async (id, currentStats, newElo, won, isDoubles, outcome) => {
       const matches_col = isDoubles ? 'matches_doubles' : 'matches_singles';
       const elo_col = isDoubles ? 'elo_doubles' : 'elo_singles';
       const peak_col = isDoubles ? 'peak_elo_doubles' : 'peak_elo_singles';
@@ -635,6 +702,9 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
       }
       const newMaxStreak = newStreak > 0 ? Math.max(prevMaxStreak, newStreak) : prevMaxStreak;
 
+      const nextMatchesCount = outcome?.nextMatchesCount !== undefined ? outcome.nextMatchesCount : 0;
+      const nextLossCount = outcome?.nextLossCount !== undefined ? outcome.nextLossCount : 0;
+
       await client.query(
         `UPDATE users 
          SET ${elo_col} = $1, 
@@ -646,10 +716,21 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
              ${streak_col} = $6,
              ${max_streak_col} = $7,
              rating_points = $1,
-             matches_played = COALESCE(matches_singles, 0) + COALESCE(matches_doubles, 0) + 1
+             matches_played = COALESCE(matches_singles, 0) + COALESCE(matches_doubles, 0) + 1,
+             grind_matches_count = $9,
+             grind_loss_count = $10
          WHERE id = $8::uuid`,
-        [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id]
+        [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id, nextMatchesCount, nextLossCount]
       );
+
+      // Cập nhật currentStats in-memory cho các trận tiếp theo nếu có trong batch
+      currentStats[elo_col] = newElo;
+      currentStats[matches_col] = newTotal;
+      currentStats[win_col] = newWin;
+      currentStats[loss_col] = newLoss;
+      currentStats[streak_col] = newStreak;
+      currentStats.grind_matches_count = nextMatchesCount;
+      currentStats.grind_loss_count = nextLossCount;
 
       // Thưởng XP và Quest đồng bộ trong transaction
       await addXpToUser(id, 15, client);
@@ -686,6 +767,13 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
       const streak1_p = isDoubles && p1_p ? p1_p.streak_doubles : 0;
       const streak2_p = isDoubles && p2_p ? p2_p.streak_doubles : 0;
 
+      const grindInfo = {
+        p1: { matchesCount: p1.grind_matches_count, lossCount: p1.grind_loss_count },
+        p2: { matchesCount: p2.grind_matches_count, lossCount: p2.grind_loss_count },
+        p1p: p1_p ? { matchesCount: p1_p.grind_matches_count, lossCount: p1_p.grind_loss_count } : null,
+        p2p: p2_p ? { matchesCount: p2_p.grind_matches_count, lossCount: p2_p.grind_loss_count } : null,
+      };
+
       const eloResult = calculateElo(
         elo1, elo2, m.player1_id, m.player2_id, m.winner_id,
         streak1, streak2, matches1, matches2,
@@ -693,27 +781,28 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
         streak1_p, streak2_p,
         matches1_p, matches2_p,
         m.player1_partner_id,
-        m.player2_partner_id
+        m.player2_partner_id,
+        grindInfo
       );
 
       const team1Won = m.winner_id === m.player1_id || (m.player1_partner_id && m.winner_id === m.player1_partner_id);
       const team2Won = !team1Won;
 
-      await updateUserStats(m.player1_id, p1, eloResult.elo1New, team1Won, isDoubles);
-      await updateUserStats(m.player2_id, p2, eloResult.elo2New, team2Won, isDoubles);
+      await updateUserStats(m.player1_id, p1, eloResult.elo1New, team1Won, isDoubles, eloResult.p1Outcome);
+      await updateUserStats(m.player2_id, p2, eloResult.elo2New, team2Won, isDoubles, eloResult.p2Outcome);
 
       updatedPlayers.push(
-        { id: m.player1_id, eloBefore: elo1, eloAfter: eloResult.elo1New, diff: eloResult.elo1New - elo1 },
-        { id: m.player2_id, eloBefore: elo2, eloAfter: eloResult.elo2New, diff: eloResult.elo2New - elo2 }
+        { id: m.player1_id, eloBefore: elo1, eloAfter: eloResult.elo1New, diff: eloResult.p1Outcome.delta, isWinBoost: eloResult.p1Outcome.isWinBoost, isLossShield: eloResult.p1Outcome.isLossShield },
+        { id: m.player2_id, eloBefore: elo2, eloAfter: eloResult.elo2New, diff: eloResult.p2Outcome.delta, isWinBoost: eloResult.p2Outcome.isWinBoost, isLossShield: eloResult.p2Outcome.isLossShield }
       );
 
       if (isDoubles && m.player1_partner_id && p1_p) {
-        await updateUserStats(m.player1_partner_id, p1_p, eloResult.elo1_partnerNew, team1Won, isDoubles);
-        updatedPlayers.push({ id: m.player1_partner_id, eloBefore: elo1_p, eloAfter: eloResult.elo1_partnerNew, diff: eloResult.elo1_partnerNew - elo1_p });
+        await updateUserStats(m.player1_partner_id, p1_p, eloResult.elo1_partnerNew, team1Won, isDoubles, eloResult.p1pOutcome);
+        updatedPlayers.push({ id: m.player1_partner_id, eloBefore: elo1_p, eloAfter: eloResult.elo1_partnerNew, diff: eloResult.p1pOutcome?.delta ?? 0, isWinBoost: eloResult.p1pOutcome?.isWinBoost, isLossShield: eloResult.p1pOutcome?.isLossShield });
       }
       if (isDoubles && m.player2_partner_id && p2_p) {
-        await updateUserStats(m.player2_partner_id, p2_p, eloResult.elo2_partnerNew, team2Won, isDoubles);
-        updatedPlayers.push({ id: m.player2_partner_id, eloBefore: elo2_p, eloAfter: eloResult.elo2_partnerNew, diff: eloResult.elo2_partnerNew - elo2_p });
+        await updateUserStats(m.player2_partner_id, p2_p, eloResult.elo2_partnerNew, team2Won, isDoubles, eloResult.p2pOutcome);
+        updatedPlayers.push({ id: m.player2_partner_id, eloBefore: elo2_p, eloAfter: eloResult.elo2_partnerNew, diff: eloResult.p2pOutcome?.delta ?? 0, isWinBoost: eloResult.p2pOutcome?.isWinBoost, isLossShield: eloResult.p2pOutcome?.isLossShield });
       }
 
       // INSERT vào matches
