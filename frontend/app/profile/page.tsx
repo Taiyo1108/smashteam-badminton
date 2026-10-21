@@ -1023,6 +1023,50 @@ export default function ProfilePage() {
           
           {/* RSVP & RESERVATION WIDGET */}
           <div className="rounded-2xl bg-white border border-slate-200 p-6 relative overflow-hidden shadow-sm space-y-4">
+            {/* THẺ PHẠT & TIẾN TRÌNH XÓA THẺ VÀNG CHO KHÁCH VÃNG LAI */}
+            {playerData?.guest_penalty?.hasYellowCard && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3.5 animate-fade-in">
+                <div className="w-8 h-10 rounded bg-gradient-to-br from-amber-400 to-yellow-500 border border-yellow-200 shadow-md shrink-0 flex items-center justify-center text-xs font-black text-slate-950 mt-0.5">
+                  1
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-amber-900 text-xs sm:text-sm">
+                      Đang chịu án phạt: 1 Thẻ vàng (-50 điểm uy tín)
+                    </span>
+                    <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                      {playerData.guest_penalty.cleanSessions}/5 buổi tập
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    Bạn đã giữ chỗ nhưng không tham gia buổi tập trước đó. Hãy hoàn thành điểm danh tại 5 buổi tập tiếp theo để được tự động gỡ bỏ thẻ phạt và phục hồi điểm uy tín.
+                  </p>
+                  <div className="w-full h-2 bg-amber-200/60 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, (playerData.guest_penalty.cleanSessions / 5) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {playerData?.guest_penalty?.hasRedCard && (
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-3.5 animate-fade-in">
+                <div className="w-8 h-10 rounded bg-gradient-to-br from-rose-500 to-red-600 border border-rose-300 shadow-md shrink-0 flex items-center justify-center text-xs font-black text-white mt-0.5">
+                  !
+                </div>
+                <div className="flex-1 space-y-1">
+                  <span className="font-extrabold text-rose-900 text-xs sm:text-sm">
+                    Tài khoản bị phạt Thẻ đỏ & Khóa vĩnh viễn
+                  </span>
+                  <p className="text-xs text-rose-700 leading-relaxed">
+                    Tài khoản đã vi phạm quy chế giữ chỗ 2 lần (No-show tái phạm). Toàn bộ quyền đặt chỗ đã bị hủy và thông tin này đã bị cấm trên toàn hệ thống.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <h3 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
               <Calendar className="w-5 h-5 text-primary" /> Đăng ký Lịch tập & Giữ chỗ (Reservation)
             </h3>

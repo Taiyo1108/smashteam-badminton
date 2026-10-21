@@ -6,6 +6,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
 const { getPlayerProfileStats } = require('../services/playerStatsService');
 const { calculateReliabilityScore } = require('../services/memberManagementService');
+const { getGuestPenaltyStatus, checkAndRevokeGuestPenalty } = require('../services/guestDisciplineService');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const { cloudinary } = require('../utils/cloudinary');
@@ -317,11 +318,21 @@ router.get('/me', authenticateToken, async (req, res) => {
     const attendanceHistory = attendanceHistoryRes.rows;
 
     // 5. Tính điểm hoạt động tích cực / uy tín & lịch sử biến động điểm
+    // Tự động kiểm tra và gỡ thẻ phạt nếu đã hoàn thành đủ 5 buổi tập tiếp theo
+    if (player.role === 'guest') {
+      try {
+        await checkAndRevokeGuestPenalty(userId);
+      } catch (err) {
+        console.error('Error auto-revoking guest penalty on profile fetch:', err);
+      }
+    }
+
+    const guestPenalty = player.role === 'guest' ? await getGuestPenaltyStatus(userId) : null;
     const reliability = await calculateReliabilityScore(userId);
 
     // Truy vấn lịch sử kỷ luật
     const disciplineHistoryRes = await db.query(
-      `SELECT id, type, reason, status, issued_at, revoked_at, revoked_reason
+      `SELECT id, type, reason, status, issued_at, revoked_at, revoked_reason, metadata
        FROM member_discipline_records
        WHERE user_id = $1::uuid
        ORDER BY issued_at DESC`,
@@ -380,12 +391,15 @@ router.get('/me', authenticateToken, async (req, res) => {
 
     // Từ discipline
     disciplineHistoryRes.rows.forEach(d => {
+      const isGuestNoShow = d.metadata && (d.metadata.reason_type === 'GUEST_NO_SHOW' || d.metadata.penalty_reputation === -50);
+      const isGuestPermanentRed = d.metadata && (d.metadata.reason_type === 'GUEST_NO_SHOW' || d.metadata.penalty_reputation === 'RESET_ZERO' || d.metadata.permanent_ban);
+
       if (d.type === 'YELLOW') {
         reputationEvents.push({
           id: `disc_${d.id}`,
-          delta: -15,
+          delta: isGuestNoShow ? -50 : -15,
           type: 'YELLOW_CARD',
-          title: 'Thẻ vàng kỷ luật',
+          title: isGuestNoShow ? 'Thẻ vàng kỷ luật (Khách vãng lai)' : 'Thẻ vàng kỷ luật',
           sessionTitle: null,
           reason: d.reason || 'Vi phạm nội quy sân bãi',
           date: d.issued_at
@@ -393,9 +407,9 @@ router.get('/me', authenticateToken, async (req, res) => {
       } else if (d.type === 'RED') {
         reputationEvents.push({
           id: `disc_${d.id}`,
-          delta: -40,
+          delta: isGuestPermanentRed ? -100 : -40,
           type: 'RED_CARD',
-          title: 'Thẻ đỏ kỷ luật',
+          title: isGuestPermanentRed ? 'Thẻ đỏ & Khóa tài khoản vĩnh viễn (Khách vãng lai)' : 'Thẻ đỏ kỷ luật',
           sessionTitle: null,
           reason: d.reason || 'Vi phạm kỷ luật nghiêm trọng',
           date: d.issued_at
@@ -405,9 +419,9 @@ router.get('/me', authenticateToken, async (req, res) => {
       if (d.status === 'REVOKED' && d.revoked_at) {
         reputationEvents.push({
           id: `disc_rev_${d.id}`,
-          delta: d.type === 'YELLOW' ? 15 : 40,
+          delta: isGuestNoShow ? 50 : (d.type === 'YELLOW' ? 15 : 40),
           type: 'REVOKED_CARD',
-          title: `Gỡ bỏ thẻ phạt ${d.type}`,
+          title: isGuestNoShow ? 'Gỡ bỏ Thẻ vàng (Hoàn thành 5 buổi tập)' : `Gỡ bỏ thẻ phạt ${d.type}`,
           sessionTitle: null,
           reason: d.revoked_reason || 'Ban Quản Trị đã xóa bỏ án kỷ luật',
           date: d.revoked_at
@@ -438,6 +452,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       matchStats: lifetimeMatchStats,
       upcomingSession,
       attendanceHistory,
+      guest_penalty: guestPenalty,
       reputation: {
         score: reliability.score,
         label: reliability.label,

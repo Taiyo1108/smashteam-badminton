@@ -129,6 +129,15 @@ async function reserveSession(sessionId, userId) {
       throw new Error('Buổi tập này đã bị đóng.');
     }
 
+    // Kiểm tra xem tài khoản có bị khóa hoặc phạt thẻ đỏ không
+    const userRoleRes = await client.query(
+      `SELECT id, role, is_blocked, status FROM users WHERE id = $1::uuid;`,
+      [userId]
+    );
+    if (userRoleRes.rows.length > 0 && userRoleRes.rows[0].is_blocked) {
+      throw new Error('Tài khoản của bạn đã bị khóa vĩnh viễn do vi phạm quy chế giữ chỗ của CLB (bị phạt Thẻ đỏ). Không thể tiếp tục đăng ký giữ chỗ.');
+    }
+
     const now = new Date();
     const resOpen = session.reservation_open_at ? new Date(session.reservation_open_at) : new Date(session.date_time.getTime() - 3 * 86400000);
     const resDeadline = session.reservation_deadline ? new Date(session.reservation_deadline) : new Date(session.date_time.getTime() - 2 * 3600000);
@@ -898,6 +907,14 @@ async function processQrCheckIn({
        WHERE session_id = $1::uuid AND user_id = $2::uuid AND status IN ('WAITING', 'OFFERED');`,
       [sessionId, userId]
     );
+
+    // 8.1. Tự động kiểm tra và gỡ Thẻ vàng cho khách vãng lai nếu đã tham gia đủ 5 buổi tập tiếp theo
+    try {
+      const { checkAndRevokeGuestPenalty } = require('./guestDisciplineService');
+      await checkAndRevokeGuestPenalty(userId, client);
+    } catch (revokeErr) {
+      console.error('Error auto-revoking guest penalty during check-in:', revokeErr);
+    }
 
     await client.query('COMMIT');
 

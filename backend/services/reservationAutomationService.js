@@ -118,6 +118,14 @@ async function processNoShows() {
     for (const session of endedSessions.rows) {
       await client.query('BEGIN');
 
+      // Tìm danh sách user bị No-show
+      const noShowUsersRes = await client.query(
+        `SELECT DISTINCT user_id FROM attendances
+         WHERE session_id = $1::uuid 
+           AND status IN ('RESERVED', 'CONFIRMED', 'going');`,
+        [session.id]
+      );
+
       const updateRes = await client.query(
         `UPDATE attendances
          SET status = 'NO_SHOW',
@@ -126,6 +134,20 @@ async function processNoShows() {
            AND status IN ('RESERVED', 'CONFIRMED', 'going');`,
         [session.id]
       );
+
+      // Tự động xử lý kỷ luật đối với khách vãng lai (Lần 1: Thẻ vàng -50 điểm; Lần 2: Thẻ đỏ khóa vĩnh viễn)
+      const { processGuestNoShowPenalty } = require('./guestDisciplineService');
+      for (const row of noShowUsersRes.rows) {
+        try {
+          await processGuestNoShowPenalty({
+            userId: row.user_id,
+            sessionId: session.id,
+            client
+          });
+        } catch (penErr) {
+          console.error(`[Automation] Error applying guest no-show penalty for user ${row.user_id}:`, penErr);
+        }
+      }
 
       await client.query(
         `UPDATE sessions SET no_show_processed = TRUE WHERE id = $1::uuid;`,

@@ -84,6 +84,29 @@ export default function SessionReservationWidget({
   const [isEarlyCheckoutModalOpen, setIsEarlyCheckoutModalOpen] = useState(false);
   const [isSubmittingEarlyCheckout, setIsSubmittingEarlyCheckout] = useState(false);
 
+  // Guest Commitment & Penalty Warning Modal
+  const [currentUserRole, setCurrentUserRole] = useState<string>("");
+  const [isGuestCommitmentModalOpen, setIsGuestCommitmentModalOpen] = useState(false);
+  const [hasAgreedGuestRule, setHasAgreedGuestRule] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"reserve" | "claim_offer" | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const role = localStorage.getItem("user_role");
+      if (role) {
+        setCurrentUserRole(role);
+      } else {
+        try {
+          const userStr = localStorage.getItem("user");
+          if (userStr) {
+            const u = JSON.parse(userStr);
+            if (u.role) setCurrentUserRole(u.role);
+          }
+        } catch {}
+      }
+    }
+  }, []);
+
   // Waitlist offer countdown timer
   const [offerTimeRemaining, setOfferTimeRemaining] = useState<string | null>(null);
 
@@ -156,6 +179,19 @@ export default function SessionReservationWidget({
       router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
+
+    // Nếu là thành viên vãng lai -> Bắt buộc mở modal cảnh báo quy định & cam kết tham gia
+    if (currentUserRole === "guest") {
+      setPendingAction("reserve");
+      setHasAgreedGuestRule(false);
+      setIsGuestCommitmentModalOpen(true);
+      return;
+    }
+
+    await executeReserve();
+  };
+
+  const executeReserve = async () => {
     setLoadingAction("reserve");
     try {
       const token = localStorage.getItem("admin_token");
@@ -300,6 +336,16 @@ export default function SessionReservationWidget({
 
   // Handler: Claim Waitlist Offer
   const handleClaimOffer = async () => {
+    if (currentUserRole === "guest") {
+      setPendingAction("claim_offer");
+      setHasAgreedGuestRule(false);
+      setIsGuestCommitmentModalOpen(true);
+      return;
+    }
+    await executeClaimOffer();
+  };
+
+  const executeClaimOffer = async () => {
     setLoadingAction("claim_offer");
     try {
       const token = localStorage.getItem("admin_token");
@@ -797,6 +843,134 @@ export default function SessionReservationWidget({
           </div>
         </div>
       )}
-    </div>
+    
+      {/* GUEST COMMITMENT & PENALTY WARNING MODAL */}
+      {isGuestCommitmentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-slate-900 border border-amber-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl relative text-white space-y-4 sm:space-y-5">
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setIsGuestCommitmentModalOpen(false);
+                setPendingAction(null);
+              }}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-start gap-3 border-b border-slate-800 pb-3 sm:pb-4">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-[0_0_15px_rgba(245,158,11,0.25)]">
+                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
+              <div className="pr-6">
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Lưu ý dành cho Khách vãng lai
+                </span>
+                <h3 className="text-base sm:text-lg font-black text-white mt-1">
+                  Quy Định & Cam Kết Tham Gia Giữ Chỗ
+                </h3>
+              </div>
+            </div>
+
+            {/* Intro text */}
+            <p className="text-xs sm:text-[13px] text-slate-300 leading-relaxed">
+              Để tránh việc <strong className="text-white">đăng ký tranh slot của các thành viên rồi không đi</strong> làm lãng phí sân bãi của CLB, SmashTeam áp dụng quy chế nghiêm ngặt đối với thành viên vãng lai:
+            </p>
+
+            {/* Penalty Cards */}
+            <div className="space-y-2.5">
+              {/* Lần 1: Thẻ vàng */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-800/80 border border-amber-500/30 flex items-start gap-3">
+                <div className="w-6 h-8 rounded bg-gradient-to-br from-amber-400 to-yellow-500 border border-yellow-200 shadow-md shrink-0 flex items-center justify-center text-[10px] font-black text-slate-950 mt-0.5">
+                  1
+                </div>
+                <div className="text-xs space-y-0.5">
+                  <div className="font-extrabold text-amber-300">
+                    Vi phạm lần 1 (Đăng ký giữ chỗ mà không đi):
+                  </div>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    Phạt <strong className="text-amber-300">1 Thẻ vàng</strong> và <strong className="text-rose-400">trừ 50 điểm uy tín</strong>.
+                  </p>
+                </div>
+              </div>
+
+              {/* Lần 2: Thẻ đỏ */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/40 flex items-start gap-3">
+                <div className="w-6 h-8 rounded bg-gradient-to-br from-rose-500 to-red-600 border border-rose-300 shadow-md shrink-0 flex items-center justify-center text-[10px] font-black text-white mt-0.5">
+                  2
+                </div>
+                <div className="text-xs space-y-0.5">
+                  <div className="font-extrabold text-rose-300">
+                    Vi phạm lần 2 (Tái phạm không đến sân):
+                  </div>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    Phạt <strong className="text-rose-400">Thẻ đỏ</strong>, <strong className="text-rose-400">trừ hết điểm uy tín (về 0 điểm)</strong>, <strong className="text-white">khóa tài khoản vĩnh viễn</strong> và <strong className="text-rose-300">cấm vĩnh viễn Số điện thoại / Email</strong> này đăng ký tài khoản trên toàn hệ thống.
+                  </p>
+                </div>
+              </div>
+
+              {/* Gỡ thẻ */}
+              <div className="p-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-start gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-slate-300 leading-relaxed">
+                  <span className="font-bold text-emerald-300">Cơ chế xóa án phạt:</span> Thẻ phạt sẽ được tự động gỡ bỏ sau khi bạn <strong className="text-emerald-300">tham gia thành công 5 buổi tập tiếp theo</strong>.
+                </div>
+              </div>
+            </div>
+
+            {/* Checkbox */}
+            <label className="flex items-start gap-3 p-3 rounded-2xl bg-slate-800/90 border border-slate-700/80 cursor-pointer hover:border-amber-500/50 transition-colors select-none">
+              <input
+                type="checkbox"
+                checked={hasAgreedGuestRule}
+                onChange={(e) => setHasAgreedGuestRule(e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded text-amber-500 focus:ring-amber-400 cursor-pointer accent-amber-500 shrink-0"
+              />
+              <span className="text-xs font-semibold text-slate-200 leading-snug">
+                Tôi đã đọc, hiểu rõ và cam kết sẽ có mặt tham gia đúng giờ khi đã đăng ký giữ chỗ.
+              </span>
+            </label>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsGuestCommitmentModalOpen(false);
+                  setPendingAction(null);
+                }}
+                className="flex-1 py-3 rounded-2xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-bold transition-all cursor-pointer text-center"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={!hasAgreedGuestRule}
+                onClick={async () => {
+                  setIsGuestCommitmentModalOpen(false);
+                  if (pendingAction === "reserve") {
+                    await executeReserve();
+                  } else if (pendingAction === "claim_offer") {
+                    await executeClaimOffer();
+                  }
+                  setPendingAction(null);
+                }}
+                className={`flex-1 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer shadow-lg flex items-center justify-center gap-2 ${
+                  hasAgreedGuestRule
+                    ? "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-amber-500/25 active:scale-95"
+                    : "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60"
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Tôi Cam Kết & Xác Nhận</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+</div>
   );
 }

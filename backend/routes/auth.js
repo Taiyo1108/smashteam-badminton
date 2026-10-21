@@ -7,6 +7,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { onboardingRateLimiter } = require('../middleware/rateLimiter');
 const { validateOnboarding } = require('../validators/onboardingValidator');
 const { OAuth2Client } = require('google-auth-library');
+const { checkBlacklist } = require('../services/guestDisciplineService');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '924372495544-vtcoadl8go2gf8oqqqhrr0s21fi10ecd.apps.googleusercontent.com';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -38,6 +39,9 @@ router.post('/login', async (req, res) => {
 
     // Check if user is blocked
     if (user.is_blocked) {
+      if (user.role === 'guest') {
+        return res.status(403).json({ error: 'Tài khoản vãng lai của bạn đã bị khóa vĩnh viễn do vi phạm quy chế giữ chỗ của CLB (bị phạt Thẻ đỏ do 2 lần giữ chỗ không tham gia).' });
+      }
       return res.status(403).json({ error: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Ban chủ nhiệm.' });
     }
 
@@ -119,6 +123,15 @@ router.post('/register-guest', onboardingRateLimiter, async (req, res) => {
 
     if (password !== confirm_password) {
       return res.status(400).json({ error: 'Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại.' });
+    }
+
+    // Kiểm tra xem số điện thoại có trong danh sách cấm vĩnh viễn không
+    const blacklistCheck = await checkBlacklist({ phone: cleanPhone });
+    if (blacklistCheck.isBanned) {
+      return res.status(403).json({ 
+        error: 'Số điện thoại này đã bị cấm vĩnh viễn do vi phạm quy định giữ chỗ của CLB (bị phạt Thẻ đỏ do 2 lần giữ chỗ không tham gia).',
+        code: 'GUEST_BANNED'
+      });
     }
 
     // Kiểm tra xem số điện thoại đã tồn tại trong DB chưa
@@ -215,6 +228,15 @@ router.post('/google', onboardingRateLimiter, async (req, res) => {
     const googleEmail = payload.email.toLowerCase().trim();
     const googleName = payload.name || payload.given_name || 'Người chơi';
     const googlePicture = payload.picture || null;
+
+    // Kiểm tra xem email có nằm trong danh sách cấm vĩnh viễn không
+    const blacklistCheck = await checkBlacklist({ email: googleEmail });
+    if (blacklistCheck.isBanned) {
+      return res.status(403).json({ 
+        error: 'Tài khoản Google này đã bị cấm vĩnh viễn do vi phạm quy định giữ chỗ của CLB (bị phạt Thẻ đỏ do 2 lần giữ chỗ không tham gia).',
+        code: 'GUEST_BANNED'
+      });
+    }
 
     // Kiểm tra xem email đã tồn tại trong DB chưa
     const userRes = await db.query(
@@ -321,6 +343,15 @@ router.post('/onboarding', authenticateToken, onboardingRateLimiter, async (req,
 
     if (!finalPhone) {
       return res.status(400).json({ error: 'Số điện thoại Zalo là bắt buộc để hoàn tất hồ sơ.' });
+    }
+
+    // 1.1. Kiểm tra blacklist cho số điện thoại và email
+    const blacklistCheck = await checkBlacklist({ phone: finalPhone, email: finalEmail });
+    if (blacklistCheck.isBanned) {
+      return res.status(403).json({
+        error: 'Số điện thoại hoặc Email này đã bị cấm vĩnh viễn do vi phạm quy định giữ chỗ của CLB.',
+        code: 'GUEST_BANNED'
+      });
     }
 
     // 2. Kiểm tra xem phone_zalo đã có người khác sử dụng chưa

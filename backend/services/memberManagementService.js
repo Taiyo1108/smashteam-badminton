@@ -40,7 +40,7 @@ async function calculateReliabilityScore(userId, client = db) {
 
   // Query active discipline records
   const discRes = await client.query(
-    `SELECT type, status FROM member_discipline_records
+    `SELECT type, status, metadata FROM member_discipline_records
      WHERE user_id = $1::uuid AND status = 'ACTIVE'`,
     [userId]
   );
@@ -48,25 +48,55 @@ async function calculateReliabilityScore(userId, client = db) {
   let activeYellowCards = 0;
   let activeRedCards = 0;
   let activeWarnings = 0;
+  let guestYellowExtraPenalty = 0;
+  let isGuestPermanentBanned = false;
 
   discRes.rows.forEach(r => {
-    if (r.type === 'YELLOW') activeYellowCards++;
-    else if (r.type === 'RED') activeRedCards++;
-    else if (r.type === 'WARNING') activeWarnings++;
+    if (r.type === 'YELLOW') {
+      activeYellowCards++;
+      if (r.metadata && (r.metadata.reason_type === 'GUEST_NO_SHOW' || r.metadata.penalty_reputation === -50)) {
+        guestYellowExtraPenalty += 35; // Trừ tổng cộng 50 điểm (15 + 35)
+      }
+    } else if (r.type === 'RED') {
+      activeRedCards++;
+      if (r.metadata && (r.metadata.reason_type === 'GUEST_NO_SHOW' || r.metadata.penalty_reputation === 'RESET_ZERO' || r.metadata.permanent_ban)) {
+        isGuestPermanentBanned = true;
+      }
+    } else if (r.type === 'WARNING') {
+      activeWarnings++;
+    }
   });
+
+  if (isGuestPermanentBanned) {
+    return {
+      score: 0,
+      label: 'Khóa vĩnh viễn (Thẻ đỏ)',
+      level: 'danger',
+      color: 'rose',
+      breakdown: {
+        baseScore: 100,
+        noShowPenalty: 0,
+        lateCancelPenalty: 0,
+        disciplinePenalty: -100,
+        checkoutPenalty: 0,
+        attendanceBonus: 0,
+        rawScore: 0
+      }
+    };
+  }
 
   // Derived formula:
   // Base 100
   // - No-show: -20đ / lần
   // - Hủy trễ: -10đ / lần
-  // - Thẻ vàng còn hiệu lực: -15đ / thẻ
+  // - Thẻ vàng còn hiệu lực: -15đ / thẻ (đối với khách vãng lai vi phạm no-show: -50đ)
   // - Thẻ đỏ còn hiệu lực: -40đ / thẻ
   // - Quên checkout: -5đ / lần
   // - Buổi tập hoàn thành hợp lệ (có check-in): +2đ / buổi
   const rawScore = 100 
     - (noShowCount * 20) 
     - (lateCancelCount * 10) 
-    - (activeYellowCards * 15) 
+    - (activeYellowCards * 15 + guestYellowExtraPenalty) 
     - (activeRedCards * 40) 
     - (missingCheckoutCount * 5) 
     + (attendedValidCount * 2);
@@ -1066,7 +1096,21 @@ async function processNoShowDisciplineForClosedSession(sessionId, adminId = null
     let issuedCount = 0;
 
     for (const att of noShowsRes.rows) {
-      // 3. Kiểm tra idempotency: đã có thẻ phạt nào gắn với session này cho user chưa
+      // 3. Kiểm tra nếu là Khách vãng lai -> Áp dụng quy chế kỷ luật khách vãng lai
+      const uRes = await client.query('SELECT role FROM users WHERE id = $1::uuid', [att.user_id]);
+      if (uRes.rows[0]?.role === 'guest') {
+        const { processGuestNoShowPenalty } = require('./guestDisciplineService');
+        await processGuestNoShowPenalty({
+          userId: att.user_id,
+          sessionId,
+          adminId,
+          client
+        });
+        issuedCount++;
+        continue;
+      }
+
+      // 4. Đối với thành viên chính thức: Kiểm tra idempotency
       const existingRes = await client.query(
         `SELECT id FROM member_discipline_records 
          WHERE user_id = $1::uuid AND session_id = $2::uuid`,
