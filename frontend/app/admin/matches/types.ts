@@ -18,6 +18,7 @@ export interface Player {
   streak_doubles: number;
   grind_matches_count?: number;
   grind_loss_count?: number;
+  has_active_hope_star?: boolean;
   checked_in_at?: string | null;
 }
 
@@ -40,6 +41,14 @@ export interface EloPreviewData {
   isLossShield1?: boolean;
   isWinBoost2?: boolean;
   isLossShield2?: boolean;
+  hasHopeStar1?: boolean;
+  itemBonus1?: number;
+  hasHopeStar2?: boolean;
+  itemBonus2?: number;
+  hasHopeStar1p?: boolean;
+  itemBonus1p?: number;
+  hasHopeStar2p?: boolean;
+  itemBonus2p?: number;
   team1Won?: boolean;
 }
 

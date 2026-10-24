@@ -181,7 +181,27 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       p2p: p2_p ? { matchesCount: p2_p.grind_matches_count, lossCount: p2_p.grind_loss_count } : null,
     };
 
-    // Tính Elo bằng helper calculateElo (kèm cơ chế cày cuốc x2 Thắng và Khiên Thua)
+    // Kiểm tra và khóa các vật phẩm Ngôi Sao Hy Vọng đang kích hoạt của các tuyển thủ
+    const activeStarsRes = await db.query(
+      `SELECT * FROM user_inventory 
+       WHERE user_id = ANY($1::uuid[]) 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status = 'ACTIVATED' 
+         AND (expires_at IS NULL OR expires_at > NOW())
+       FOR UPDATE`,
+      [activePlayerIds]
+    );
+    const starMap = {};
+    activeStarsRes.rows.forEach(s => { starMap[s.user_id] = s; });
+
+    const itemEffects = {
+      p1: { hopeStar: !!starMap[player1_id] },
+      p2: { hopeStar: !!starMap[player2_id] },
+      p1p: player1_partner_id ? { hopeStar: !!starMap[player1_partner_id] } : null,
+      p2p: player2_partner_id ? { hopeStar: !!starMap[player2_partner_id] } : null
+    };
+
+    // Tính Elo bằng helper calculateElo (kèm cơ chế cày cuốc x2 Thắng, Khiên Thua và Ngôi Sao Hy Vọng)
     const { 
       elo1New, elo2New, elo1_partnerNew, elo2_partnerNew, eloExchanged,
       p1Outcome, p2Outcome, p1pOutcome, p2pOutcome
@@ -193,7 +213,8 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       matches1_p, matches2_p,
       player1_partner_id,
       player2_partner_id,
-      grindInfo
+      grindInfo,
+      itemEffects
     );
 
     // Hàm cập nhật thống kê người chơi (tách biệt Đơn/Đôi và lưu tiến trình cày cuốc)
@@ -284,6 +305,46 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       ]
     );
 
+    const matchRecord = matchResult.rows[0];
+
+    // Ghi nhận ELO Ledger và tiêu hao vật phẩm Ngôi Sao Hy Vọng (CONSUMED)
+    const ledgerEntries = [
+      { id: player1_id, outcome: p1Outcome, won: team1Won, star: starMap[player1_id] },
+      { id: player2_id, outcome: p2Outcome, won: team2Won, star: starMap[player2_id] },
+      ...(player1_partner_id && p1_p ? [{ id: player1_partner_id, outcome: p1pOutcome, won: team1Won, star: starMap[player1_partner_id] }] : []),
+      ...(player2_partner_id && p2_p ? [{ id: player2_partner_id, outcome: p2pOutcome, won: team2Won, star: starMap[player2_partner_id] }] : [])
+    ];
+
+    for (const le of ledgerEntries) {
+      await db.query(
+        `INSERT INTO elo_ledger (
+           match_id, player_id, inventory_item_id, item_type,
+           base_elo_delta, item_elo_bonus, total_elo_delta,
+           is_win, activation_timestamp, status
+         ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, 'APPLIED')`,
+        [
+          matchRecord.id,
+          le.id,
+          le.star ? le.star.id : null,
+          le.star ? 'HOPE_STAR' : 'NONE',
+          le.won ? le.outcome.baseDelta : -le.outcome.baseDelta,
+          le.outcome.itemBonus || 0,
+          le.outcome.delta,
+          le.won,
+          le.star ? le.star.activated_at : null
+        ]
+      );
+
+      if (le.star) {
+        await db.query(
+          `UPDATE user_inventory 
+           SET status = 'CONSUMED', consumed_at = NOW(), consumed_match_id = $1::uuid 
+           WHERE id = $2`,
+          [matchRecord.id, le.star.id]
+        );
+      }
+    }
+
     await db.query('COMMIT');
     res.status(201).json(matchResult.rows[0]);
   } catch (error) {
@@ -310,6 +371,13 @@ router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
           u.streak_singles, u.streak_doubles,
           COALESCE(u.grind_matches_count, 0) as grind_matches_count,
           COALESCE(u.grind_loss_count, 0) as grind_loss_count,
+          EXISTS (
+            SELECT 1 FROM user_inventory ui 
+            WHERE ui.user_id = u.id 
+              AND (ui.item_type = 'hope_star' OR ui.item_name ILIKE '%ngôi sao hy vọng%')
+              AND ui.status = 'ACTIVATED' 
+              AND (ui.expires_at IS NULL OR ui.expires_at > NOW())
+          ) as has_active_hope_star,
           a.checked_in_at
          FROM attendances a
          JOIN users u ON a.user_id = u.id
@@ -333,6 +401,13 @@ router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
           streak_singles, streak_doubles,
           COALESCE(grind_matches_count, 0) as grind_matches_count,
           COALESCE(grind_loss_count, 0) as grind_loss_count,
+          EXISTS (
+            SELECT 1 FROM user_inventory ui 
+            WHERE ui.user_id = users.id 
+              AND (ui.item_type = 'hope_star' OR ui.item_name ILIKE '%ngôi sao hy vọng%')
+              AND ui.status = 'ACTIVATED' 
+              AND (ui.expires_at IS NULL OR ui.expires_at > NOW())
+          ) as has_active_hope_star,
           NULL AS checked_in_at
          FROM users
          WHERE status = 'active' AND (is_blocked IS FALSE OR is_blocked IS NULL)
@@ -411,6 +486,26 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
       p2p: p2_p ? { matchesCount: p2_p.grind_matches_count, lossCount: p2_p.grind_loss_count } : null,
     };
 
+    // Kiểm tra các tuyển thủ có kích hoạt Ngôi Sao Hy Vọng không
+    const starsRes = await db.query(
+      `SELECT user_id, id, item_name, activated_at, expires_at 
+       FROM user_inventory 
+       WHERE user_id = ANY($1::uuid[]) 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status = 'ACTIVATED' 
+         AND (expires_at IS NULL OR expires_at > NOW())`,
+      [activeIds]
+    );
+    const starMap = {};
+    starsRes.rows.forEach(s => { starMap[s.user_id] = s; });
+
+    const itemEffects = {
+      p1: { hopeStar: !!starMap[player1_id] },
+      p2: { hopeStar: !!starMap[player2_id] },
+      p1p: p1_p ? { hopeStar: !!starMap[player1_partner_id] } : null,
+      p2p: p2_p ? { hopeStar: !!starMap[player2_partner_id] } : null
+    };
+
     const eloResult = calculateElo(
       elo1, elo2, player1_id, player2_id, actualWinnerId,
       streak1, streak2, matches1, matches2,
@@ -419,7 +514,8 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
       matches1_p, matches2_p,
       player1_partner_id,
       player2_partner_id,
-      grindInfo
+      grindInfo,
+      itemEffects
     );
 
     const team1Elo = elo1_p !== null ? Math.round((elo1 + elo1_p) / 2) : elo1;
@@ -444,6 +540,9 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
         before: elo1, 
         after: eloResult.elo1New, 
         diff: eloResult.p1Outcome.delta,
+        baseDelta: eloResult.p1Outcome.baseDelta,
+        itemBonus: eloResult.p1Outcome.itemBonus || 0,
+        hasHopeStar: !!eloResult.p1Outcome.hasHopeStar,
         isWinBoost: eloResult.p1Outcome.isWinBoost,
         isLossShield: eloResult.p1Outcome.isLossShield,
         grindMatches: p1.grind_matches_count,
@@ -453,6 +552,9 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
         before: elo1_p, 
         after: eloResult.elo1_partnerNew, 
         diff: eloResult.p1pOutcome?.delta ?? 0,
+        baseDelta: eloResult.p1pOutcome?.baseDelta ?? 0,
+        itemBonus: eloResult.p1pOutcome?.itemBonus ?? 0,
+        hasHopeStar: !!eloResult.p1pOutcome?.hasHopeStar,
         isWinBoost: eloResult.p1pOutcome?.isWinBoost ?? false,
         isLossShield: eloResult.p1pOutcome?.isLossShield ?? false,
         grindMatches: p1_p.grind_matches_count,
@@ -462,6 +564,9 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
         before: elo2, 
         after: eloResult.elo2New, 
         diff: eloResult.p2Outcome.delta,
+        baseDelta: eloResult.p2Outcome.baseDelta,
+        itemBonus: eloResult.p2Outcome.itemBonus || 0,
+        hasHopeStar: !!eloResult.p2Outcome.hasHopeStar,
         isWinBoost: eloResult.p2Outcome.isWinBoost,
         isLossShield: eloResult.p2Outcome.isLossShield,
         grindMatches: p2.grind_matches_count,
@@ -471,6 +576,9 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
         before: elo2_p, 
         after: eloResult.elo2_partnerNew, 
         diff: eloResult.p2pOutcome?.delta ?? 0,
+        baseDelta: eloResult.p2pOutcome?.baseDelta ?? 0,
+        itemBonus: eloResult.p2pOutcome?.itemBonus ?? 0,
+        hasHopeStar: !!eloResult.p2pOutcome?.hasHopeStar,
         isWinBoost: eloResult.p2pOutcome?.isWinBoost ?? false,
         isLossShield: eloResult.p2pOutcome?.isLossShield ?? false,
         grindMatches: p2_p.grind_matches_count,
@@ -672,6 +780,19 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
     const playersMap = {};
     lockedUsersRes.rows.forEach(u => { playersMap[u.id] = u; });
 
+    // Khóa các vật phẩm Ngôi Sao Hy Vọng đang kích hoạt của các tuyển thủ trong batch
+    const batchActiveStarsRes = await client.query(
+      `SELECT * FROM user_inventory 
+       WHERE user_id = ANY($1::uuid[]) 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status = 'ACTIVATED' 
+         AND (expires_at IS NULL OR expires_at > NOW())
+       FOR UPDATE`,
+      [sortedUniqueIds]
+    );
+    const batchStarMap = {};
+    batchActiveStarsRes.rows.forEach(s => { batchStarMap[s.user_id] = s; });
+
     // Helper cập nhật thống kê người chơi (sử dụng PostgreSQL client trong transaction)
     const updateUserStats = async (id, currentStats, newElo, won, isDoubles, outcome) => {
       const matches_col = isDoubles ? 'matches_doubles' : 'matches_singles';
@@ -774,6 +895,13 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
         p2p: p2_p ? { matchesCount: p2_p.grind_matches_count, lossCount: p2_p.grind_loss_count } : null,
       };
 
+      const itemEffects = {
+        p1: { hopeStar: !!batchStarMap[m.player1_id] },
+        p2: { hopeStar: !!batchStarMap[m.player2_id] },
+        p1p: m.player1_partner_id ? { hopeStar: !!batchStarMap[m.player1_partner_id] } : null,
+        p2p: m.player2_partner_id ? { hopeStar: !!batchStarMap[m.player2_partner_id] } : null
+      };
+
       const eloResult = calculateElo(
         elo1, elo2, m.player1_id, m.player2_id, m.winner_id,
         streak1, streak2, matches1, matches2,
@@ -782,7 +910,8 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
         matches1_p, matches2_p,
         m.player1_partner_id,
         m.player2_partner_id,
-        grindInfo
+        grindInfo,
+        itemEffects
       );
 
       const team1Won = m.winner_id === m.player1_id || (m.player1_partner_id && m.winner_id === m.player1_partner_id);
@@ -821,6 +950,47 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
           eloResult.eloExchanged
         ]
       );
+
+      const matchRecord = insertMatchRes.rows[0];
+
+      // Ghi nhận ELO Ledger và tiêu hao vật phẩm (CONSUMED) cho từng người chơi
+      const ledgerEntries = [
+        { id: m.player1_id, outcome: eloResult.p1Outcome, won: team1Won, star: batchStarMap[m.player1_id] },
+        { id: m.player2_id, outcome: eloResult.p2Outcome, won: team2Won, star: batchStarMap[m.player2_id] },
+        ...(isDoubles && m.player1_partner_id && p1_p ? [{ id: m.player1_partner_id, outcome: eloResult.p1pOutcome, won: team1Won, star: batchStarMap[m.player1_partner_id] }] : []),
+        ...(isDoubles && m.player2_partner_id && p2_p ? [{ id: m.player2_partner_id, outcome: eloResult.p2pOutcome, won: team2Won, star: batchStarMap[m.player2_partner_id] }] : [])
+      ];
+
+      for (const le of ledgerEntries) {
+        await client.query(
+          `INSERT INTO elo_ledger (
+             match_id, player_id, inventory_item_id, item_type,
+             base_elo_delta, item_elo_bonus, total_elo_delta,
+             is_win, activation_timestamp, status
+           ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, 'APPLIED')`,
+          [
+            matchRecord.id,
+            le.id,
+            le.star ? le.star.id : null,
+            le.star ? 'HOPE_STAR' : 'NONE',
+            le.won ? le.outcome.baseDelta : -le.outcome.baseDelta,
+            le.outcome.itemBonus || 0,
+            le.outcome.delta,
+            le.won,
+            le.star ? le.star.activated_at : null
+          ]
+        );
+
+        if (le.star) {
+          await client.query(
+            `UPDATE user_inventory 
+             SET status = 'CONSUMED', consumed_at = NOW(), consumed_match_id = $1::uuid 
+             WHERE id = $2`,
+            [matchRecord.id, le.star.id]
+          );
+          delete batchStarMap[le.id];
+        }
+      }
 
       committedMatches.push({
         court_id: m.court_id || `Sân ${idx + 1}`,
@@ -1126,6 +1296,74 @@ router.get('/:id/audit-logs', authenticateToken, isAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error fetching audit logs:', error);
     res.status(500).json({ error: 'Lỗi tải nhật ký chỉnh sửa.' });
+  }
+});
+
+// GET /api/matches/monitoring/hope-star - Thống kê giám sát lạm phát ELO và tỷ lệ sử dụng Ngôi Sao Hy Vọng
+router.get('/monitoring/hope-star', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    // 1. Thống kê tổng quan mọi thời đại
+    const overallRes = await db.query(`
+      SELECT 
+        COUNT(*)::int as total_uses,
+        COUNT(CASE WHEN is_win = true THEN 1 END)::int as total_wins,
+        COUNT(CASE WHEN is_win = false THEN 1 END)::int as total_losses,
+        COALESCE(SUM(item_elo_bonus), 0)::int as total_bonus_generated,
+        COALESCE(ROUND(AVG(item_elo_bonus) FILTER (WHERE is_win = true), 1), 0)::numeric as avg_win_bonus,
+        COUNT(DISTINCT player_id)::int as unique_players_count
+      FROM elo_ledger
+      WHERE item_type = 'HOPE_STAR' AND status = 'APPLIED'
+    `);
+
+    // 2. Thống kê theo tuần trong 8 tuần gần nhất
+    const weeklyRes = await db.query(`
+      SELECT 
+        TO_CHAR(created_at, 'IYYY-IW') as iso_week,
+        COUNT(*)::int as uses,
+        COUNT(CASE WHEN is_win = true THEN 1 END)::int as wins,
+        COALESCE(SUM(item_elo_bonus), 0)::int as bonus_elo,
+        COALESCE(SUM(total_elo_delta), 0)::int as net_elo
+      FROM elo_ledger
+      WHERE item_type = 'HOPE_STAR' AND status = 'APPLIED'
+      GROUP BY TO_CHAR(created_at, 'IYYY-IW')
+      ORDER BY iso_week DESC
+      LIMIT 8
+    `);
+
+    // 3. Tỷ trọng bonus so với tổng ELO tăng toàn CLB trong 30 ngày qua
+    const ratioRes = await db.query(`
+      SELECT 
+        COALESCE(SUM(item_elo_bonus), 0)::int as hope_star_bonus,
+        COALESCE(SUM(CASE WHEN total_elo_delta > 0 THEN total_elo_delta ELSE 0 END), 0)::int as total_positive_elo
+      FROM elo_ledger
+      WHERE created_at >= NOW() - INTERVAL '30 days' AND status = 'APPLIED'
+    `);
+
+    const rData = ratioRes.rows[0] || {};
+    const totalPositive = rData.total_positive_elo || 0;
+    const starBonus = rData.hope_star_bonus || 0;
+    const bonusRatio = totalPositive > 0 
+      ? Number(((starBonus / totalPositive) * 100).toFixed(2))
+      : 0;
+
+    res.json({
+      overall: {
+        ...overallRes.rows[0],
+        win_rate: overallRes.rows[0]?.total_uses > 0 
+          ? Number(((overallRes.rows[0].total_wins / overallRes.rows[0].total_uses) * 100).toFixed(1))
+          : 0
+      },
+      weekly: weeklyRes.rows,
+      last30Days: {
+        hope_star_bonus: starBonus,
+        total_positive_elo: totalPositive,
+        bonus_ratio_percent: bonusRatio,
+        is_safe: bonusRatio <= 10.0
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching hope star monitoring:', error);
+    res.status(500).json({ error: 'Lỗi tải thống kê giám sát Ngôi Sao Hy Vọng.' });
   }
 });
 

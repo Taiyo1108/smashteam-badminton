@@ -139,10 +139,15 @@ function SearchablePlayerSelect({
                   }`}
                 >
                   <div className="truncate pr-2">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="truncate">{m.full_name}</span>
                       {m.nickname && (
                         <span className="text-[10px] text-slate-400 font-normal">({m.nickname})</span>
+                      )}
+                      {m.has_active_hope_star && (
+                        <span className="text-[9px] bg-amber-100 text-amber-800 border border-amber-300 px-1 py-0.2 rounded font-black flex items-center gap-0.5 shadow-2xs">
+                          ⭐ Sao Hy Vọng
+                        </span>
                       )}
                       {usage.isUsed && (
                         <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.2 rounded font-black">
@@ -369,7 +374,7 @@ export default function MatchDeskPage() {
     return { isUsed: false };
   };
 
-  // Tính Preview ELO cho 1 CourtSlot sử dụng thuật toán chuẩn xác từ backend (kèm cơ chế x2 Thắng và Khiên Thua)
+  // Tính Preview ELO cho 1 CourtSlot sử dụng thuật toán chuẩn xác từ backend (kèm cơ chế x2 Thắng, Khiên Thua và Ngôi Sao Hy Vọng)
   const computeEloPreview = (slot: CourtSlot): EloPreviewData | null => {
     const p1 = members.find(m => m.id === slot.player1Id);
     const p2 = members.find(m => m.id === slot.player2Id);
@@ -408,6 +413,12 @@ export default function MatchDeskPage() {
         p2: { matchesCount: p2.grind_matches_count, lossCount: p2.grind_loss_count },
         p1p: p1p ? { matchesCount: p1p.grind_matches_count, lossCount: p1p.grind_loss_count } : undefined,
         p2p: p2p ? { matchesCount: p2p.grind_matches_count, lossCount: p2p.grind_loss_count } : undefined,
+      },
+      itemEffects: {
+        p1: { hopeStar: !!p1.has_active_hope_star },
+        p2: { hopeStar: !!p2.has_active_hope_star },
+        p1p: p1p ? { hopeStar: !!p1p.has_active_hope_star } : undefined,
+        p2p: p2p ? { hopeStar: !!p2p.has_active_hope_star } : undefined,
       }
     });
 
@@ -430,6 +441,10 @@ export default function MatchDeskPage() {
       isLossShield1: eloResult.p1Outcome.isLossShield || (eloResult.p1pOutcome?.isLossShield ?? false),
       isWinBoost2: eloResult.p2Outcome.isWinBoost || (eloResult.p2pOutcome?.isWinBoost ?? false),
       isLossShield2: eloResult.p2Outcome.isLossShield || (eloResult.p2pOutcome?.isLossShield ?? false),
+      hasHopeStar1: eloResult.p1Outcome.hasHopeStar || (eloResult.p1pOutcome?.hasHopeStar ?? false),
+      itemBonus1: (eloResult.p1Outcome.itemBonus || 0) + (eloResult.p1pOutcome?.itemBonus || 0),
+      hasHopeStar2: eloResult.p2Outcome.hasHopeStar || (eloResult.p2pOutcome?.hasHopeStar ?? false),
+      itemBonus2: (eloResult.p2Outcome.itemBonus || 0) + (eloResult.p2pOutcome?.itemBonus || 0),
       team1Won: eloResult.team1Won
     };
   };
@@ -1224,6 +1239,11 @@ export default function MatchDeskPage() {
                             ⚡ x2 Thưởng
                           </span>
                         )}
+                        {preview.hasHopeStar1 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-yellow-500/25 border border-yellow-400 text-[9px] font-black text-yellow-300 uppercase tracking-wider animate-pulse">
+                            ⭐ Hope Star {preview.itemBonus1 ? `(+${preview.itemBonus1})` : ''}
+                          </span>
+                        )}
                         {preview.isLossShield1 && (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/50 text-[9px] font-black text-indigo-300 uppercase tracking-wider">
                             🛡️ Khiên bảo hộ
@@ -1250,6 +1270,11 @@ export default function MatchDeskPage() {
                         {preview.isWinBoost2 && (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-[9px] font-black text-amber-300 uppercase tracking-wider animate-pulse">
                             ⚡ x2 Thưởng
+                          </span>
+                        )}
+                        {preview.hasHopeStar2 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-yellow-500/25 border border-yellow-400 text-[9px] font-black text-yellow-300 uppercase tracking-wider animate-pulse">
+                            ⭐ Hope Star {preview.itemBonus2 ? `(+${preview.itemBonus2})` : ''}
                           </span>
                         )}
                         {preview.isLossShield2 && (

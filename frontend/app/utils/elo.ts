@@ -10,6 +10,9 @@ export interface PlayerGrindInfo {
 
 export interface PlayerOutcome {
   delta: number;
+  baseDelta?: number;
+  itemBonus?: number;
+  hasHopeStar?: boolean;
   isWinBoost: boolean;
   isLossShield: boolean;
   nextMatchesCount: number;
@@ -68,6 +71,12 @@ export function calculateRankMatchElo(params: {
     p1p?: PlayerGrindInfo;
     p2p?: PlayerGrindInfo;
   };
+  itemEffects?: {
+    p1?: { hopeStar?: boolean };
+    p2?: { hopeStar?: boolean };
+    p1p?: { hopeStar?: boolean };
+    p2p?: { hopeStar?: boolean };
+  };
 }): RankMatchEloResult {
   const {
     elo1, elo2, player1Id, player2Id, winnerId,
@@ -75,7 +84,8 @@ export function calculateRankMatchElo(params: {
     elo1Partner = null, elo2Partner = null,
     matches1Partner = 0, matches2Partner = 0,
     player1PartnerId = null, player2PartnerId = null,
-    grindInfo = {}
+    grindInfo = {},
+    itemEffects = {}
   } = params;
 
   // 1. Team ratings (averages)
@@ -114,8 +124,8 @@ export function calculateRankMatchElo(params: {
   const expectedWinnerScore = team1Won ? E1 : E2;
   const baseDelta = Math.max(8, clampDelta(Math.round(K_match * (1 - expectedWinnerScore))));
 
-  // 7. Individual Player Outcomes (MOBA Ranked Grind Mechanics)
-  const computePlayerOutcome = (playerWon: boolean, playerGrind?: PlayerGrindInfo): PlayerOutcome => {
+  // 7. Individual Player Outcomes (MOBA Ranked Grind & Hope Star Mechanics)
+  const computePlayerOutcome = (playerWon: boolean, playerGrind?: PlayerGrindInfo, playerItem?: { hopeStar?: boolean }): PlayerOutcome => {
     const matchesCount = Math.max(0, Math.min(5, Number(playerGrind?.matchesCount) || 0));
     const lossCount = Math.max(0, Math.min(5, Number(playerGrind?.lossCount) || 0));
 
@@ -152,8 +162,22 @@ export function calculateRankMatchElo(params: {
       }
     }
 
+    let itemBonus = 0;
+    const hasHopeStar = !!playerItem?.hopeStar;
+    if (hasHopeStar) {
+      if (playerWon) {
+        itemBonus = Math.min(Math.max(baseDelta, 0), 20);
+        delta += itemBonus;
+      } else {
+        itemBonus = 0;
+      }
+    }
+
     return {
       delta,
+      baseDelta,
+      itemBonus,
+      hasHopeStar,
       isWinBoost,
       isLossShield,
       nextMatchesCount,
@@ -161,10 +185,10 @@ export function calculateRankMatchElo(params: {
     };
   };
 
-  const p1Outcome = computePlayerOutcome(team1Won, grindInfo.p1);
-  const p2Outcome = computePlayerOutcome(!team1Won, grindInfo.p2);
-  const p1pOutcome = elo1Partner !== null ? computePlayerOutcome(team1Won, grindInfo.p1p) : null;
-  const p2pOutcome = elo2Partner !== null ? computePlayerOutcome(!team1Won, grindInfo.p2p) : null;
+  const p1Outcome = computePlayerOutcome(team1Won, grindInfo.p1, itemEffects.p1);
+  const p2Outcome = computePlayerOutcome(!team1Won, grindInfo.p2, itemEffects.p2);
+  const p1pOutcome = elo1Partner !== null ? computePlayerOutcome(team1Won, grindInfo.p1p, itemEffects.p1p) : null;
+  const p2pOutcome = elo2Partner !== null ? computePlayerOutcome(!team1Won, grindInfo.p2p, itemEffects.p2p) : null;
 
   const delta1 = p1Outcome.delta;
   const delta2 = p2Outcome.delta;

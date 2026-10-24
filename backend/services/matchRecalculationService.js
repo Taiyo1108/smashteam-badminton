@@ -197,6 +197,20 @@ async function simulateRecalculation(client, { matchId, newMatchData = null, isV
   const affectedMatches = [];
   let simulatedTargetMatchResult = null;
 
+  // Thu thập các vật phẩm Ngôi Sao Hy Vọng đã từng dùng trong chuỗi trận timeline
+  const matchIds = timelineMatches.map(m => m.id);
+  const ledgerItemsRes = matchIds.length > 0 ? await client.query(
+    `SELECT match_id, player_id, item_type FROM elo_ledger 
+     WHERE match_id = ANY($1::uuid[]) AND item_type = 'HOPE_STAR' AND status = 'APPLIED'`,
+    [matchIds]
+  ) : { rows: [] };
+
+  const matchItemLedgerMap = {};
+  ledgerItemsRes.rows.forEach(r => {
+    if (!matchItemLedgerMap[r.match_id]) matchItemLedgerMap[r.match_id] = {};
+    matchItemLedgerMap[r.match_id][r.player_id] = true;
+  });
+
   // 4. Mô phỏng tuần tự theo thứ tự thời gian nghiêm ngặt
   for (const m of timelineMatches) {
     const isCurrentTarget = (m.id === targetMatch.id);
@@ -236,13 +250,23 @@ async function simulateRecalculation(client, { matchId, newMatchData = null, isV
     const elo1p_before = p1p ? p1p.elo : null;
     const elo2p_before = p2p ? p2p.elo : null;
 
+    const matchItems = matchItemLedgerMap[m.id] || {};
+    const itemEffects = {
+      p1: { hopeStar: !!matchItems[p1_id] },
+      p2: { hopeStar: !!matchItems[p2_id] },
+      p1p: p1p_id ? { hopeStar: !!matchItems[p1p_id] } : null,
+      p2p: p2p_id ? { hopeStar: !!matchItems[p2p_id] } : null
+    };
+
     const eloResult = calculateElo(
       elo1_before, elo2_before, p1_id, p2_id, winner_id,
       p1.streak, p2.streak, p1.matches, p2.matches,
       elo1p_before, elo2p_before,
       p1p ? p1p.streak : 0, p2p ? p2p.streak : 0,
       p1p ? p1p.matches : 0, p2p ? p2p.matches : 0,
-      p1p_id, p2p_id
+      p1p_id, p2p_id,
+      {},
+      itemEffects
     );
 
     const team1Won = winner_id === p1_id || (p1p_id && winner_id === p1p_id);
@@ -457,6 +481,30 @@ async function applyRecalculation({
       await client.query(
         `UPDATE matches SET status = 'voided' WHERE id = $1::uuid;`,
         [matchId]
+      );
+
+      // Hoàn trả Ngôi Sao Hy Vọng (nếu có) và đánh dấu VOIDED trong elo_ledger
+      const ledgerHopeStarRes = await client.query(
+        `SELECT inventory_item_id FROM elo_ledger 
+         WHERE match_id = $1::uuid AND item_type = 'HOPE_STAR' AND inventory_item_id IS NOT NULL`,
+        [matchId]
+      );
+
+      if (ledgerHopeStarRes.rows.length > 0) {
+        const itemIds = ledgerHopeStarRes.rows.map(r => r.inventory_item_id);
+        await client.query(
+          `UPDATE user_inventory 
+           SET status = 'REFUNDED', consumed_match_id = NULL 
+           WHERE id = ANY($1::int[])`,
+          [itemIds]
+        );
+      }
+
+      await client.query(
+        `UPDATE elo_ledger 
+         SET status = 'VOIDED', rollback_reason = $1 
+         WHERE match_id = $2::uuid`,
+        [reason || 'Admin hủy trận đấu', matchId]
       );
     } else if (newMatchData) {
       const after = simResult.after;

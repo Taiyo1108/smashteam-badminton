@@ -118,6 +118,31 @@ router.get('/profile', async (req, res) => {
 
     // Dọn dẹp và đồng bộ số khiên còn hạn
     await cleanupAndSyncShields(userId);
+
+    // Tự động hết hạn Ngôi Sao Hy Vọng quá 7 ngày
+    await db.query(
+      `UPDATE user_inventory 
+       SET status = 'expired'
+       WHERE user_id = $1 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status IN ('OWNED', 'unused', 'ACTIVATED')
+         AND expires_at IS NOT NULL 
+         AND expires_at <= NOW()`,
+      [userId]
+    );
+
+    // Kiểm tra xem người dùng có Ngôi Sao Hy Vọng đang kích hoạt cho trận tới không
+    const activeHopeStarRes = await db.query(
+      `SELECT id, item_name, activated_at, expires_at 
+       FROM user_inventory 
+       WHERE user_id = $1 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status = 'ACTIVATED' 
+         AND (expires_at IS NULL OR expires_at > NOW())
+       LIMIT 1`,
+      [userId]
+    );
+    const activeHopeStar = activeHopeStarRes.rows[0] || null;
     
     // Check and update streak
     const streakInfo = await checkAndUpdateStreak(userId);
@@ -140,7 +165,9 @@ router.get('/profile', async (req, res) => {
     res.json({
       ...user,
       xp_needed: xpNeeded,
-      streak_notification: streakInfo?.streakNotification || null
+      streak_notification: streakInfo?.streakNotification || null,
+      has_active_hope_star: !!activeHopeStar,
+      active_hope_star: activeHopeStar
     });
   } catch (error) {
     console.error('Error fetching gamification profile:', error);
@@ -436,14 +463,33 @@ router.get('/inventory', async (req, res) => {
     // Dọn dẹp và đồng bộ số khiên còn hạn
     await cleanupAndSyncShields(userId);
 
+    // Tự động hết hạn Ngôi Sao Hy Vọng quá 7 ngày
+    await db.query(
+      `UPDATE user_inventory 
+       SET status = 'expired'
+       WHERE user_id = $1 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status IN ('OWNED', 'unused', 'ACTIVATED')
+         AND expires_at IS NOT NULL 
+         AND expires_at <= NOW()`,
+      [userId]
+    );
+
     // Lọc bỏ các bản ghi legacy (tính năng SmashPass cũ đã gỡ) và avatar_frame (đã gỡ bỏ)
     const inventoryRes = await db.query(
       `SELECT ui.id, ui.item_type, ui.item_name, ui.item_value, ui.is_equipped, ui.acquired_at, 
               ui.coupon_code, ui.status, ui.redeemed_at, ui.expires_at,
-              COALESCE(si.image_url, CASE WHEN ui.item_type IN ('shield', 'streak_shield') OR ui.item_name ILIKE '%khiên%' THEN (SELECT image_url FROM shop_items WHERE id = 10 OR name ILIKE '%Khiên Hộ Mệnh%' LIMIT 1) ELSE NULL END) AS image_url
+              ui.activated_at, ui.consumed_at, ui.consumed_match_id,
+              COALESCE(si.image_url, CASE 
+                WHEN ui.item_type = 'hope_star' OR ui.item_name ILIKE '%ngôi sao hy vọng%' 
+                  THEN (SELECT image_url FROM shop_items WHERE name ILIKE '%ngôi sao hy vọng%' LIMIT 1)
+                WHEN ui.item_type IN ('shield', 'streak_shield') OR ui.item_name ILIKE '%khiên%' 
+                  THEN (SELECT image_url FROM shop_items WHERE id = 10 OR name ILIKE '%Khiên Hộ Mệnh%' LIMIT 1) 
+                ELSE NULL END) AS image_url
        FROM user_inventory ui
        LEFT JOIN shop_items si ON ui.shop_item_id = si.id
-       WHERE ui.user_id = $1 AND ui.item_type != 'smash_pass_reward_level' AND ui.item_type != 'avatar_frame' AND (ui.expires_at IS NULL OR ui.expires_at > NOW() OR ui.status IN ('used', 'expired'))
+       WHERE ui.user_id = $1 AND ui.item_type != 'smash_pass_reward_level' AND ui.item_type != 'avatar_frame' 
+         AND (ui.expires_at IS NULL OR ui.expires_at > NOW() OR ui.status IN ('used', 'expired', 'CONSUMED', 'REFUNDED'))
        ORDER BY ui.acquired_at DESC`,
       [userId]
     );
@@ -560,6 +606,93 @@ router.post('/inventory/:id/unequip', async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     res.status(400).json({ error: error.message || 'Lỗi hủy trang bị' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/gamification/inventory/:id/activate - Kích hoạt Ngôi Sao Hy Vọng trước trận đấu
+router.post('/inventory/:id/activate', async (req, res) => {
+  const userId = req.user.id;
+  const itemId = req.params.id;
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Khóa bản ghi vật phẩm trong túi đồ
+    const itemRes = await client.query(
+      `SELECT * FROM user_inventory WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+      [itemId, userId]
+    );
+
+    if (itemRes.rows.length === 0) {
+      throw new Error('Vật phẩm không tồn tại trong kho đồ của bạn.');
+    }
+
+    const item = itemRes.rows[0];
+
+    const isHopeStar = item.item_type === 'hope_star' || 
+                       (item.item_name && item.item_name.toLowerCase().includes('ngôi sao hy vọng'));
+
+    if (!isHopeStar) {
+      throw new Error('Chỉ có thể kích hoạt Ngôi Sao Hy Vọng.');
+    }
+
+    if (item.status === 'ACTIVATED') {
+      throw new Error('Ngôi Sao Hy Vọng này đã được kích hoạt trước đó rồi.');
+    }
+
+    if (item.status === 'CONSUMED') {
+      throw new Error('Ngôi Sao Hy Vọng này đã được sử dụng trong một trận đấu trước đó.');
+    }
+
+    if (item.status === 'expired') {
+      throw new Error('Ngôi Sao Hy Vọng này đã hết hạn sử dụng (7 ngày).');
+    }
+
+    if (item.expires_at && new Date(item.expires_at) <= new Date()) {
+      await client.query(`UPDATE user_inventory SET status = 'expired' WHERE id = $1`, [itemId]);
+      throw new Error('Ngôi Sao Hy Vọng này đã hết hạn sử dụng (7 ngày).');
+    }
+
+    // 2. Chống kích hoạt trùng: Mỗi người chỉ được có TỐI ĐA 1 sao ở trạng thái ACTIVATED cùng lúc
+    const activeCheckRes = await client.query(
+      `SELECT id FROM user_inventory 
+       WHERE user_id = $1 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status = 'ACTIVATED' 
+         AND (expires_at IS NULL OR expires_at > NOW())
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (activeCheckRes.rows.length > 0) {
+      throw new Error('Bạn đang có 1 Ngôi Sao Hy Vọng đã kích hoạt cho trận đấu kế tiếp. Không thể kích hoạt thêm!');
+    }
+
+    // 3. Kích hoạt vật phẩm
+    await client.query(
+      `UPDATE user_inventory 
+       SET status = 'ACTIVATED', activated_at = NOW() 
+       WHERE id = $1`,
+      [itemId]
+    );
+
+    await client.query('COMMIT');
+    res.json({
+      success: true,
+      message: 'Kích hoạt Ngôi Sao Hy Vọng thành công! Hiệu lực: Trận đấu chính thức tiếp theo của bạn sẽ được nhân đôi ELO nếu thắng.',
+      item: {
+        id: item.id,
+        item_name: item.item_name,
+        status: 'ACTIVATED',
+        activated_at: new Date()
+      }
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: error.message || 'Lỗi kích hoạt Ngôi Sao Hy Vọng' });
   } finally {
     client.release();
   }

@@ -45,7 +45,8 @@ function calculateElo(
   streak1_partner = 0, streak2_partner = 0,
   matches1_partner = 0, matches2_partner = 0,
   player1_partner_id = null, player2_partner_id = null,
-  grindInfo = {}
+  grindInfo = {},
+  itemEffects = {}
 ) {
   // 1. Calculate Team Ratings (Averages)
   const T1 = elo1_partner !== null ? (elo1 + elo1_partner) / 2 : elo1;
@@ -83,10 +84,11 @@ function calculateElo(
   const expectedWinnerScore = team1Won ? E1 : E2;
   const baseDelta = Math.max(8, clampDelta(Math.round(K_match * (1 - expectedWinnerScore))));
 
-  // 7. Hàm tính toán kết quả riêng biệt cho từng người chơi áp dụng quy tắc Cày Cuốc (Liên Quân style):
+  // 7. Hàm tính toán kết quả riêng biệt cho từng người chơi áp dụng quy tắc Cày Cuốc & Vật phẩm Hope Star:
   // - Hoàn thành mỗi 5 trận -> trận thắng đầu tiên được x2 ELO
   // - Tích lũy 5 trận thua -> trận thua đầu tiên được miễn trừ ELO (0 ELO lost)
-  const computePlayerOutcome = (playerWon, playerGrind) => {
+  // - Ngôi Sao Hy Vọng (Hope Star): Thắng trận nhận bonus = min(max(base_elo_delta, 0), 20). Thua không nhận bonus.
+  const computePlayerOutcome = (playerWon, playerGrind, playerItem) => {
     const matchesCount = Math.max(0, Math.min(5, Number(playerGrind?.matchesCount) || 0));
     const lossCount = Math.max(0, Math.min(5, Number(playerGrind?.lossCount) || 0));
 
@@ -100,7 +102,7 @@ function calculateElo(
       // 1. Thắng trận:
       if (matchesCount >= 5) {
         isWinBoost = true;
-        delta = baseDelta * 2; // THƯỞNG X2 ELO!
+        delta = baseDelta * 2; // THƯỞNG X2 ELO CÀY CUỐC!
         nextMatchesCount = 0;   // Reset chu kỳ 5 trận
       } else {
         delta = baseDelta;
@@ -127,8 +129,25 @@ function calculateElo(
       }
     }
 
+    // NGÔI SAO HY VỌNG (HOPE STAR):
+    // Thắng: bonus bằng base_elo_delta, trần tối đa +20 ELO
+    // Thua: không nhận bonus; vẫn mất ELO theo công thức bình thường
+    let itemBonus = 0;
+    const hasHopeStar = !!playerItem?.hopeStar;
+    if (hasHopeStar) {
+      if (playerWon) {
+        itemBonus = Math.min(Math.max(baseDelta, 0), 20);
+        delta += itemBonus;
+      } else {
+        itemBonus = 0;
+      }
+    }
+
     return {
       delta,
+      baseDelta,
+      itemBonus,
+      hasHopeStar,
       isWinBoost,
       isLossShield,
       nextMatchesCount,
@@ -136,10 +155,10 @@ function calculateElo(
     };
   };
 
-  const p1Outcome = computePlayerOutcome(team1Won, grindInfo?.p1);
-  const p2Outcome = computePlayerOutcome(!team1Won, grindInfo?.p2);
-  const p1pOutcome = elo1_partner !== null ? computePlayerOutcome(team1Won, grindInfo?.p1p) : null;
-  const p2pOutcome = elo2_partner !== null ? computePlayerOutcome(!team1Won, grindInfo?.p2p) : null;
+  const p1Outcome = computePlayerOutcome(team1Won, grindInfo?.p1, itemEffects?.p1);
+  const p2Outcome = computePlayerOutcome(!team1Won, grindInfo?.p2, itemEffects?.p2);
+  const p1pOutcome = elo1_partner !== null ? computePlayerOutcome(team1Won, grindInfo?.p1p, itemEffects?.p1p) : null;
+  const p2pOutcome = elo2_partner !== null ? computePlayerOutcome(!team1Won, grindInfo?.p2p, itemEffects?.p2p) : null;
 
   const delta1 = p1Outcome.delta;
   const delta2 = p2Outcome.delta;

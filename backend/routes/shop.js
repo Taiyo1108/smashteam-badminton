@@ -119,9 +119,35 @@ router.post('/buy', authenticateToken, requireOfficialMember, async (req, res) =
     }
 
     // 4. Kiểm tra giới hạn mua tối đa của mỗi người
-    const isShield = item.category === 'Bảo bối' || (item.name && item.name.toLowerCase().includes('khiên'));
+    const isHopeStar = item.name && (item.name.toLowerCase().includes('ngôi sao hy vọng') || item.name.toLowerCase().includes('hope star'));
+    const isShield = !isHopeStar && (item.category === 'Bảo bối' || (item.name && item.name.toLowerCase().includes('khiên')));
 
-    if (isShield) {
+    if (isHopeStar) {
+      // Giới hạn kho đồ: tối đa 5 Ngôi Sao Hy Vọng còn hiệu lực trong tuần
+      const activeStarsRes = await client.query(
+        `SELECT COUNT(*)::int AS count FROM user_inventory 
+         WHERE user_id = $1 AND (item_type = 'hope_star' OR shop_item_id = $2)
+           AND status IN ('OWNED', 'ACTIVATED', 'unused')
+           AND (expires_at IS NULL OR expires_at > NOW())`,
+        [userId, item.id]
+      );
+      const activeCount = activeStarsRes.rows[0].count;
+      if (activeCount >= 5) {
+        return res.status(400).json({ error: 'Kho đồ của bạn đã chứa tối đa 5 Ngôi Sao Hy Vọng còn hiệu lực trong tuần. Hãy sử dụng trước khi mua thêm nhé!' });
+      }
+
+      // Giới hạn tháng: tối đa 20 sao mỗi tháng
+      const monthlyStarsRes = await client.query(
+        `SELECT COUNT(*)::int AS count FROM user_inventory 
+         WHERE user_id = $1 AND (item_type = 'hope_star' OR shop_item_id = $2)
+           AND purchased_at >= date_trunc('month', NOW())`,
+        [userId, item.id]
+      );
+      const monthlyCount = monthlyStarsRes.rows[0].count;
+      if (monthlyCount >= 20) {
+        return res.status(400).json({ error: 'Bạn đã đạt giới hạn mua tối đa 20 Ngôi Sao Hy Vọng trong tháng này. Hãy quay lại vào tháng sau nhé!' });
+      }
+    } else if (isShield) {
       // Giới hạn mua tối đa 3 khiên trong 1 tháng
       const monthlyShieldPurchasesRes = await client.query(
         `SELECT COUNT(*)::int AS count FROM user_inventory 
@@ -175,7 +201,10 @@ router.post('/buy', authenticateToken, requireOfficialMember, async (req, res) =
     let couponCode = null;
 
     if (item.item_type === 'virtual') {
-      if (item.name.toLowerCase().includes('danh hiệu') || item.name.toLowerCase().includes('title') || item.name.toLowerCase().includes('smash king')) {
+      if (isHopeStar) {
+        invItemType = 'hope_star';
+        invItemValue = 'elo_double_next_win';
+      } else if (item.name.toLowerCase().includes('danh hiệu') || item.name.toLowerCase().includes('title') || item.name.toLowerCase().includes('smash king')) {
         invItemType = 'title';
         invItemValue = item.name.replace(/danh hiệu\s*:?/i, '').trim() || 'Smash King';
       } else if (isShield) {
@@ -226,8 +255,9 @@ router.post('/buy', authenticateToken, requireOfficialMember, async (req, res) =
       }
     }
 
-    // 10. Ghi nhận vào túi đồ (Khiên có hạn sử dụng 7 ngày kể từ khi nhận)
-    const itemExpiresAt = isShield ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null;
+    // 10. Ghi nhận vào túi đồ (Khiên và Ngôi Sao Hy Vọng có hạn sử dụng 7 ngày kể từ khi nhận)
+    const itemExpiresAt = (isShield || isHopeStar) ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null;
+    const invStatus = isHopeStar ? 'OWNED' : 'unused';
     await client.query(
       `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, shop_item_id, coupon_code, status, purchase_price, purchased_at, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)`,
@@ -238,7 +268,7 @@ router.post('/buy', authenticateToken, requireOfficialMember, async (req, res) =
         invItemValue,
         item.id,
         couponCode,
-        item.item_type === 'physical' ? 'unused' : 'unused',
+        invStatus,
         item.coin_price,
         itemExpiresAt
       ]

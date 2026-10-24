@@ -58,6 +58,7 @@ export default function ProfilePage() {
   // Shield states (Khiên bảo vệ ELO & chuỗi)
   const [shieldStatus, setShieldStatus] = useState<any>(null);
   const [isUsingShield, setIsUsingShield] = useState(false);
+  const [isActivatingHopeStar, setIsActivatingHopeStar] = useState<number | null>(null);
   const [shieldAnimation, setShieldAnimation] = useState<{
     isOpen: boolean;
     eloRestored: number;
@@ -307,6 +308,44 @@ export default function ProfilePage() {
       showToast(err.message || "Lỗi kết nối khi dùng khiên.", "error");
     } finally {
       setIsUsingShield(false);
+    }
+  };
+
+  const handleActivateHopeStar = async (itemId: number) => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
+    if (!confirm("⭐ Xác nhận kích hoạt Ngôi Sao Hy Vọng?\n\nVật phẩm sẽ áp dụng cho 1 trận đấu chính thức kế tiếp của bạn. Nếu thắng, bạn sẽ được thưởng nhân đôi ELO (tối đa +20 ELO). Nếu thua, bạn không nhận được bonus và vật phẩm vẫn sẽ tiêu hao.")) {
+      return;
+    }
+
+    setIsActivatingHopeStar(itemId);
+    try {
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/gamification/inventory/${itemId}/activate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Đã kích hoạt Ngôi Sao Hy Vọng thành công!", "success");
+        await Promise.all([
+          fetchProfileData(),
+          fetchGamificationData()
+        ]);
+      } else {
+        showToast(data.error || "Kích hoạt vật phẩm thất bại.", "error");
+      }
+    } catch (err: any) {
+      console.error("Error activating hope star:", err);
+      showToast(err.message || "Lỗi kết nối khi kích hoạt.", "error");
+    } finally {
+      setIsActivatingHopeStar(null);
     }
   };
 
@@ -995,6 +1034,28 @@ export default function ProfilePage() {
             </div>
           )}
 
+          {/* HOAP STAR ACTIVE BANNER */}
+          {gamProfile?.has_active_hope_star && (
+            <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 border-2 border-amber-400/70 shadow-lg shadow-amber-500/10 flex items-center justify-between gap-3 animate-fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-300 border border-amber-200 flex items-center justify-center text-xl shrink-0 shadow-sm animate-bounce">
+                  ⭐
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-amber-900 uppercase tracking-wide flex items-center gap-1.5">
+                    <span>Ngôi Sao Hy Vọng Đang Kích Hoạt</span>
+                  </h4>
+                  <p className="text-[11px] text-amber-800 font-medium">
+                    Nhân đôi ELO trận thắng chính thức kế tiếp (tối đa +20 ELO).
+                  </p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 bg-amber-400 text-slate-950 font-black text-[10px] rounded-full uppercase shrink-0 shadow-2xs">
+                Hiệu lực trận tới
+              </span>
+            </div>
+          )}
+
           {/* COMPETITIVE PLAYER CARD */}
           <CompetitivePlayerCard
             player={playerData.player}
@@ -1430,6 +1491,92 @@ export default function ProfilePage() {
                                     : "Chưa có trận thua cần bảo vệ"}
                                 </button>
                               )}
+                            </div>
+                          );
+                        }
+
+                        // Ngôi Sao Hy Vọng (Hope Star)
+                        const isHopeStar = item.item_type === 'hope_star' || (item.item_name && item.item_name.toLowerCase().includes('ngôi sao hy vọng'));
+                        if (isHopeStar) {
+                          const isActivated = item.status === 'ACTIVATED';
+                          const isConsumed = item.status === 'CONSUMED';
+                          const isRefunded = item.status === 'REFUNDED';
+                          const isExpired = item.status === 'expired' || (item.expires_at && new Date(item.expires_at) <= new Date());
+                          const isUsable = !isActivated && !isConsumed && !isExpired && (item.status === 'OWNED' || item.status === 'unused');
+
+                          return (
+                            <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-3 shadow-xs ${
+                              isActivated ? "border-amber-400 bg-amber-50/20 ring-2 ring-amber-300/40" : "border-slate-200 hover:border-amber-300/60"
+                            }`}>
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center gap-1">
+                                    ⭐ Bảo bối ELO
+                                  </span>
+                                  {isActivated ? (
+                                    <span className="text-[10px] text-amber-600 font-black flex items-center gap-1 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse">
+                                      ● Đang kích hoạt
+                                    </span>
+                                  ) : isConsumed ? (
+                                    <span className="text-[10px] text-slate-400 font-bold">
+                                      Đã tiêu hao
+                                    </span>
+                                  ) : isRefunded ? (
+                                    <span className="text-[10px] text-purple-600 font-bold bg-purple-50 px-1.5 py-0.2 rounded">
+                                      Đã hoàn trả
+                                    </span>
+                                  ) : isExpired ? (
+                                    <span className="text-[10px] text-rose-500 font-bold">
+                                      Hết hạn
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-emerald-600 font-bold">
+                                      Sẵn sàng
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-start gap-3">
+                                  <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-amber-400 to-yellow-300 border border-amber-300 flex items-center justify-center shrink-0 shadow-sm text-2xl">
+                                    ⭐
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 tracking-wide flex items-center gap-1.5">
+                                      {item.item_name}
+                                    </h4>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">
+                                      Nhân đôi ELO khi thắng trận chính thức kế tiếp (tối đa +20 ELO). Không bonus khi thua.
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col gap-0.5 mt-2 text-[10px]">
+                                  <span className="text-slate-400">Sở hữu: {formatVietnamDate(item.acquired_at)}</span>
+                                  {item.expires_at && !isConsumed && (
+                                    <span className={isExpired ? "text-red-500 font-bold" : "text-amber-600 font-bold"}>
+                                      {isExpired ? "Đã hết hạn lúc:" : "Hạn dùng (7 ngày):"} {formatVietnamDate(item.expires_at)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isActivated ? (
+                                <div className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 text-center text-xs font-black rounded-xl shadow-sm flex items-center justify-center gap-1.5 animate-pulse">
+                                  <span>⭐ ĐÃ KÍCH HOẠT (x2 ELO Trận Tới)</span>
+                                </div>
+                              ) : isUsable ? (
+                                <button
+                                  onClick={() => handleActivateHopeStar(item.id)}
+                                  disabled={isActivatingHopeStar === item.id}
+                                  className="w-full py-2 bg-gradient-to-r from-amber-500 hover:from-amber-400 to-yellow-500 text-slate-950 text-xs font-black rounded-xl transition-all shadow-md shadow-amber-500/20 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                >
+                                  {isActivatingHopeStar === item.id ? (
+                                    <span>Đang kích hoạt...</span>
+                                  ) : (
+                                    <span>⭐ Kích Hoạt Trước Trận</span>
+                                  )}
+                                </button>
+                              ) : null}
                             </div>
                           );
                         }
