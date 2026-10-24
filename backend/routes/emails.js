@@ -12,6 +12,31 @@ const {
   getEmailQuota
 } = require('../utils/emailService');
 
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+function parseCustomEmails(input) {
+  if (!input) return [];
+  let rawList = [];
+  if (Array.isArray(input)) {
+    rawList = input;
+  } else if (typeof input === 'string') {
+    try {
+      const jsonParsed = JSON.parse(input);
+      if (Array.isArray(jsonParsed)) rawList = jsonParsed;
+      else rawList = input.split(/[\r\n,;\s]+/);
+    } catch {
+      rawList = input.split(/[\r\n,;\s]+/);
+    }
+  }
+  return Array.from(
+    new Set(
+      rawList
+        .map(e => String(e).trim().toLowerCase())
+        .filter(e => EMAIL_REGEX.test(e))
+    )
+  );
+}
+
 // Yêu cầu xác thực quyền Admin cho toàn bộ phân hệ Email
 router.use(authenticateToken);
 router.use(isAdmin);
@@ -228,7 +253,11 @@ router.get('/recipients-count', async (req, res) => {
     let query = '';
     let params = [];
 
-    if (target_audience === 'all_members') {
+    if (target_audience === 'custom_emails') {
+      const { custom_emails } = req.query;
+      const parsedEmails = parseCustomEmails(custom_emails);
+      return res.json({ count: parsedEmails.length });
+    } else if (target_audience === 'all_members') {
       query = `SELECT COUNT(*) as count FROM users WHERE role = 'member' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
     } else if (target_audience === 'all_candidates') {
       query = `SELECT COUNT(*) as count FROM users WHERE role = 'candidate' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
@@ -274,6 +303,7 @@ router.post('/broadcast', async (req, res) => {
       target_label,
       campaign_id,
       selected_user_ids,
+      custom_emails,
       subject,
       heading,
       body,
@@ -286,36 +316,60 @@ router.post('/broadcast', async (req, res) => {
       return res.status(400).json({ error: 'Vui lòng nhập đầy đủ Tiêu đề, Tiêu đề chính và Nội dung thông báo.' });
     }
 
-    // 1. Lấy danh sách email người nhận từ database
-    let query = '';
-    let params = [];
+    // 1. Lấy danh sách email người nhận
+    let recipientList = [];
 
-    if (target_audience === 'all_members') {
-      query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'member' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
-    } else if (target_audience === 'all_candidates') {
-      query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'candidate' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
-    } else if (target_audience === 'all_users') {
-      query = `SELECT DISTINCT email, full_name FROM users WHERE email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
-    } else if (target_audience === 'specific_users') {
-      if (!selected_user_ids || !Array.isArray(selected_user_ids) || selected_user_ids.length === 0) {
-        return res.status(400).json({ error: 'Vui lòng chọn ít nhất một người nhận từ danh sách.' });
+    if (target_audience === 'custom_emails') {
+      const parsedEmails = parseCustomEmails(custom_emails);
+      if (parsedEmails.length === 0) {
+        return res.status(400).json({ error: 'Vui lòng nhập ít nhất một địa chỉ email hợp lệ.' });
       }
-      query = `SELECT DISTINCT email, full_name FROM users WHERE id = ANY($1::uuid[]) AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
-      params = [selected_user_ids];
-    } else if (target_audience === 'by_campaign' && campaign_id) {
-      query = `
-        SELECT DISTINCT u.email, u.full_name 
-        FROM users u 
-        JOIN casting_slots s ON u.casting_slot_id = s.id 
-        WHERE s.campaign_id = $1 AND u.email IS NOT NULL AND u.email != '' AND u.email LIKE '%@%'
-      `;
-      params = [campaign_id];
-    } else {
-      query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'member' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
-    }
 
-    const usersResult = await db.query(query, params);
-    const recipientList = usersResult.rows;
+      // Tra cứu xem trong các email này có tài khoản nào trong hệ thống không để lấy full_name
+      const userMatches = await db.query(
+        `SELECT LOWER(email) as email, full_name FROM users WHERE LOWER(email) = ANY($1::text[])`,
+        [parsedEmails]
+      );
+      const userMap = new Map();
+      userMatches.rows.forEach(u => {
+        if (u.email) userMap.set(u.email.toLowerCase(), u.full_name);
+      });
+
+      recipientList = parsedEmails.map(em => ({
+        email: em,
+        full_name: userMap.get(em) || 'Bạn'
+      }));
+    } else {
+      let query = '';
+      let params = [];
+
+      if (target_audience === 'all_members') {
+        query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'member' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
+      } else if (target_audience === 'all_candidates') {
+        query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'candidate' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
+      } else if (target_audience === 'all_users') {
+        query = `SELECT DISTINCT email, full_name FROM users WHERE email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
+      } else if (target_audience === 'specific_users') {
+        if (!selected_user_ids || !Array.isArray(selected_user_ids) || selected_user_ids.length === 0) {
+          return res.status(400).json({ error: 'Vui lòng chọn ít nhất một người nhận từ danh sách.' });
+        }
+        query = `SELECT DISTINCT email, full_name FROM users WHERE id = ANY($1::uuid[]) AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
+        params = [selected_user_ids];
+      } else if (target_audience === 'by_campaign' && campaign_id) {
+        query = `
+          SELECT DISTINCT u.email, u.full_name 
+          FROM users u 
+          JOIN casting_slots s ON u.casting_slot_id = s.id 
+          WHERE s.campaign_id = $1 AND u.email IS NOT NULL AND u.email != '' AND u.email LIKE '%@%'
+        `;
+        params = [campaign_id];
+      } else {
+        query = `SELECT DISTINCT email, full_name FROM users WHERE role = 'member' AND email IS NOT NULL AND email != '' AND email LIKE '%@%'`;
+      }
+
+      const usersResult = await db.query(query, params);
+      recipientList = usersResult.rows;
+    }
 
     if (recipientList.length === 0) {
       return res.status(400).json({ error: 'Không tìm thấy người nhận nào có email hợp lệ trong nhóm đã chọn.' });
@@ -341,7 +395,11 @@ router.post('/broadcast', async (req, res) => {
     const safeSubject = subject.trim();
     const safeHeading = heading.trim();
     const safeBody = body.trim();
-    const finalTargetLabel = target_label || (target_audience === 'specific_users' ? `Tự chọn (${recipientList.length} người)` : target_audience);
+    const finalTargetLabel = target_label || (
+      target_audience === 'specific_users' ? `Tự chọn (${recipientList.length} người)` :
+      target_audience === 'custom_emails' ? `Tự nhập (${recipientList.length} email)` :
+      target_audience
+    );
 
     // 3. Tạo ngay bản ghi trong email_broadcast_logs với trạng thái 'processing'
     const initialLogResult = await db.query(`

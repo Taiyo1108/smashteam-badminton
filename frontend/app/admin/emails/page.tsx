@@ -51,7 +51,7 @@ export default function AdminEmailsPage() {
   // STATE TAB 2: GỬI MAIL HÀNG LOẠT (BROADCAST)
   // ==========================================
   const [campaignsList, setCampaignsList] = useState<any[]>([]);
-  const [broadcastTarget, setBroadcastTarget] = useState<"all_members" | "all_candidates" | "all_users" | "by_campaign" | "specific_users">("all_members");
+  const [broadcastTarget, setBroadcastTarget] = useState<"all_members" | "all_candidates" | "all_users" | "by_campaign" | "specific_users" | "custom_emails">("all_members");
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
   const [recipientsCount, setRecipientsCount] = useState<number>(0);
   const [isLoadingCount, setIsLoadingCount] = useState(false);
@@ -62,6 +62,53 @@ export default function AdminEmailsPage() {
   const [isLoadingSelectable, setIsLoadingSelectable] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<"all" | "member" | "candidate" | "admin">("all");
+
+  // Chế độ nhập email cụ thể (Custom / External Emails)
+  const [customEmailsInput, setCustomEmailsInput] = useState("");
+  const [customEmailsList, setCustomEmailsList] = useState<string[]>([]);
+  const [invalidEmailsWarning, setInvalidEmailsWarning] = useState<string[]>([]);
+  const [quickMemberSearch, setQuickMemberSearch] = useState("");
+  const [isQuickMemberOpen, setIsQuickMemberOpen] = useState(false);
+
+  const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+  const handleAddCustomEmails = (textToAdd?: string) => {
+    const raw = (textToAdd !== undefined ? textToAdd : customEmailsInput).trim();
+    if (!raw) return;
+
+    const tokens = raw.split(/[\r\n,;\s]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+    const valid: string[] = [];
+    const invalid: string[] = [];
+
+    tokens.forEach(t => {
+      if (EMAIL_REGEX.test(t)) {
+        valid.push(t);
+      } else {
+        invalid.push(t);
+      }
+    });
+
+    if (valid.length > 0) {
+      setCustomEmailsList(prev => Array.from(new Set([...prev, ...valid])));
+      setCustomEmailsInput("");
+    }
+
+    if (invalid.length > 0) {
+      setInvalidEmailsWarning(Array.from(new Set(invalid)));
+    } else {
+      setInvalidEmailsWarning([]);
+    }
+  };
+
+  const handleRemoveCustomEmail = (emailToRemove: string) => {
+    setCustomEmailsList(prev => prev.filter(e => e !== emailToRemove));
+  };
+
+  const handleClearAllCustomEmails = () => {
+    setCustomEmailsList([]);
+    setCustomEmailsInput("");
+    setInvalidEmailsWarning([]);
+  };
 
   const [broadcastForm, setBroadcastForm] = useState({
     subject: "🏸 [SmashTeam] Thông báo giải đấu & lịch sinh hoạt mới nhất",
@@ -171,6 +218,10 @@ export default function AdminEmailsPage() {
       setRecipientsCount(selectedUserIds.length);
       return;
     }
+    if (broadcastTarget === "custom_emails") {
+      setRecipientsCount(customEmailsList.length);
+      return;
+    }
 
     setIsLoadingCount(true);
     try {
@@ -219,10 +270,12 @@ export default function AdminEmailsPage() {
   useEffect(() => {
     if (broadcastTarget === "specific_users") {
       setRecipientsCount(selectedUserIds.length);
+    } else if (broadcastTarget === "custom_emails") {
+      setRecipientsCount(customEmailsList.length);
     } else {
       fetchRecipientsCount();
     }
-  }, [broadcastTarget, selectedCampaignId, selectedUserIds]);
+  }, [broadcastTarget, selectedCampaignId, selectedUserIds, customEmailsList]);
 
   useEffect(() => {
     if (activeTab === "history") {
@@ -400,6 +453,7 @@ export default function AdminEmailsPage() {
     if (broadcastTarget === "all_candidates") targetLabel = "Toàn bộ ứng viên Casting";
     else if (broadcastTarget === "all_users") targetLabel = "Toàn bộ người dùng";
     else if (broadcastTarget === "specific_users") targetLabel = `Tự chọn (${selectedUserIds.length} người)`;
+    else if (broadcastTarget === "custom_emails") targetLabel = `Tự nhập (${customEmailsList.length} email cụ thể)`;
     else if (broadcastTarget === "by_campaign") {
       const c = campaignsList.find(item => item.id === selectedCampaignId);
       targetLabel = c ? `Đợt: ${c.name}` : "Đợt tuyển chọn";
@@ -416,8 +470,9 @@ export default function AdminEmailsPage() {
         body: JSON.stringify({
           target_audience: broadcastTarget,
           target_label: targetLabel,
-          campaign_id: selectedCampaignId,
+          campaign_id: broadcastTarget === "by_campaign" ? selectedCampaignId : undefined,
           selected_user_ids: broadcastTarget === "specific_users" ? selectedUserIds : undefined,
+          custom_emails: broadcastTarget === "custom_emails" ? customEmailsList : undefined,
           subject: broadcastForm.subject,
           heading: broadcastForm.heading,
           body: broadcastForm.body,
@@ -809,13 +864,14 @@ export default function AdminEmailsPage() {
                     { id: "all_candidates", label: "Toàn bộ Ứng viên", desc: "Tất cả hồ sơ ứng tuyển" },
                     { id: "by_campaign", label: "Theo Đợt Tuyển Quân", desc: "Lọc theo từng chiến dịch" },
                     { id: "all_users", label: "Tất cả người dùng", desc: "Mọi tài khoản có email" },
-                    { id: "specific_users", label: "🎯 Chọn người nhận cụ thể", desc: "Tùy chọn đích danh từng người" }
+                    { id: "specific_users", label: "🎯 Chọn người nhận cụ thể", desc: "Tùy chọn đích danh từng người" },
+                    { id: "custom_emails", label: "✍️ Nhập email cụ thể", desc: "Nhập danh sách email (thành viên & người ngoài)" }
                   ].map((opt) => (
                     <div
                       key={opt.id}
                       onClick={() => {
                         setBroadcastTarget(opt.id as any);
-                        if (opt.id === "specific_users" && selectableUsers.length === 0) {
+                        if ((opt.id === "specific_users" || opt.id === "custom_emails") && selectableUsers.length === 0) {
                           fetchSelectableUsers();
                         }
                       }}
@@ -1061,6 +1117,207 @@ export default function AdminEmailsPage() {
                   </div>
                 )}
 
+                {/* GIAO DIỆN NHẬP EMAIL CỤ THỂ (CUSTOM EMAILS INPUT: THÀNH VIÊN & NGƯỜI NGOÀI) */}
+                {broadcastTarget === "custom_emails" && (
+                  <div className="pt-3 border-t border-slate-200 space-y-3.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <label className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                          <Mail className="w-4 h-4 text-primary" />
+                          <span>Danh Sách Email Nhận Thư ({customEmailsList.length} địa chỉ hợp lệ)</span>
+                        </label>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Hỗ trợ gửi thư hàng loạt tới cả thành viên CLB và người ngoài hệ thống (đối tác, khách mời, ứng viên tự do...)
+                        </p>
+                      </div>
+                      {customEmailsList.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearAllCustomEmails}
+                          className="text-xs text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer self-start sm:self-auto"
+                        >
+                          Xóa tất cả ({customEmailsList.length})
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Ô NHẬP HOẶC DÁN DANH SÁCH EMAIL */}
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <textarea
+                          rows={3}
+                          value={customEmailsInput}
+                          onChange={(e) => setCustomEmailsInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && (e.ctrlKey || e.metaKey || !e.shiftKey)) {
+                              e.preventDefault();
+                              handleAddCustomEmails();
+                            }
+                          }}
+                          placeholder="Nhập hoặc dán danh sách email tại đây... (Ví dụ: user1@gmail.com, khachngoai@company.com; partner@badminton.vn hoặc copy từ Excel/Google Sheet xuống dòng)&#10;Bấm 'Thêm vào danh sách' hoặc phím Enter để xác nhận."
+                          className="w-full p-3 bg-white border border-slate-300 rounded-xl outline-none focus:border-primary text-xs font-mono text-secondary placeholder:text-slate-400 placeholder:font-sans focus:ring-2 focus:ring-primary/20 transition-all"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleAddCustomEmails()}
+                            disabled={!customEmailsInput.trim()}
+                            className="px-4 py-2 bg-primary hover:bg-primary-hover disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
+                          >
+                            <span>+ Thêm vào danh sách</span>
+                          </button>
+                          <span className="text-[11px] text-slate-400 hidden sm:inline">
+                            (Mẹo: Nhấn Enter để thêm nhanh)
+                          </span>
+                        </div>
+
+                        {/* Quick pick from existing club members */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsQuickMemberOpen(!isQuickMemberOpen);
+                              if (selectableUsers.length === 0) fetchSelectableUsers();
+                            }}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                          >
+                            <Users className="w-3.5 h-3.5 text-primary" />
+                            <span>+ Chọn nhanh từ Hội viên CLB</span>
+                          </button>
+
+                          {isQuickMemberOpen && (
+                            <div className="absolute right-0 top-full mt-1.5 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 p-2.5 space-y-2">
+                              <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+                                <span className="text-xs font-bold text-slate-800">Chọn nhanh từ Hội viên</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsQuickMemberOpen(false)}
+                                  className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <input
+                                type="text"
+                                value={quickMemberSearch}
+                                onChange={(e) => setQuickMemberSearch(e.target.value)}
+                                placeholder="Tìm theo tên, email, SĐT..."
+                                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary font-medium"
+                              />
+                              <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                                {selectableUsers
+                                  .filter(u => {
+                                    if (!quickMemberSearch.trim()) return true;
+                                    const q = quickMemberSearch.toLowerCase();
+                                    return (u.full_name || "").toLowerCase().includes(q) ||
+                                           (u.email || "").toLowerCase().includes(q);
+                                  })
+                                  .slice(0, 20)
+                                  .map(u => {
+                                    const isAdded = customEmailsList.includes(u.email.toLowerCase());
+                                    return (
+                                      <div
+                                        key={u.id}
+                                        onClick={() => {
+                                          if (!isAdded) {
+                                            setCustomEmailsList(prev => [...prev, u.email.toLowerCase()]);
+                                          }
+                                        }}
+                                        className={`p-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                                          isAdded
+                                            ? "bg-slate-100 text-slate-400 cursor-default"
+                                            : "hover:bg-purple-50 cursor-pointer text-slate-700"
+                                        }`}
+                                      >
+                                        <div className="min-w-0 pr-2">
+                                          <p className="font-bold truncate text-[11px]">{u.full_name}</p>
+                                          <p className="text-[10px] text-slate-400 font-mono truncate">{u.email}</p>
+                                        </div>
+                                        <span className="text-[10px] font-bold shrink-0">
+                                          {isAdded ? "Đã thêm" : "+ Thêm"}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Cảnh báo các email không hợp lệ (nếu có) */}
+                    {invalidEmailsWarning.length > 0 && (
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1 animate-fade-in">
+                        <div className="flex items-center gap-1.5 font-bold text-rose-700">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>Phát hiện {invalidEmailsWarning.length} chuỗi không đúng định dạng email:</span>
+                        </div>
+                        <p className="text-[11px] text-rose-600 font-mono break-all">
+                          {invalidEmailsWarning.join(", ")}
+                        </p>
+                        <p className="text-[10px] text-rose-500 italic">
+                          (Các chuỗi này đã tự động được bỏ qua để tránh lỗi gửi thư)
+                        </p>
+                      </div>
+                    )}
+
+                    {/* DANH SÁCH CHIP EMAIL ĐÃ NHẬP */}
+                    {customEmailsList.length > 0 ? (
+                      <div className="p-3 bg-purple-50/60 border border-purple-100 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between text-xs font-bold text-primary">
+                          <span>Danh sách đã xác nhận ({customEmailsList.length} email):</span>
+                          {customEmailsList.length > 20 && (
+                            <span className="text-slate-400 font-normal text-[11px]">
+                              Hiển thị 20 email đầu tiên
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                          {customEmailsList.slice(0, 20).map((email, idx) => {
+                            const memberMatch = selectableUsers.find(
+                              u => (u.email || "").toLowerCase() === email.toLowerCase()
+                            );
+                            return (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 bg-white border border-purple-200 rounded-xl text-xs font-medium text-secondary shadow-2xs group hover:border-purple-300 transition-colors"
+                              >
+                                <span className="font-mono text-[11px] text-purple-900">{email}</span>
+                                {memberMatch ? (
+                                  <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-700 text-[9px] font-bold">
+                                    {memberMatch.full_name}
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-500 text-[9px] font-semibold">
+                                    Khách ngoài
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveCustomEmail(email)}
+                                  className="text-slate-400 hover:text-rose-500 hover:bg-rose-50 p-0.5 rounded cursor-pointer transition-colors"
+                                  title="Xóa email này"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-slate-100/70 border border-dashed border-slate-300 rounded-2xl text-center text-xs text-slate-500">
+                        Chưa có email nào trong danh sách. Hãy nhập hoặc dán danh sách email vào ô phía trên rồi bấm <strong>"Thêm vào danh sách"</strong>.
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Badge đếm số lượng người nhận */}
                 <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 text-[11px]">
                   <span className="text-slate-500 font-medium">Số lượng hòm thư sẽ nhận thư:</span>
@@ -1071,7 +1328,7 @@ export default function AdminEmailsPage() {
                       </span>
                     ) : (
                       <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-black text-xs">
-                        ✓ {recipientsCount} người nhận {broadcastTarget === "specific_users" ? "(Đã chọn)" : ""}
+                        ✓ {recipientsCount} người nhận {broadcastTarget === "specific_users" ? "(Đã chọn)" : broadcastTarget === "custom_emails" ? "(Đã nhập)" : ""}
                       </span>
                     )}
                   </div>
@@ -1386,6 +1643,7 @@ export default function AdminEmailsPage() {
               <p className="text-xs text-slate-600 mt-1">
                 Bạn sắp gửi thông báo này tới <strong className="text-primary font-black text-sm">{recipientsCount}</strong> hòm thư điện tử {
                   broadcastTarget === "specific_users" ? "(chọn đích danh theo danh sách)" :
+                  broadcastTarget === "custom_emails" ? "(danh sách email cụ thể tự nhập)" :
                   broadcastTarget === "all_members" ? "(tất cả thành viên chính thức)" :
                   broadcastTarget === "all_candidates" ? "(toàn bộ ứng viên)" :
                   broadcastTarget === "all_users" ? "(toàn bộ người dùng)" : "(theo đợt tuyển quân)"
@@ -1409,6 +1667,24 @@ export default function AdminEmailsPage() {
                         <span className="font-mono text-purple-600 text-[10px]">{u.email}</span>
                       </div>
                     ))}
+                </div>
+              </div>
+            )}
+
+            {/* Chi tiết danh sách email nếu chọn custom_emails */}
+            {broadcastTarget === "custom_emails" && customEmailsList.length > 0 && (
+              <div className="p-3 bg-purple-50/70 border border-purple-200/80 rounded-2xl space-y-1.5 text-xs">
+                <div className="flex items-center justify-between font-bold text-primary text-[11px]">
+                  <span>Danh sách email đã nhập ({customEmailsList.length}):</span>
+                  {customEmailsList.length > 8 && <span className="text-slate-400 font-normal">Cuộn để xem hết</span>}
+                </div>
+                <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                  {customEmailsList.map((em, idx) => (
+                    <div key={idx} className="flex items-center justify-between py-0.5 border-b border-purple-100/50 text-[11px]">
+                      <span className="font-mono text-purple-700 text-[11px]">{em}</span>
+                      <span className="text-[10px] text-slate-400">#{idx + 1}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
