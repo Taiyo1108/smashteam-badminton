@@ -275,6 +275,8 @@ async function runAllAutomationJobs() {
     await processAvailableWaitlistSlots();
     await processNoShows();
     await processMissingCheckouts();
+    const { checkAndRunMonthlyInactivityCron } = require('./monthlyInactivityDisciplineService');
+    await checkAndRunMonthlyInactivityCron();
   } catch (err) {
     console.error('[Automation Worker Error]:', err);
   }

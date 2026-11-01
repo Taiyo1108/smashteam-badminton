@@ -54,16 +54,25 @@ async function calculateReliabilityScore(userId, client = db) {
   discRes.rows.forEach(r => {
     if (r.type === 'YELLOW') {
       activeYellowCards++;
-      if (r.metadata && (r.metadata.reason_type === 'GUEST_NO_SHOW' || r.metadata.penalty_reputation === -50)) {
+      if (r.metadata && typeof r.metadata.penalty_reputation === 'number') {
+        const targetDeduction = Math.abs(r.metadata.penalty_reputation);
+        guestYellowExtraPenalty += Math.max(0, targetDeduction - 15);
+      } else if (r.metadata && (r.metadata.reason_type === 'GUEST_NO_SHOW' || r.metadata.penalty_reputation === -50)) {
         guestYellowExtraPenalty += 35; // Trừ tổng cộng 50 điểm (15 + 35)
       }
     } else if (r.type === 'RED') {
       activeRedCards++;
       if (r.metadata && (r.metadata.reason_type === 'GUEST_NO_SHOW' || r.metadata.penalty_reputation === 'RESET_ZERO' || r.metadata.permanent_ban)) {
         isGuestPermanentBanned = true;
+      } else if (r.metadata && typeof r.metadata.penalty_reputation === 'number') {
+        const targetDeduction = Math.abs(r.metadata.penalty_reputation);
+        guestYellowExtraPenalty += Math.max(0, targetDeduction - 40);
       }
     } else if (r.type === 'WARNING') {
       activeWarnings++;
+      if (r.metadata && typeof r.metadata.penalty_reputation === 'number') {
+        guestYellowExtraPenalty += Math.abs(r.metadata.penalty_reputation);
+      }
     }
   });
 

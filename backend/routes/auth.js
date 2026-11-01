@@ -8,6 +8,7 @@ const { onboardingRateLimiter } = require('../middleware/rateLimiter');
 const { validateOnboarding } = require('../validators/onboardingValidator');
 const { OAuth2Client } = require('google-auth-library');
 const { checkBlacklist } = require('../services/guestDisciplineService');
+const { getUnacknowledgedInactivityWarning } = require('../services/monthlyInactivityDisciplineService');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '924372495544-vtcoadl8go2gf8oqqqhrr0s21fi10ecd.apps.googleusercontent.com';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -73,6 +74,8 @@ router.post('/login', async (req, res) => {
       { expiresIn }
     );
 
+    const inactivityWarning = user.role === 'member' ? await getUnacknowledgedInactivityWarning(user.id) : null;
+
     res.json({ 
       token, 
       user: { 
@@ -83,7 +86,8 @@ router.post('/login', async (req, res) => {
         phone_zalo: user.phone_zalo,
         avatar_url: user.avatar_url,
         is_profile_completed: isCompleted
-      } 
+      },
+      inactivity_warning: inactivityWarning
     });
   } catch (error) {
     console.error('Error logging in:', error);
@@ -288,6 +292,8 @@ router.post('/google', onboardingRateLimiter, async (req, res) => {
       { expiresIn: user.role === 'admin' ? '7d' : '30d' }
     );
 
+    const inactivityWarning = user.role === 'member' ? await getUnacknowledgedInactivityWarning(user.id) : null;
+
     res.json({
       token,
       user: {
@@ -298,7 +304,8 @@ router.post('/google', onboardingRateLimiter, async (req, res) => {
         phone_zalo: user.phone_zalo || null,
         avatar_url: user.avatar_url,
         is_profile_completed: isCompleted
-      }
+      },
+      inactivity_warning: inactivityWarning
     });
   } catch (error) {
     console.error('Error in google auth:', error);

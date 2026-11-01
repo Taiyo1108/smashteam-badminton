@@ -22,6 +22,7 @@ import SessionReservationWidget from "@/app/components/SessionReservationWidget"
 import NotificationBell from "@/app/components/notifications/NotificationBell";
 import RewardCelebrationModal, { RewardCelebrationData } from "@/app/components/RewardCelebrationModal";
 import MemberOnlyModal from "@/app/components/MemberOnlyModal";
+import InactivityWarningModal, { InactivityWarningData } from "@/app/components/InactivityWarningModal";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -32,6 +33,8 @@ export default function ProfilePage() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isReputationModalOpen, setIsReputationModalOpen] = useState(false);
   const [isMemberOnlyModalOpen, setIsMemberOnlyModalOpen] = useState(false);
+  const [inactivityWarning, setInactivityWarning] = useState<InactivityWarningData | null>(null);
+  const [isInactivityModalOpen, setIsInactivityModalOpen] = useState(false);
 
   // Gamification states
   const [gamProfile, setGamProfile] = useState<any>(null);
@@ -196,6 +199,13 @@ export default function ProfilePage() {
       }
 
       setPlayerData(data);
+      if (data?.inactivity_warning) {
+        const isAckLocally = typeof window !== "undefined" && localStorage.getItem(`ack_inactivity_${data.inactivity_warning.recordId}`);
+        if (!isAckLocally) {
+          setInactivityWarning(data.inactivity_warning);
+          setIsInactivityModalOpen(true);
+        }
+      }
       
       // Khởi tạo form fields
       setFullName(data.player.full_name || "");
@@ -1085,6 +1095,27 @@ export default function ProfilePage() {
           {/* RSVP & RESERVATION WIDGET */}
           <div className="rounded-2xl bg-white border border-slate-200 p-6 relative overflow-hidden shadow-sm space-y-4">
             {/* THẺ PHẠT & TIẾN TRÌNH XÓA THẺ VÀNG CHO KHÁCH VÃNG LAI */}
+            {playerData?.inactivity_warning && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3.5 animate-fade-in">
+                <div className="w-8 h-10 rounded bg-gradient-to-br from-amber-400 to-yellow-500 border border-yellow-200 shadow-md shrink-0 flex items-center justify-center text-xs font-black text-slate-950 mt-0.5">
+                  🟨
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-amber-900 text-xs sm:text-sm">
+                      Kỷ luật chuyên cần: 1 Thẻ vàng ({playerData.inactivity_warning.penaltyReputation} điểm uy tín)
+                    </span>
+                    <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                      {playerData.inactivity_warning.monthDisplay}
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    Bạn chỉ tham gia {playerData.inactivity_warning.sessionsAttended}/{playerData.inactivity_warning.requiredSessions} buổi sinh hoạt trong {playerData.inactivity_warning.monthDisplay}. Hãy tích cực tham gia tối thiểu 2 buổi/tháng để phục hồi điểm uy tín và tránh bị phạt -40 điểm vào lần 2!
+                  </p>
+                </div>
+              </div>
+            )}
+
             {playerData?.guest_penalty?.hasYellowCard && (
               <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3.5 animate-fade-in">
                 <div className="w-8 h-10 rounded bg-gradient-to-br from-amber-400 to-yellow-500 border border-yellow-200 shadow-md shrink-0 flex items-center justify-center text-xs font-black text-slate-950 mt-0.5">
@@ -2426,6 +2457,13 @@ export default function ProfilePage() {
       />
 
       {/* MODAL TEASER & LOCK ĐẶC QUYỀN THÀNH VIÊN CHO TÀI KHOẢN GUEST */}
+      <InactivityWarningModal
+        warning={inactivityWarning}
+        isOpen={isInactivityModalOpen}
+        onClose={() => setIsInactivityModalOpen(false)}
+        onAcknowledgeSuccess={() => fetchProfileData()}
+      />
+
       <MemberOnlyModal
         isOpen={isMemberOnlyModalOpen}
         onClose={() => setIsMemberOnlyModalOpen(false)}

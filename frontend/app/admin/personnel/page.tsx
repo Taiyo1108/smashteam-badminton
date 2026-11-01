@@ -17,6 +17,7 @@ import ApplicantDetailDrawer from "@/app/components/recruitment/ApplicantDetailD
 import CustomQuestionsEditor from "@/app/components/recruitment/CustomQuestionsEditor";
 import { parseQuestions, type CustomQuestion } from "@/app/components/recruitment/customQuestions";
 import Member360Modal from "@/app/components/admin/Member360Modal";
+import MonthlyInactivityModal from "./MonthlyInactivityModal";
 
 const softSkillsList = [
   "Chụp ảnh",
@@ -37,6 +38,7 @@ const functionalTagsList = [
 
 export default function PersonnelPage() {
   const [activeTab, setActiveTab] = useState<'candidates' | 'members' | 'guests' | 'campaigns'>('candidates');
+  const [isInactivityModalOpen, setIsInactivityModalOpen] = useState(false);
 
   // States cho Guests (Tài khoản vãng lai)
   const [gSearch, setGSearch] = useState("");
@@ -1060,6 +1062,15 @@ export default function PersonnelPage() {
                   Trung tâm Cảnh báo Nhân sự (Attention Center)
                 </h3>
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsInactivityModalOpen(true)}
+                  className="text-xs font-black text-amber-900 hover:text-amber-950 flex items-center gap-1.5 bg-gradient-to-r from-amber-200 via-yellow-200 to-amber-200 hover:from-amber-300 hover:to-yellow-300 px-3 py-1.5 rounded-xl border border-amber-300 shadow-xs transition-all cursor-pointer"
+                >
+                  <span>🟨</span>
+                  <span>Kỷ luật chuyên cần tháng (&lt; 2 buổi)</span>
+                </button>
               {mAttentionFilter !== "all" && (
                 <button
                   onClick={() => setMAttentionFilter("all")}
@@ -1069,6 +1080,7 @@ export default function PersonnelPage() {
                   Xóa bộ lọc cảnh báo
                 </button>
               )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
@@ -2721,6 +2733,12 @@ export default function PersonnelPage() {
       )}
 
       {/* MODAL MEMBER 360° HUB */}
+      <MonthlyInactivityModal
+        isOpen={isInactivityModalOpen}
+        onClose={() => setIsInactivityModalOpen(false)}
+        onRefresh={fetchMembers}
+      />
+
       <Member360Modal
         memberId={member360Id}
         isOpen={isMember360Open}

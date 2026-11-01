@@ -1412,5 +1412,38 @@ router.post('/members/:id/reset-password', async (req, res) => {
   }
 });
 
+// GET /api/admin/inactivity-penalties/preview - Xem trước danh sách chuyên cần tháng và mức phạt dự kiến
+router.get('/inactivity-penalties/preview', async (req, res) => {
+  try {
+    const { month } = req.query; // format YYYY-MM
+    const { evaluateMonthlyInactivity } = require('../services/monthlyInactivityDisciplineService');
+    const result = await evaluateMonthlyInactivity({
+      monthYear: month || '2026-10',
+      dryRun: true
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error previewing inactivity penalties:', error);
+    res.status(400).json({ error: error.message || 'Lỗi khi xem trước chuyên cần tháng.' });
+  }
+});
+
+// POST /api/admin/inactivity-penalties/execute - Thực thi phạt kỷ luật chuyên cần tháng
+router.post('/inactivity-penalties/execute', async (req, res) => {
+  try {
+    const { month } = req.body; // format YYYY-MM
+    const { evaluateMonthlyInactivity } = require('../services/monthlyInactivityDisciplineService');
+    const result = await evaluateMonthlyInactivity({
+      monthYear: month || '2026-10',
+      dryRun: false,
+      adminId: req.user.id
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error executing inactivity penalties:', error);
+    res.status(400).json({ error: error.message || 'Lỗi khi thực thi xử phạt chuyên cần tháng.' });
+  }
+});
+
 module.exports = router;
 

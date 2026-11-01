@@ -25,6 +25,7 @@ import { formatVietnamDate } from "@/app/utils/date";
 import { format } from "date-fns";
 import NotificationBell from "@/app/components/notifications/NotificationBell";
 import SessionReservationWidget from "@/app/components/SessionReservationWidget";
+import InactivityWarningModal, { InactivityWarningData } from "@/app/components/InactivityWarningModal";
 
 // ===== Giới thiệu & Liên hệ động từ site_settings (admin chỉnh ở Quản lý nội dung) =====
 const ADDRESS_FALLBACK = "304 ĐT743A, Đông Hòa, Hồ Chí Minh";
@@ -132,6 +133,8 @@ export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState("");
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [inactivityWarning, setInactivityWarning] = useState<InactivityWarningData | null>(null);
+  const [isInactivityModalOpen, setIsInactivityModalOpen] = useState(false);
 
   // Home cover image
   const [coverUrl, setCoverUrl] = useState("");
@@ -1258,6 +1261,12 @@ export default function Home() {
       </footer>
 
       {/* Global Recruitment Registration Modal */}
+      <InactivityWarningModal
+        warning={inactivityWarning}
+        isOpen={isInactivityModalOpen}
+        onClose={() => setIsInactivityModalOpen(false)}
+      />
+
       <RegistrationModal 
         isOpen={isRegisterModalOpen} 
         onClose={() => setIsRegisterModalOpen(false)} 

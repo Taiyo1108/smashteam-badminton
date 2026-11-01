@@ -7,6 +7,7 @@ const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
 const { getPlayerProfileStats } = require('../services/playerStatsService');
 const { calculateReliabilityScore } = require('../services/memberManagementService');
 const { getGuestPenaltyStatus, checkAndRevokeGuestPenalty } = require('../services/guestDisciplineService');
+const { getUnacknowledgedInactivityWarning, acknowledgeInactivityWarning } = require('../services/monthlyInactivityDisciplineService');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const { cloudinary } = require('../utils/cloudinary');
@@ -453,6 +454,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       upcomingSession,
       attendanceHistory,
       guest_penalty: guestPenalty,
+      inactivity_warning: user.role === 'member' ? await getUnacknowledgedInactivityWarning(userId) : null,
       reputation: {
         score: reliability.score,
         label: reliability.label,
@@ -465,6 +467,22 @@ router.get('/me', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching player profile:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/profile/acknowledge-inactivity-warning - Xác nhận đã đọc cảnh báo kỷ luật chuyên cần tháng (chỉ hiện 1 lần)
+router.post('/acknowledge-inactivity-warning', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { recordId } = req.body;
+    if (!recordId) {
+      return res.status(400).json({ error: 'Thiếu recordId.' });
+    }
+    const result = await acknowledgeInactivityWarning(userId, recordId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error acknowledging inactivity warning:', error);
+    res.status(500).json({ error: error.message || 'Lỗi khi xác nhận cảnh báo.' });
   }
 });
 
