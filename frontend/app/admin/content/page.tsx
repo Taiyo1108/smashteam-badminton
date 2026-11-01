@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { 
   Upload, Plus, Trash2, Film, Image as ImageIcon, Star, Check, Loader2, Play, 
-  AlertCircle, Eye, EyeOff, Clock, Sparkles, Bell, Edit3, ChevronUp, ChevronDown, X, Save 
+  AlertCircle, Eye, EyeOff, Clock, Sparkles, Bell, Edit3, ChevronUp, ChevronDown, X, Save,
+  Activity, ArrowRight
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import AnnouncementsTab from "./AnnouncementsTab";
@@ -19,13 +20,17 @@ export default function ContentManagementPage() {
   const [coverSuccess, setCoverSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
-  // States for Hero Titles (Tiêu đề chính & Tiêu đề phụ Trang chủ)
+  // States for Hero Titles & Action Buttons (Tiêu đề chính, Tiêu đề phụ & 2 Nút CTA Trang chủ)
   const [heroForm, setHeroForm] = useState({
     titleLine1: "",
     titleLine2: "",
     subtitle: "",
     font: "inter",
     style: "classic",
+    ctaPrimaryText: "",
+    ctaPrimaryLink: "",
+    ctaSecondaryText: "",
+    ctaSecondaryLink: "",
   });
   const [heroLoading, setHeroLoading] = useState(false);
   const [heroSuccess, setHeroSuccess] = useState(false);
@@ -92,6 +97,10 @@ export default function ContentManagementPage() {
           subtitle: data.homepage_hero_subtitle ?? "Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!",
           font: data.homepage_hero_font ?? "inter",
           style: data.homepage_hero_style ?? "classic",
+          ctaPrimaryText: data.homepage_hero_cta_primary_text ?? "Đăng ký tài khoản vãng lai ngay",
+          ctaPrimaryLink: data.homepage_hero_cta_primary_link ?? "/login?mode=register",
+          ctaSecondaryText: data.homepage_hero_cta_secondary_text ?? "Khám phá hoạt động CLB",
+          ctaSecondaryLink: data.homepage_hero_cta_secondary_link ?? "#recruitment-event-section",
         });
       }
     } catch (e) {
@@ -121,6 +130,10 @@ export default function ContentManagementPage() {
             homepage_hero_subtitle: heroForm.subtitle.trim(),
             homepage_hero_font: heroForm.font,
             homepage_hero_style: heroForm.style,
+            homepage_hero_cta_primary_text: heroForm.ctaPrimaryText.trim(),
+            homepage_hero_cta_primary_link: heroForm.ctaPrimaryLink.trim(),
+            homepage_hero_cta_secondary_text: heroForm.ctaSecondaryText.trim(),
+            homepage_hero_cta_secondary_link: heroForm.ctaSecondaryLink.trim(),
           }
         })
       });
@@ -134,6 +147,10 @@ export default function ContentManagementPage() {
           homepage_hero_subtitle: heroForm.subtitle.trim(),
           homepage_hero_font: heroForm.font,
           homepage_hero_style: heroForm.style,
+          homepage_hero_cta_primary_text: heroForm.ctaPrimaryText.trim(),
+          homepage_hero_cta_primary_link: heroForm.ctaPrimaryLink.trim(),
+          homepage_hero_cta_secondary_text: heroForm.ctaSecondaryText.trim(),
+          homepage_hero_cta_secondary_link: heroForm.ctaSecondaryLink.trim(),
         };
         setSettings(updated);
         try {
@@ -591,6 +608,149 @@ export default function ContentManagementPage() {
                 />
               </div>
 
+              {/* CẤU HÌNH 2 NÚT HÀNH ĐỘNG GIỮA TRANG CHỦ (HERO CTA BUTTONS) */}
+              <div className="border-t border-slate-200 pt-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-primary" /> Cấu hình 2 Nút Hành Động ở Giữa Trang Chủ
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Tùy chỉnh nội dung chữ và điều hướng đích đến của 2 nút ở trung tâm hero khi khách truy cập web.
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-1 rounded-full">
+                    Hero CTA
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Nút 1: Nút Nổi Bật Chính */}
+                  <div className="p-4 rounded-xl border border-purple-200 bg-purple-50/40 space-y-3 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-black">1</span>
+                        Nút 1 (Nút Nổi Bật Chính)
+                      </span>
+                      <span className="text-[10px] font-bold text-purple-600 bg-purple-100 px-2 py-0.5 rounded-md">
+                        Màu Tím Neon
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Nội dung hiển thị trên nút 1
+                      </label>
+                      <input
+                        type="text"
+                        value={heroForm.ctaPrimaryText}
+                        onChange={(e) => setHeroForm({ ...heroForm, ctaPrimaryText: e.target.value })}
+                        placeholder="Đăng ký tài khoản vãng lai ngay"
+                        className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-xs font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Đích đến điều hướng (Link hoặc #mã-vùng)
+                      </label>
+                      <input
+                        type="text"
+                        value={heroForm.ctaPrimaryLink}
+                        onChange={(e) => setHeroForm({ ...heroForm, ctaPrimaryLink: e.target.value })}
+                        placeholder="/login?mode=register"
+                        className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-xs font-mono font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 block mb-1">Gợi ý đích đến nhanh:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: "Đăng ký vãng lai", url: "/login?mode=register" },
+                          { label: "Giải đấu 2026", url: "/tournaments/smashteam-iv-2026" },
+                          { label: "Lịch sinh hoạt", url: "/#schedule" },
+                          { label: "Tuyển quân", url: "#recruitment-event-section" },
+                        ].map((item, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setHeroForm({ ...heroForm, ctaPrimaryLink: item.url })}
+                            className="px-2 py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-md text-[10px] text-purple-700 font-medium transition-colors cursor-pointer"
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Nút 2: Nút Phụ / Khám Phá Hoạt Động */}
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-slate-700 text-white flex items-center justify-center text-[10px] font-black">2</span>
+                        Nút 2 (Nút Phụ / Khám Phá)
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-600 bg-slate-200 px-2 py-0.5 rounded-md">
+                        Kính Mờ (Glass)
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Nội dung hiển thị trên nút 2
+                      </label>
+                      <input
+                        type="text"
+                        value={heroForm.ctaSecondaryText}
+                        onChange={(e) => setHeroForm({ ...heroForm, ctaSecondaryText: e.target.value })}
+                        placeholder="Khám phá hoạt động CLB"
+                        className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-xs font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Đích đến điều hướng (Link hoặc #mã-vùng)
+                      </label>
+                      <input
+                        type="text"
+                        value={heroForm.ctaSecondaryLink}
+                        onChange={(e) => setHeroForm({ ...heroForm, ctaSecondaryLink: e.target.value })}
+                        placeholder="#recruitment-event-section"
+                        className="w-full p-2.5 border border-slate-200 bg-white rounded-xl text-xs font-mono font-medium outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 block mb-1">Gợi ý đích đến nhanh:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: "Hoạt động & Tuyển quân", url: "#recruitment-event-section" },
+                          { label: "Quyền lợi thành viên", url: "#club-benefits-section" },
+                          { label: "Điểm nổi bật CLB", url: "#club-highlights-section" },
+                          { label: "Giải đấu 2026", url: "/tournaments/smashteam-iv-2026" },
+                        ].map((item, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setHeroForm({ ...heroForm, ctaSecondaryLink: item.url })}
+                            className="px-2 py-1 bg-white hover:bg-slate-200 border border-slate-300 rounded-md text-[10px] text-slate-700 font-medium transition-colors cursor-pointer"
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 italic">
+                  * Mẹo: Nhập <code className="text-purple-600 font-mono">#tên-mã-vùng</code> để cuộn trang mượt mà (smooth scroll), hoặc nhập đường dẫn trang web như <code className="text-purple-600 font-mono">/tournaments/...</code> hoặc link ngoài <code className="text-purple-600 font-mono">https://...</code>.
+                </p>
+              </div>
+
               {/* Live Preview Box */}
               <div className="p-3.5 bg-secondary rounded-xl border border-primary/30 space-y-2 shadow-inner">
                 <div className="flex items-center justify-between">
@@ -661,6 +821,20 @@ export default function ContentManagementPage() {
                 <p className="text-[11px] text-slate-300/80 line-clamp-2 leading-relaxed pt-1">
                   {heroForm.subtitle || "Smash Team - Câu lạc bộ cầu lông sinh viên..."}
                 </p>
+
+                {/* Preview 2 nút CTA trong khung xem trước */}
+                <div className="pt-3 border-t border-white/10 flex flex-wrap items-center gap-2.5">
+                  <div className="px-4 py-2 bg-primary text-white text-xs font-black rounded-full shadow-[0_0_15px_rgba(122,34,224,0.6)] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{heroForm.ctaPrimaryText || "Đăng ký tài khoản vãng lai ngay"}</span>
+                    <ArrowRight className="w-3 h-3 text-purple-200" />
+                  </div>
+
+                  <div className="px-4 py-2 bg-white/10 text-white text-xs font-bold rounded-full border border-white/25 flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-cyan-300" />
+                    <span>{heroForm.ctaSecondaryText || "Khám phá hoạt động CLB"}</span>
+                  </div>
+                </div>
               </div>
 
               {/* Success / Error Alerts */}

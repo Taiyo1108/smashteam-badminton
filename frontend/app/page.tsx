@@ -108,6 +108,11 @@ export default function Home() {
   const heroSubtitle = (siteSettings.homepage_hero_subtitle || "").trim() || "Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!";
   const heroFont = siteSettings.homepage_hero_font || "inter";
   const heroStyle = siteSettings.homepage_hero_style || "classic";
+  // 2 Nút hành động CTA Hero trang chủ do admin cấu hình trong Quản lý nội dung
+  const heroCtaPrimaryText = (siteSettings.homepage_hero_cta_primary_text || "").trim() || "Đăng ký tài khoản vãng lai ngay";
+  const heroCtaPrimaryLink = (siteSettings.homepage_hero_cta_primary_link || "").trim() || "/login?mode=register";
+  const heroCtaSecondaryText = (siteSettings.homepage_hero_cta_secondary_text || "").trim() || "Khám phá hoạt động CLB";
+  const heroCtaSecondaryLink = (siteSettings.homepage_hero_cta_secondary_link || "").trim() || "#recruitment-event-section";
   const isHeroReady = isMounted && (settingsLoaded || Object.keys(siteSettings).length > 0);
 
   const getHeroFontClass = (fontKey?: string) => {
@@ -758,7 +763,7 @@ export default function Home() {
                 >
                   {!isMounted ? (
                     <div className="min-h-[52px] w-64 bg-white/10 backdrop-blur-md rounded-full animate-pulse" />
-                  ) : isLoggedIn ? (
+                  ) : isLoggedIn && (heroCtaPrimaryLink.toLowerCase().includes("register") || heroCtaPrimaryLink.toLowerCase().includes("dang-ky")) ? (
                     <Link href={userRole === "admin" || currentUser?.role === "admin" ? "/admin" : (currentUser?.is_profile_completed === false ? "/onboarding" : "/profile")}>
                       <button 
                         id="hero-cta-profile"
@@ -769,30 +774,78 @@ export default function Home() {
                         <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
                       </button>
                     </Link>
+                  ) : heroCtaPrimaryLink.startsWith("#") ? (
+                    <button 
+                      id="hero-cta-primary-anchor"
+                      onClick={() => {
+                        const el = document.getElementById(heroCtaPrimaryLink.replace(/^#/, ""));
+                        if (el) el.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
+                    >
+                      <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                      <span>{heroCtaPrimaryText}</span>
+                      <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
+                    </button>
+                  ) : heroCtaPrimaryLink.startsWith("http://") || heroCtaPrimaryLink.startsWith("https://") ? (
+                    <a
+                      id="hero-cta-primary-external"
+                      href={heroCtaPrimaryLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
+                    >
+                      <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                      <span>{heroCtaPrimaryText}</span>
+                      <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
+                    </a>
                   ) : (
-                    <Link href="/login?mode=register">
+                    <Link href={heroCtaPrimaryLink}>
                       <button 
                         id="hero-cta-apply-now"
                         className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
                       >
                         <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
-                        <span>Đăng ký tài khoản vãng lai ngay</span>
+                        <span>{heroCtaPrimaryText}</span>
                         <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
                       </button>
                     </Link>
                   )}
 
-                  <button 
-                    id="hero-cta-explore-activities"
-                    onClick={() => {
-                      const el = document.getElementById('recruitment-event-section');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="min-h-[52px] px-8 sm:px-9 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
-                  >
-                    <Activity className="w-4 h-4 text-cyan-300" aria-hidden="true" />
-                    <span>Khám phá hoạt động CLB</span>
-                  </button>
+                  {heroCtaSecondaryLink.startsWith("#") ? (
+                    <button 
+                      id="hero-cta-explore-activities"
+                      onClick={() => {
+                        const el = document.getElementById(heroCtaSecondaryLink.replace(/^#/, ""));
+                        if (el) el.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="min-h-[52px] px-8 sm:px-9 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                    >
+                      <Activity className="w-4 h-4 text-cyan-300" aria-hidden="true" />
+                      <span>{heroCtaSecondaryText}</span>
+                    </button>
+                  ) : heroCtaSecondaryLink.startsWith("http://") || heroCtaSecondaryLink.startsWith("https://") ? (
+                    <a
+                      id="hero-cta-secondary-external"
+                      href={heroCtaSecondaryLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[52px] px-8 sm:px-9 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                    >
+                      <Activity className="w-4 h-4 text-cyan-300" aria-hidden="true" />
+                      <span>{heroCtaSecondaryText}</span>
+                    </a>
+                  ) : (
+                    <Link href={heroCtaSecondaryLink}>
+                      <button 
+                        id="hero-cta-secondary-internal"
+                        className="min-h-[52px] px-8 sm:px-9 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                      >
+                        <Activity className="w-4 h-4 text-cyan-300" aria-hidden="true" />
+                        <span>{heroCtaSecondaryText}</span>
+                      </button>
+                    </Link>
+                  )}
                 </motion.div>
 
                 {/* DẢI STATS COUNTER UY TÍN (số thật từ /api/stats) */}
