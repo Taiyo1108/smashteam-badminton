@@ -66,7 +66,8 @@ export default function SponsorsMarquee({
   // Lặp lại mảng các nhà tài trợ đủ số lần để tạo dải cuộn vô tận không bị hụt trên màn hình lớn
   const marqueeItems = useMemo(() => {
     if (displayList.length === 0) return [];
-    const repeatCount = Math.max(3, Math.ceil(12 / displayList.length));
+    // Khi san sát nhau, cần nhiều items hơn để lấp đầy màn hình 100% trước khi lặp (-50%)
+    const repeatCount = Math.max(4, Math.ceil(24 / displayList.length));
     const list: SponsorItem[] = [];
     for (let i = 0; i < repeatCount; i++) {
       list.push(...displayList);
@@ -89,30 +90,32 @@ export default function SponsorsMarquee({
   }, [speed]);
 
   return (
-    <div className="relative z-20 w-full bg-black/60 backdrop-blur-md border-t border-purple-500/25 py-2.5 sm:py-3 overflow-hidden shadow-[0_-8px_24px_rgba(0,0,0,0.5)]">
-      <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center gap-2 sm:gap-5">
-        {/* Nhãn giới thiệu đối tác */}
+    <div className="relative z-20 w-full bg-black/50 backdrop-blur-md border-t border-purple-500/30 py-1 sm:py-1.5 overflow-hidden shadow-[0_-8px_24px_rgba(0,0,0,0.5)]">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 flex items-center gap-2 sm:gap-4">
+        {/* Nhãn giới thiệu đối tác gọn gàng, không chiếm chiều cao */}
         {title && (
-          <div className="shrink-0 flex items-center gap-1.5 text-[10px] sm:text-xs font-black uppercase tracking-wider text-purple-200/90 bg-purple-900/40 border border-purple-400/30 px-3 py-1 rounded-full whitespace-nowrap shadow-inner">
-            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-            <span>{title}</span>
+          <div className="shrink-0 flex items-center gap-1.5 text-[9px] sm:text-xs font-black uppercase tracking-wider text-purple-200 bg-purple-950/70 border border-purple-400/40 px-2.5 sm:px-3 py-1 rounded-full whitespace-nowrap shadow-inner">
+            <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
+            <span className="hidden sm:inline">{title}</span>
+            <span className="inline sm:hidden">Đối Tác</span>
           </div>
         )}
 
         {/* Khung cuộn ngang (Marquee Track) */}
         <div className="relative flex-1 overflow-hidden w-full marquee-group">
-          {/* Lớp phủ mờ dần ở hai mép trái/phải để tạo hiệu ứng xuất hiện mềm mại */}
-          <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 sm:w-16 bg-gradient-to-r from-black/80 via-black/40 to-transparent z-10" />
-          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 sm:w-16 bg-gradient-to-l from-black/80 via-black/40 to-transparent z-10" />
+          {/* Lớp phủ mờ ở hai mép trái/phải mỏng nhẹ */}
+          <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-4 sm:w-10 bg-gradient-to-r from-black/80 to-transparent z-10" />
+          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-4 sm:w-10 bg-gradient-to-l from-black/80 to-transparent z-10" />
 
-          <div className={`flex items-center gap-8 sm:gap-14 w-max ${speedClass}`}>
+          {/* Dải logo to gần full viền, san sát nhau */}
+          <div className={`flex items-center gap-2.5 sm:gap-4 md:gap-5 w-max ${speedClass}`}>
             {marqueeItems.map((item, index) => {
               const content = (
-                <div className="flex items-center justify-center h-8 sm:h-9 md:h-10 px-2 py-0.5 group/logo transition-transform duration-300 hover:scale-110">
+                <div className="flex items-center justify-center h-12 sm:h-14 md:h-16 lg:h-18 px-1 sm:px-1.5 group/logo transition-transform duration-200 hover:scale-105">
                   <img
                     src={item.logo_url}
                     alt={item.name}
-                    className="max-h-full max-w-[110px] sm:max-w-[140px] md:max-w-[160px] object-contain opacity-80 group-hover/logo:opacity-100 filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] brightness-95 group-hover/logo:brightness-110 transition-all duration-300"
+                    className="h-full w-auto max-w-[130px] sm:max-w-[160px] md:max-w-[200px] object-contain opacity-95 group-hover/logo:opacity-100 filter drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)] brightness-100 group-hover/logo:brightness-110 transition-all duration-200"
                     loading="lazy"
                   />
                 </div>
@@ -126,12 +129,12 @@ export default function SponsorsMarquee({
                       target="_blank"
                       rel="noopener noreferrer"
                       title={`${item.name} (Bấm để xem website/fanpage đối tác)`}
-                      className="cursor-pointer"
+                      className="cursor-pointer flex items-center"
                     >
                       {content}
                     </a>
                   ) : (
-                    <div title={item.name}>{content}</div>
+                    <div title={item.name} className="flex items-center">{content}</div>
                   )}
                 </div>
               );
