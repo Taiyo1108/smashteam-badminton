@@ -649,7 +649,7 @@ export default function Home() {
             className="flex-1 flex flex-col"
           >
             {/* HERO SECTION: High-Energy Athletic Purple-Black Theme */}
-            <section aria-labelledby="hero-title" className="relative min-h-[660px] md:min-h-[720px] lg:min-h-[750px] flex flex-col justify-between overflow-hidden bg-secondary">
+            <section aria-labelledby="hero-title" className="relative min-h-[600px] md:min-h-[660px] lg:min-h-[700px] flex items-center justify-center overflow-hidden bg-secondary">
               {/* Background Cover + Radial Gradient Mesh */}
               <div className="absolute inset-0 z-0">
                 {coverUrl ? (
@@ -680,7 +680,7 @@ export default function Home() {
                 <div className="absolute inset-0 bg-gradient-to-t from-secondary/85 via-secondary/25 to-black/20" />
               </div>
 
-              <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto pt-16 pb-8 sm:pt-20 sm:pb-10 md:pt-24 md:pb-12 space-y-7 flex-1 flex flex-col justify-center items-center w-full">
+              <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto py-16 sm:py-20 md:py-24 space-y-7 flex flex-col justify-center items-center w-full">
                 {/* Primary H1 Heading - Customizable Font & Style */}
                 <motion.h1 
                   id="hero-title"
@@ -861,14 +861,15 @@ export default function Home() {
                 </motion.div>
               </div>
 
-              {/* DẢI HÌNH ẢNH NHÀ TÀI TRỢ CHẠY NGANG Ở ĐÁY KHU VỰC HÌNH NỀN HERO TRANG CHỦ */}
-              <SponsorsMarquee
-                sponsors={sponsorsList}
-                speed={sponsorsSpeed}
-                title={sponsorsTitle}
-                enabled={sponsorsEnabled}
-              />
             </section>
+
+            {/* DẢI HÌNH ẢNH NHÀ TÀI TRỢ CHẠY NGANG (HÀNG RIÊNG BIỆT DƯỚI ẢNH BÌA HERO) */}
+            <SponsorsMarquee
+              sponsors={sponsorsList}
+              speed={sponsorsSpeed}
+              title={sponsorsTitle}
+              enabled={sponsorsEnabled}
+            />
 
             {/* FEATURED EVENT COUNTDOWN BOARD (For Upcoming Sessions / Matches / Recruitment) */}
             {siteSettings.featured_event_enabled !== "false" && (

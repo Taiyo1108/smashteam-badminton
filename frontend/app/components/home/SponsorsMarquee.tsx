@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { Sparkles, ArrowRight } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export interface SponsorItem {
   id: string;
@@ -90,29 +90,28 @@ export default function SponsorsMarquee({
   }, [speed]);
 
   return (
-    <div className="relative z-20 w-full bg-black/60 backdrop-blur-md border-t border-purple-500/30 py-1 sm:py-1.5 overflow-hidden shadow-[0_-8px_24px_rgba(0,0,0,0.5)]">
+    <div className="relative z-20 w-full bg-gradient-to-r from-[#0c0a1a] via-[#140b2b] to-[#0c0a1a] border-y border-purple-500/20 py-2 sm:py-2.5 overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
       {/* Container full màn hình: căn sát lề trái & đối xứng lề phải trên Desktop */}
       <div className="w-full px-2.5 sm:px-5 md:px-6 lg:px-8 flex items-center gap-2.5 sm:gap-4 md:gap-6">
-        {/* Nhãn liên hệ tài trợ - lùi sát góc trái khung hình */}
+        {/* Nhãn liên hệ tài trợ - lùi sát góc trái khung hình, phong cách pill tím của phiên bản trước */}
         {title && (
           <a
             href="https://www.facebook.com/profile.php?id=61566768825091"
             target="_blank"
             rel="noopener noreferrer"
             title="Bấm để liên hệ hợp tác / tài trợ với SmashTeam"
-            className="shrink-0 flex items-center gap-1.5 text-[9px] sm:text-xs md:text-sm font-black uppercase tracking-wider text-amber-300 hover:text-white bg-gradient-to-r from-purple-950/90 via-purple-900/80 to-purple-950/90 hover:from-purple-900 hover:to-indigo-900 border border-amber-400/50 hover:border-amber-300 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl whitespace-nowrap shadow-[0_0_15px_rgba(251,191,36,0.2)] hover:shadow-[0_0_20px_rgba(251,191,36,0.4)] transition-all cursor-pointer group"
+            className="shrink-0 flex items-center gap-1.5 text-[9px] sm:text-xs font-black uppercase tracking-wider text-purple-200 hover:text-white bg-purple-950/70 hover:bg-purple-900/90 border border-purple-400/40 hover:border-purple-300 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full whitespace-nowrap shadow-inner transition-colors cursor-pointer"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse shrink-0 group-hover:rotate-12 transition-transform" />
+            <Sparkles className="w-3 h-3 text-amber-300 animate-pulse shrink-0" />
             <span>{title}</span>
-            <ArrowRight className="w-3.5 h-3.5 text-amber-300/70 group-hover:translate-x-0.5 transition-transform shrink-0 hidden sm:inline-block" />
           </a>
         )}
 
         {/* Khung cuộn ngang (Marquee Track) - Mở rộng tối đa toàn bộ diện tích còn lại */}
         <div className="relative flex-1 overflow-hidden w-full marquee-group">
           {/* Lớp phủ mờ đối xứng hai mép trái & phải mỏng nhẹ */}
-          <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-4 sm:w-8 bg-gradient-to-r from-black/80 to-transparent z-10" />
-          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-4 sm:w-8 bg-gradient-to-l from-black/80 to-transparent z-10" />
+          <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-4 sm:w-8 bg-gradient-to-r from-[#0c0a1a] to-transparent z-10" />
+          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-4 sm:w-8 bg-gradient-to-l from-[#0c0a1a] to-transparent z-10" />
 
           {/* Dải logo to gần full viền, san sát nhau */}
           <div className={`flex items-center gap-2 sm:gap-3 md:gap-4 w-max ${speedClass}`}>
