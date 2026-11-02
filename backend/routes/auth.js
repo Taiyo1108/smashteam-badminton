@@ -201,7 +201,7 @@ router.post('/register-guest', onboardingRateLimiter, async (req, res) => {
 });
 
 // POST /api/auth/google - Đăng nhập / Đăng ký chuẩn mật với Google OAuth 2.0 (Xác thực chữ ký số Google ID Token)
-router.post('/google', onboardingRateLimiter, async (req, res) => {
+router.post('/google', async (req, res) => {
   try {
     const { credential } = req.body;
 
@@ -363,20 +363,36 @@ router.post('/onboarding', authenticateToken, async (req, res) => {
 
     // 2. Kiểm tra xem phone_zalo đã có người khác sử dụng chưa
     const duplicatePhone = await db.query(
-      'SELECT id, full_name, email, role, avatar_url, gender FROM users WHERE phone_zalo = $1 AND id != $2',
+      'SELECT id, full_name, email, role, avatar_url, gender, password_hash FROM users WHERE phone_zalo = $1 AND id != $2',
       [finalPhone, userId]
     );
 
     if (duplicatePhone.rows.length > 0) {
       const existingAccount = duplicatePhone.rows[0];
       const currentGoogleEmail = currentUser.email ? currentUser.email.toLowerCase().trim() : (finalEmail || null);
-      const isExistingWithoutEmail = !existingAccount.email || existingAccount.email.trim() === '';
+      const hasPassword = Boolean(existingAccount.password_hash);
       const isExistingSameEmail = existingAccount.email && currentGoogleEmail && existingAccount.email.toLowerCase().trim() === currentGoogleEmail;
 
       // Kịch bản TỰ ĐỘNG LIÊN KẾT (Auto-link):
-      // Nếu số điện thoại này thuộc về thành viên cũ trong CLB (chưa có email hoặc trùng email)
-      // và tài khoản hiện tại là tài khoản tạm thời từ Google/Onboarding:
-      if ((isExistingWithoutEmail || isExistingSameEmail) && currentGoogleEmail) {
+      // - Email Google trùng khớp 100% với email đã đăng ký của tài khoản cũ (Google OAuth đã xác thực chính chủ email)
+      // - HOẶC tài khoản cũ chưa từng đặt mật khẩu (ứng viên tuyển quân, dữ liệu import từ Excel/Sheets chỉ có số điện thoại)
+      const canAutoLinkWithoutPassword = Boolean(isExistingSameEmail || (!hasPassword && currentGoogleEmail));
+
+      // 2. Hoặc tài khoản cũ có mật khẩu, và người dùng đã nhập link_password chính xác
+      const { link_password } = req.body;
+      let passwordVerified = false;
+      if (!canAutoLinkWithoutPassword && link_password && existingAccount.password_hash) {
+        passwordVerified = await bcrypt.compare(String(link_password), existingAccount.password_hash);
+        if (!passwordVerified) {
+          return res.status(400).json({
+            error: 'Mật khẩu tài khoản liên kết không chính xác. Vui lòng kiểm tra lại.',
+            code: 'INVALID_LINK_PASSWORD',
+            phone: finalPhone
+          });
+        }
+      }
+
+      if (canAutoLinkWithoutPassword || passwordVerified) {
         let client;
         try {
           client = await db.connect();
@@ -415,7 +431,7 @@ router.post('/onboarding', authenticateToken, async (req, res) => {
 
           return res.json({
             success: true,
-            message: 'Đã tự động liên kết thành công tài khoản Google với hồ sơ thành viên của bạn!',
+            message: 'Đã tự động liên kết thành công tài khoản Google với hồ sơ của bạn!',
             token: freshToken,
             user: {
               id: mergedUser.id,
@@ -439,8 +455,8 @@ router.post('/onboarding', authenticateToken, async (req, res) => {
       }
 
       return res.status(400).json({
-        error: 'Số điện thoại Zalo này đã được đăng ký bởi một tài khoản khác. Vui lòng kiểm tra lại hoặc đăng nhập bằng số điện thoại này.',
-        code: 'PHONE_ALREADY_EXISTS',
+        error: 'Số điện thoại Zalo này đã có tài khoản trên hệ thống. Vui lòng nhập mật khẩu tài khoản để liên kết với Google, hoặc đổi sang số khác.',
+        code: 'PHONE_REQUIRES_PASSWORD',
         phone: finalPhone
       });
     }

@@ -172,6 +172,7 @@ export default function Home() {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem("token");
     localStorage.removeItem("admin_token");
     localStorage.removeItem("user_role");
     localStorage.removeItem("user");

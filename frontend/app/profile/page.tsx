@@ -178,6 +178,7 @@ export default function ProfilePage() {
       });
 
       if (res.status === 401 || res.status === 403 || res.status === 404) {
+        localStorage.removeItem("token");
         localStorage.removeItem("admin_token");
         localStorage.removeItem("user_role");
         localStorage.removeItem("user");
@@ -638,6 +639,7 @@ export default function ProfilePage() {
   }, []);
 
   const handleLogout = () => {
+    localStorage.removeItem("token");
     localStorage.removeItem("admin_token");
     localStorage.removeItem("user_role");
     localStorage.removeItem("user");
@@ -918,6 +920,7 @@ export default function ProfilePage() {
             </button>
             <button 
               onClick={() => {
+                localStorage.removeItem("token");
                 localStorage.removeItem("admin_token");
                 localStorage.removeItem("user_role");
                 localStorage.removeItem("user");

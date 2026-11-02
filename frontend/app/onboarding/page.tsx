@@ -39,7 +39,7 @@ export default function OnboardingPage() {
   const [email, setEmail] = useState("");
   const [gender, setGender] = useState<"Nam" | "Nữ">("Nam");
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
-  const [honeypot, setHoneypot] = useState(""); // Chống bot tự động submit
+  const [linkPassword, setLinkPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -147,7 +147,7 @@ export default function OnboardingPage() {
           email: email.trim() ? email.trim().toLowerCase() : null,
           gender,
           avatar_url: selectedAvatar || null,
-          honeypot: honeypot || ""
+          link_password: linkPassword.trim() || undefined
         })
       });
 
@@ -231,6 +231,61 @@ export default function OnboardingPage() {
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
               <span className="font-medium leading-relaxed">{error}</span>
             </div>
+
+            {/* Khi tài khoản cần mật khẩu để xác nhận liên kết */}
+            {(errorCode === "PHONE_REQUIRES_PASSWORD" || errorCode === "INVALID_LINK_PASSWORD") && (
+              <div className="pt-3 border-t border-rose-500/20 space-y-3">
+                <p className="text-amber-300 font-semibold text-xs leading-relaxed">
+                  Nhập mật khẩu tài khoản hiện tại để liên kết với Google và bảo lưu toàn bộ ELO, lịch sử thi đấu:
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="password"
+                    placeholder="Mật khẩu của số điện thoại này"
+                    value={linkPassword}
+                    onChange={(e) => setLinkPassword(e.target.value)}
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-black/60 border border-amber-400/50 text-white placeholder-purple-300/40 text-xs focus:outline-hidden focus:border-amber-400"
+                  />
+                  <button
+                    type="button"
+                    disabled={!linkPassword.trim() || isSubmitting}
+                    onClick={handleSubmit}
+                    className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-slate-950 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                    Xác nhận liên kết
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem("token");
+                      localStorage.removeItem("admin_token");
+                      localStorage.removeItem("user");
+                      localStorage.removeItem("user_role");
+                      router.push(`/login?phone=${encodeURIComponent(cleanVietnamPhone(phoneZalo))}`);
+                    }}
+                    className="text-[11px] text-purple-300/80 hover:text-white underline cursor-pointer"
+                  >
+                    Đăng nhập bằng số điện thoại này
+                  </button>
+                  <span className="text-purple-400/40">•</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setErrorCode(null);
+                      setLinkPassword("");
+                    }}
+                    className="text-[11px] text-purple-300/80 hover:text-white underline cursor-pointer"
+                  >
+                    Đổi sang số điện thoại khác
+                  </button>
+                </div>
+              </div>
+            )}
+
             {errorCode === "PHONE_ALREADY_EXISTS" && (
               <div className="pt-2 border-t border-rose-500/20 flex flex-wrap items-center gap-2">
                 <button
@@ -263,17 +318,7 @@ export default function OnboardingPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Honeypot field chống bot tự động (người dùng thật không thấy trường này) */}
-          <div className="hidden" aria-hidden="true">
-            <input
-              type="text"
-              name="honeypot"
-              tabIndex={-1}
-              autoComplete="off"
-              value={honeypot}
-              onChange={(e) => setHoneypot(e.target.value)}
-            />
-          </div>
+
 
           {isManualPhoneUser ? (
             <>

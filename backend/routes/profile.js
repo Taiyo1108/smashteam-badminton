@@ -454,7 +454,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       upcomingSession,
       attendanceHistory,
       guest_penalty: guestPenalty,
-      inactivity_warning: user.role === 'member' ? await getUnacknowledgedInactivityWarning(userId) : null,
+      inactivity_warning: (player?.role === 'member' || req.user?.role === 'member') ? await getUnacknowledgedInactivityWarning(userId) : null,
       reputation: {
         score: reliability.score,
         label: reliability.label,

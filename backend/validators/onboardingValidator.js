@@ -68,6 +68,10 @@ const onboardingSchema = z.object({
   honeypot: z
     .string()
     .optional()
+    .nullable(),
+  link_password: z
+    .string()
+    .optional()
     .nullable()
 });
 
@@ -75,15 +79,6 @@ const onboardingSchema = z.object({
  * Validate payload Onboarding
  */
 function validateOnboarding(data) {
-  // Chống Bot: nếu trường ẩn honeypot có giá trị -> coi là spam bot
-  if (data && data.honeypot && String(data.honeypot).trim() !== '') {
-    return {
-      success: false,
-      error: 'Phát hiện hành vi tự động không hợp lệ (Spam protection).',
-      code: 'BOT_DETECTED'
-    };
-  }
-
   const result = onboardingSchema.safeParse(data);
   if (!result.success) {
     const firstError = result.error.errors[0]?.message || 'Dữ liệu không hợp lệ.';
