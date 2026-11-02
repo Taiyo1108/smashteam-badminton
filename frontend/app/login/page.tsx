@@ -109,9 +109,11 @@ export default function UnifiedLogin() {
           return;
         }
 
-        let cleanPhone = phone.replace(/[\s\.\-\(\)]/g, "");
+        let cleanPhone = phone.trim().replace(/[^\d+]/g, "");
         if (cleanPhone.startsWith("+84")) {
           cleanPhone = "0" + cleanPhone.slice(3);
+        } else if (cleanPhone.startsWith("0084")) {
+          cleanPhone = "0" + cleanPhone.slice(4);
         } else if (cleanPhone.startsWith("84") && cleanPhone.length === 11) {
           cleanPhone = "0" + cleanPhone.slice(2);
         }

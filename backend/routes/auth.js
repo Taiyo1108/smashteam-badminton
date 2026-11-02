@@ -314,7 +314,7 @@ router.post('/google', onboardingRateLimiter, async (req, res) => {
 });
 
 // POST /api/auth/onboarding - Hoàn tất hồ sơ Onboarding
-router.post('/onboarding', authenticateToken, onboardingRateLimiter, async (req, res) => {
+router.post('/onboarding', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
@@ -328,7 +328,7 @@ router.post('/onboarding', authenticateToken, onboardingRateLimiter, async (req,
 
     // Lấy thông tin user hiện tại trong database
     const userCheck = await db.query(
-      'SELECT id, full_name, phone_zalo, email, avatar_url FROM users WHERE id = $1',
+      'SELECT id, full_name, phone_zalo, email, avatar_url, role, is_profile_completed FROM users WHERE id = $1',
       [userId]
     );
 
@@ -363,14 +363,85 @@ router.post('/onboarding', authenticateToken, onboardingRateLimiter, async (req,
 
     // 2. Kiểm tra xem phone_zalo đã có người khác sử dụng chưa
     const duplicatePhone = await db.query(
-      'SELECT id FROM users WHERE phone_zalo = $1 AND id != $2',
+      'SELECT id, full_name, email, role, avatar_url, gender FROM users WHERE phone_zalo = $1 AND id != $2',
       [finalPhone, userId]
     );
 
     if (duplicatePhone.rows.length > 0) {
+      const existingAccount = duplicatePhone.rows[0];
+      const currentGoogleEmail = currentUser.email ? currentUser.email.toLowerCase().trim() : (finalEmail || null);
+      const isExistingWithoutEmail = !existingAccount.email || existingAccount.email.trim() === '';
+      const isExistingSameEmail = existingAccount.email && currentGoogleEmail && existingAccount.email.toLowerCase().trim() === currentGoogleEmail;
+
+      // Kịch bản TỰ ĐỘNG LIÊN KẾT (Auto-link):
+      // Nếu số điện thoại này thuộc về thành viên cũ trong CLB (chưa có email hoặc trùng email)
+      // và tài khoản hiện tại là tài khoản tạm thời từ Google/Onboarding:
+      if ((isExistingWithoutEmail || isExistingSameEmail) && currentGoogleEmail) {
+        let client;
+        try {
+          client = await db.connect();
+          await client.query('BEGIN');
+
+          // 1. Giải phóng email khỏi tài khoản tạm thời để không bị xung đột ràng buộc UNIQUE users_email_key
+          await client.query('DELETE FROM users WHERE id = $1', [userId]);
+
+          // 2. Cập nhật hồ sơ tài khoản thành viên cũ với email Google và thông tin mới
+          const updateRes = await client.query(
+            `UPDATE users 
+             SET email = $1,
+                 full_name = COALESCE(NULLIF($2, ''), full_name),
+                 nickname = COALESCE($3, nickname),
+                 gender = COALESCE($4, gender),
+                 avatar_url = COALESCE($5, avatar_url),
+                 is_profile_completed = true
+             WHERE id = $6
+             RETURNING id, full_name, nickname, phone_zalo, email, role, avatar_url, gender, is_profile_completed`,
+            [currentGoogleEmail, finalFullName, finalNickname, gender, finalAvatar, existingAccount.id]
+          );
+
+          await client.query('COMMIT');
+
+          const mergedUser = updateRes.rows[0];
+          const freshToken = jwt.sign(
+            {
+              id: mergedUser.id,
+              role: mergedUser.role,
+              name: mergedUser.full_name,
+              is_profile_completed: true
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: mergedUser.role === 'admin' ? '7d' : '30d' }
+          );
+
+          return res.json({
+            success: true,
+            message: 'Đã tự động liên kết thành công tài khoản Google với hồ sơ thành viên của bạn!',
+            token: freshToken,
+            user: {
+              id: mergedUser.id,
+              name: mergedUser.full_name,
+              nickname: mergedUser.nickname,
+              phone_zalo: mergedUser.phone_zalo,
+              email: mergedUser.email,
+              role: mergedUser.role,
+              avatar_url: mergedUser.avatar_url,
+              gender: mergedUser.gender,
+              is_profile_completed: true
+            }
+          });
+        } catch (mergeErr) {
+          if (client) await client.query('ROLLBACK');
+          console.error('Error during auto-link account in onboarding:', mergeErr);
+          throw mergeErr;
+        } finally {
+          if (client) client.release();
+        }
+      }
+
       return res.status(400).json({
-        error: 'Số điện thoại Zalo này đã được đăng ký bởi một tài khoản khác. Vui lòng kiểm tra lại.',
-        code: 'PHONE_ALREADY_EXISTS'
+        error: 'Số điện thoại Zalo này đã được đăng ký bởi một tài khoản khác. Vui lòng kiểm tra lại hoặc đăng nhập bằng số điện thoại này.',
+        code: 'PHONE_ALREADY_EXISTS',
+        phone: finalPhone
       });
     }
 

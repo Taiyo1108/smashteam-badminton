@@ -20,9 +20,9 @@ function createRateLimiter({ windowMs = 15 * 60 * 1000, max = 5, message = 'Bạ
   }, 5 * 60 * 1000).unref();
 
   return function rateLimiterMiddleware(req, res, next) {
-    const ip = req.headers['x-forwarded-for'] 
+    const ip = req.ip || (req.headers['x-forwarded-for'] 
       ? String(req.headers['x-forwarded-for']).split(',')[0].trim() 
-      : (req.socket.remoteAddress || 'unknown');
+      : (req.socket.remoteAddress || 'unknown'));
 
     const now = Date.now();
     const timestamps = requests.get(ip) || [];
@@ -45,8 +45,8 @@ function createRateLimiter({ windowMs = 15 * 60 * 1000, max = 5, message = 'Bạ
 // Preset rate limiters
 const onboardingRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 phút
-  max: 5, // tối đa 5 requests / 15 phút / IP
-  message: 'Bạn đã thực hiện đăng ký/onboarding quá nhiều lần. Vui lòng thử lại sau 15 phút.'
+  max: 60, // 60 requests / 15 phút / IP
+  message: 'Bạn đã thực hiện quá nhiều yêu cầu trong thời gian ngắn. Vui lòng thử lại sau ít phút.'
 });
 
 module.exports = {

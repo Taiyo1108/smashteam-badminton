@@ -18,6 +18,19 @@ const DEFAULT_AVATARS = [
   { id: "avatar_tiger", label: "Bé Hổ Con", url: "/avatars/avatar_tiger.jpg" },
 ];
 
+function cleanVietnamPhone(phone: string): string {
+  if (!phone) return "";
+  let cleaned = phone.trim().replace(/[^\d+]/g, "");
+  if (cleaned.startsWith("+84")) {
+    cleaned = "0" + cleaned.slice(3);
+  } else if (cleaned.startsWith("0084")) {
+    cleaned = "0" + cleaned.slice(4);
+  } else if (cleaned.startsWith("84") && cleaned.length === 11) {
+    cleaned = "0" + cleaned.slice(2);
+  }
+  return cleaned;
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
@@ -28,6 +41,7 @@ export default function OnboardingPage() {
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
   const [honeypot, setHoneypot] = useState(""); // Chống bot tự động submit
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [isManualPhoneUser, setIsManualPhoneUser] = useState(false);
@@ -79,14 +93,10 @@ export default function OnboardingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setErrorCode(null);
 
     const trimmedName = fullName.trim();
-    let cleanedPhone = phoneZalo.replace(/[\s\.\-\(\)]/g, "");
-    if (cleanedPhone.startsWith("+84")) {
-      cleanedPhone = "0" + cleanedPhone.slice(3);
-    } else if (cleanedPhone.startsWith("84") && cleanedPhone.length === 11) {
-      cleanedPhone = "0" + cleanedPhone.slice(2);
-    }
+    let cleanedPhone = cleanVietnamPhone(phoneZalo);
 
     if (isManualPhoneUser) {
       // 1. Kiểm tra Họ và tên
@@ -168,6 +178,7 @@ export default function OnboardingPage() {
         }, 800);
       } else {
         setError(data.error || "Không thể hoàn tất thông tin. Vui lòng thử lại.");
+        setErrorCode(data.code || null);
       }
     } catch (err) {
       setError("Lỗi kết nối máy chủ. Vui lòng kiểm tra lại mạng.");
@@ -215,9 +226,39 @@ export default function OnboardingPage() {
         </div>
 
         {error && (
-          <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/40 text-rose-200 text-xs flex items-center gap-2.5">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>{error}</span>
+          <div className="mb-5 p-4 rounded-2xl bg-rose-500/15 border border-rose-500/40 text-rose-200 text-xs space-y-3">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span className="font-medium leading-relaxed">{error}</span>
+            </div>
+            {errorCode === "PHONE_ALREADY_EXISTS" && (
+              <div className="pt-2 border-t border-rose-500/20 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.removeItem("token");
+                    localStorage.removeItem("admin_token");
+                    localStorage.removeItem("user");
+                    localStorage.removeItem("user_role");
+                    router.push(`/login?phone=${encodeURIComponent(cleanVietnamPhone(phoneZalo))}`);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-amber-400 text-slate-950 font-bold text-xs hover:bg-amber-300 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  Đăng nhập bằng số điện thoại này
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setErrorCode(null);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium text-xs transition-colors cursor-pointer"
+                >
+                  Đổi sang số khác
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -451,11 +492,24 @@ export default function OnboardingPage() {
           </button>
         </form>
 
-        <div className="mt-5 text-center">
+        <div className="mt-5 text-center space-y-2">
           <p className="text-[11px] text-purple-300/50 flex items-center justify-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             Thông tin được mã hóa bảo mật theo chuẩn thành viên SmashTeam.
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.removeItem("token");
+              localStorage.removeItem("admin_token");
+              localStorage.removeItem("user");
+              localStorage.removeItem("user_role");
+              router.push("/login");
+            }}
+            className="text-[11px] text-purple-300/70 hover:text-amber-300 transition-colors underline cursor-pointer"
+          >
+            Đăng xuất hoặc chuyển sang tài khoản khác
+          </button>
         </div>
       </div>
     </div>

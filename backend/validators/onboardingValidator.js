@@ -10,9 +10,11 @@ const VIETNAM_PHONE_REGEX = /^(03|05|07|08|09)[0-9]{8}$/;
  */
 function normalizeVietnamPhone(phone) {
   if (!phone || typeof phone !== 'string') return '';
-  let cleaned = phone.replace(/[\s\.\-\(\)]/g, '');
+  let cleaned = phone.trim().replace(/[^\d+]/g, '');
   if (cleaned.startsWith('+84')) {
     cleaned = '0' + cleaned.slice(3);
+  } else if (cleaned.startsWith('0084')) {
+    cleaned = '0' + cleaned.slice(4);
   } else if (cleaned.startsWith('84') && cleaned.length === 11) {
     cleaned = '0' + cleaned.slice(2);
   }
@@ -50,16 +52,19 @@ const onboardingSchema = z.object({
       message: 'Địa chỉ email không đúng định dạng.'
     }),
   gender: z
-    .enum(['Nam', 'Nữ'], {
-      errorMap: () => ({ message: 'Vui lòng chọn giới tính hợp lệ (Nam hoặc Nữ).' })
-    }),
+    .enum(['Nam', 'Nữ'])
+    .optional()
+    .nullable()
+    .default('Nam')
+    .transform((val) => (val === 'Nữ' ? 'Nữ' : 'Nam')),
   avatar_url: z
     .string()
+    .optional()
+    .nullable()
+    .transform((val) => (val && typeof val === 'string' && val.trim() ? val.trim() : null))
     .refine((val) => !val || val.startsWith('/') || val.startsWith('http://') || val.startsWith('https://'), {
       message: 'Đường dẫn ảnh đại diện không hợp lệ.'
-    })
-    .nullable()
-    .optional(),
+    }),
   honeypot: z
     .string()
     .optional()
