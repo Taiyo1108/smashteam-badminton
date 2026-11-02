@@ -8,10 +8,11 @@ import {
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import AnnouncementsTab from "./AnnouncementsTab";
+import SponsorsTab from "./SponsorsTab";
 
 export default function ContentManagementPage() {
   // Sub-tabs State
-  const [activeSubTab, setActiveSubTab] = useState<"announcements" | "media" | "hero_settings">("announcements");
+  const [activeSubTab, setActiveSubTab] = useState<"announcements" | "media" | "hero_settings" | "sponsors">("announcements");
 
   // States for Site settings (Cover Image)
   const [settings, setSettings] = useState<any>({});
@@ -510,10 +511,26 @@ export default function ContentManagementPage() {
           <Sparkles className="w-4 h-4" />
           <span>🎨 Tiêu Đề Hero & Giao Diện Trang Chủ</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("sponsors")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+            activeSubTab === "sponsors"
+              ? "bg-primary text-white shadow-md shadow-primary/20"
+              : "text-slate-600 hover:bg-slate-100 hover:text-secondary"
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span>🤝 Nhà Tài Trợ & Đối Tác</span>
+        </button>
       </div>
 
       {/* SUB-TAB 1: THÔNG BÁO WEBSITE */}
       {activeSubTab === "announcements" && <AnnouncementsTab />}
+
+      {/* SUB-TAB 4: NHÀ TÀI TRỢ & ĐỐI TÁC */}
+      {activeSubTab === "sponsors" && <SponsorsTab />}
 
       {/* SUB-TAB 3: CẤU HÌNH TIÊU ĐỀ HERO & ẢNH BÌA */}
       {activeSubTab === "hero_settings" && (

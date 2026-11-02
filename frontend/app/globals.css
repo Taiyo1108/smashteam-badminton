@@ -277,3 +277,37 @@ body {
 .font-hero-barlow {
   font-family: "Barlow Condensed", var(--font-inter), sans-serif;
 }
+
+
+/* Sponsors Horizontal Marquee Animation */
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-slow {
+  animation: marquee-scroll 55s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-normal {
+  animation: marquee-scroll 32s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-fast {
+  animation: marquee-scroll 16s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-paused {
+  animation-play-state: paused !important;
+}
+
+.marquee-group:hover {
+  animation-play-state: paused;
+}

@@ -81,4 +81,20 @@ router.post('/upload-cover', authenticateToken, isAdmin, upload.single('image'),
   }
 });
 
+
+// POST /api/settings/upload-sponsor - Tải ảnh logo nhà tài trợ lên Cloudinary (yêu cầu Admin)
+router.post('/upload-sponsor', authenticateToken, isAdmin, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Không tìm thấy tệp hình ảnh để tải lên' });
+    }
+
+    const logoUrl = req.file.path;
+    res.json({ url: logoUrl });
+  } catch (error) {
+    console.error('Error uploading sponsor logo:', error);
+    res.status(500).json({ error: 'Lỗi tải ảnh logo nhà tài trợ' });
+  }
+});
+
 module.exports = router;

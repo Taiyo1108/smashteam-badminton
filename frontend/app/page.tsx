@@ -21,6 +21,7 @@ import ClubBenefitsBento from "@/app/components/recruitment/ClubBenefitsBento";
 import ClubHighlightsMasonry from "@/app/components/recruitment/ClubHighlightsMasonry";
 import EventRecruitmentCard from "@/app/components/recruitment/EventRecruitmentCard";
 import RegistrationModal from "@/app/components/recruitment/RegistrationModal";
+import SponsorsMarquee, { SponsorItem, DEFAULT_SPONSORS } from "@/app/components/home/SponsorsMarquee";
 import { formatVietnamDate } from "@/app/utils/date";
 import { format } from "date-fns";
 import NotificationBell from "@/app/components/notifications/NotificationBell";
@@ -114,6 +115,12 @@ export default function Home() {
   const heroCtaPrimaryLink = (siteSettings.homepage_hero_cta_primary_link || "").trim() || "/login?mode=register";
   const heroCtaSecondaryText = (siteSettings.homepage_hero_cta_secondary_text || "").trim() || "Khám phá hoạt động CLB";
   const heroCtaSecondaryLink = (siteSettings.homepage_hero_cta_secondary_link || "").trim() || "#recruitment-event-section";
+  // Cấu hình Dải Nhà tài trợ CLB chạy ngang ở đáy hình nền Hero
+  const sponsorsEnabled = siteSettings.sponsors_enabled !== "false";
+  const sponsorsSpeed = (siteSettings.sponsors_speed || "normal") as "fast" | "normal" | "slow" | "paused";
+  const sponsorsTitle = siteSettings.sponsors_title !== undefined ? siteSettings.sponsors_title : "Nhà Tài Trợ & Đối Tác Đồng Hành";
+  const sponsorsList = parseJsonSetting<SponsorItem[]>(siteSettings.sponsors_list, DEFAULT_SPONSORS);
+
   const isHeroReady = isMounted && (settingsLoaded || Object.keys(siteSettings).length > 0);
 
   const getHeroFontClass = (fontKey?: string) => {
@@ -642,7 +649,7 @@ export default function Home() {
             className="flex-1 flex flex-col"
           >
             {/* HERO SECTION: High-Energy Athletic Purple-Black Theme */}
-            <section aria-labelledby="hero-title" className="relative min-h-[620px] md:min-h-[700px] flex items-center justify-center overflow-hidden bg-secondary">
+            <section aria-labelledby="hero-title" className="relative min-h-[660px] md:min-h-[720px] lg:min-h-[750px] flex flex-col justify-between overflow-hidden bg-secondary">
               {/* Background Cover + Radial Gradient Mesh */}
               <div className="absolute inset-0 z-0">
                 {coverUrl ? (
@@ -673,7 +680,7 @@ export default function Home() {
                 <div className="absolute inset-0 bg-gradient-to-t from-secondary/85 via-secondary/25 to-black/20" />
               </div>
 
-              <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto py-16 sm:py-20 space-y-7">
+              <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto pt-16 pb-8 sm:pt-20 sm:pb-10 md:pt-24 md:pb-12 space-y-7 flex-1 flex flex-col justify-center items-center w-full">
                 {/* Primary H1 Heading - Customizable Font & Style */}
                 <motion.h1 
                   id="hero-title"
@@ -853,6 +860,14 @@ export default function Home() {
                   />
                 </motion.div>
               </div>
+
+              {/* DẢI HÌNH ẢNH NHÀ TÀI TRỢ CHẠY NGANG Ở ĐÁY KHU VỰC HÌNH NỀN HERO TRANG CHỦ */}
+              <SponsorsMarquee
+                sponsors={sponsorsList}
+                speed={sponsorsSpeed}
+                title={sponsorsTitle}
+                enabled={sponsorsEnabled}
+              />
             </section>
 
             {/* FEATURED EVENT COUNTDOWN BOARD (For Upcoming Sessions / Matches / Recruitment) */}
