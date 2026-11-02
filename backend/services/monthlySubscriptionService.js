@@ -10,6 +10,7 @@ const {
 } = require('../utils/slotHelper');
 const { getWeekdayFromDate, formatWeekdayVi } = require('../utils/weekdayHelper');
 const { getSessionCapacity } = require('./sessionCapacityService');
+const { getClubSlotsForMonth } = require('./clubSlotService');
 
 /**
  * Phân tích buffer file Excel (hoặc CSV) trả về danh sách đối tượng dòng chuẩn
@@ -56,10 +57,10 @@ function parseExcelBuffer(buffer) {
  * - Giữ lại các ca ở các thứ khác (ví dụ Thứ 4, Thứ 7)
  * - Nếu lần nộp sau có ca cùng thứ (ví dụ THU_17_19 thay vì THU_18_20), cập nhật sang ca mới
  */
-function smartMergeSlots(earlierSlots, laterSlots) {
-  const laterWeekdays = new Set(laterSlots.map(s => CLUB_SLOTS[s]?.weekdayToken).filter(Boolean));
+function smartMergeSlots(earlierSlots, laterSlots, activeSlotsMap = CLUB_SLOTS) {
+  const laterWeekdays = new Set(laterSlots.map(s => (activeSlotsMap[s]?.weekdayToken || CLUB_SLOTS[s]?.weekdayToken)).filter(Boolean));
   const preservedEarlier = earlierSlots.filter(s => {
-    const wd = CLUB_SLOTS[s]?.weekdayToken;
+    const wd = activeSlotsMap[s]?.weekdayToken || CLUB_SLOTS[s]?.weekdayToken;
     return !laterWeekdays.has(wd);
   });
   return Array.from(new Set([...preservedEarlier, ...laterSlots]));
@@ -74,6 +75,12 @@ async function previewSubscriptions(rows, monthYear, client = db) {
   if (!monthYear || !/^\d{4}-\d{2}$/.test(monthYear)) {
     throw new Error('monthYear không hợp lệ. Định dạng yêu cầu: YYYY-MM (ví dụ 2026-10).');
   }
+
+  // Cấu hình các ca đánh của tháng (động hoặc mặc định)
+  const slotConfig = await getClubSlotsForMonth(monthYear, client);
+  const activeSlotsMap = slotConfig.slotsMap;
+  const activeSlotsByWeekday = slotConfig.slotsByWeekday;
+  const activeSlotsArray = slotConfig.slotsArray;
 
   // 1. Lấy danh sách thành viên hợp lệ trong hệ thống (chỉ lấy member/admin, loại bỏ candidate để tránh đăng ký nhầm ứng viên thành hội viên cố định)
   const usersRes = await client.query(`
@@ -132,7 +139,7 @@ async function previewSubscriptions(rows, monthYear, client = db) {
   const processedRows = [];
   
   // Khởi tạo bộ đếm phân bổ theo từng SLOT CODE cụ thể
-  const slotDistribution = Object.keys(CLUB_SLOTS).reduce((acc, code) => {
+  const slotDistribution = Object.keys(activeSlotsMap).reduce((acc, code) => {
     acc[code] = 0;
     return acc;
   }, {});
@@ -147,7 +154,7 @@ async function previewSubscriptions(rows, monthYear, client = db) {
     const normalizedPhone = normalizeVietnamPhone(rawPhone);
 
     // Sử dụng centralized normalizeLegacyScheduleInput
-    const slotParse = normalizeLegacyScheduleInput(row.daysRaw);
+    const slotParse = normalizeLegacyScheduleInput(row.daysRaw, activeSlotsMap, activeSlotsByWeekday);
     let registeredSlots = [...slotParse.slots];
 
     let status = 'VALID'; // 'VALID' (Green), 'WARNING' (Yellow), 'ERROR' (Red)
@@ -207,10 +214,10 @@ async function previewSubscriptions(rows, monthYear, client = db) {
         duplicateCount++;
         mergedFromRows = group.slice(0, -1).map(g => g.rowIndex);
         
-        let cumSlots = normalizeLegacyScheduleInput(group[0].daysRaw).slots;
+        let cumSlots = normalizeLegacyScheduleInput(group[0].daysRaw, activeSlotsMap, activeSlotsByWeekday).slots;
         for (let i = 1; i < group.length; i++) {
-          const nextSlots = normalizeLegacyScheduleInput(group[i].daysRaw).slots;
-          cumSlots = smartMergeSlots(cumSlots, nextSlots);
+          const nextSlots = normalizeLegacyScheduleInput(group[i].daysRaw, activeSlotsMap, activeSlotsByWeekday).slots;
+          cumSlots = smartMergeSlots(cumSlots, nextSlots, activeSlotsMap);
         }
         
         // Cập nhật registeredSlots thành mảng đã gộp
@@ -265,7 +272,7 @@ async function previewSubscriptions(rows, monthYear, client = db) {
 
     // Trích xuất các weekday tương ứng để tương thích ngược
     const legacyDays = Array.from(new Set(
-      registeredSlots.map(code => CLUB_SLOTS[code]?.weekdayToken).filter(Boolean)
+      registeredSlots.map(code => (activeSlotsMap[code]?.weekdayToken || CLUB_SLOTS[code]?.weekdayToken)).filter(Boolean)
     ));
 
     processedRows.push({
@@ -275,7 +282,7 @@ async function previewSubscriptions(rows, monthYear, client = db) {
       normalizedPhone,
       daysRaw: row.daysRaw,
       registeredSlots: [...registeredSlots],
-      registeredSlotsLabels: registeredSlots.map(getSlotLabel),
+      registeredSlotsLabels: registeredSlots.map(c => getSlotLabel(c, activeSlotsMap)),
       registeredDays: legacyDays,
       registeredDaysVi: legacyDays.map(formatWeekdayVi),
       isAmbiguous: slotParse.isAmbiguous && !isMergedDuplicate,
@@ -302,7 +309,7 @@ async function previewSubscriptions(rows, monthYear, client = db) {
 
   // Tạo map nhãn hiển thị cho slotDistribution
   const slotDistributionLabels = Object.entries(slotDistribution).reduce((acc, [code, count]) => {
-    acc[getSlotLabel(code)] = count;
+    acc[getSlotLabel(code, activeSlotsMap)] = count;
     return acc;
   }, {});
 
@@ -315,7 +322,9 @@ async function previewSubscriptions(rows, monthYear, client = db) {
     duplicateCount,
     slotDistribution,
     slotDistributionLabels,
-    clubSlots: CLUB_SLOTS,
+    clubSlots: activeSlotsMap,
+    clubSlotsArray: activeSlotsArray,
+    isCustomizedSlots: slotConfig.isCustomized,
     rows: processedRows
   };
 }
@@ -334,21 +343,26 @@ async function commitSubscriptions({ monthYear, subscriptions, syncSessions = tr
   try {
     await client.query('BEGIN');
 
+    // Lấy cấu hình các ca đánh của tháng
+    const slotConfig = await getClubSlotsForMonth(monthYear, client);
+    const activeSlotsMap = slotConfig.slotsMap;
+
     // Nhóm theo userId để gộp an toàn nếu có duplicate trong payload
     const subsByUserId = new Map();
 
     for (const sub of subscriptions) {
       if (!sub.userId) continue;
 
-      const slots = Array.isArray(sub.registeredSlots) ? sub.registeredSlots.filter(validateSlotCode) : [];
+      const slots = Array.isArray(sub.registeredSlots) ? sub.registeredSlots.filter(c => validateSlotCode(c, activeSlotsMap)) : [];
       
       // Nếu không có slots nhưng có registeredDays (legacy payload):
       let finalSlots = [...slots];
       if (finalSlots.length === 0 && Array.isArray(sub.registeredDays)) {
         for (const d of sub.registeredDays) {
-          if (d === 'WEDNESDAY') finalSlots.push('WED_18_20');
-          else if (d === 'THURSDAY') finalSlots.push('THU_18_20');
-          else if (d === 'SATURDAY') finalSlots.push('SAT_18_20');
+          const matchedCodes = Object.values(activeSlotsMap).filter(s => s.weekdayToken === d).map(s => s.code);
+          if (matchedCodes.length > 0) {
+            finalSlots.push(...matchedCodes);
+          }
         }
       }
 
@@ -378,7 +392,7 @@ async function commitSubscriptions({ monthYear, subscriptions, syncSessions = tr
     for (const [userId, sub] of subsByUserId.entries()) {
       // Suy ra registered_days từ slots để bảo toàn tương thích ngược
       const legacyDays = Array.from(new Set(
-        sub.finalSlots.map(code => CLUB_SLOTS[code]?.weekdayToken).filter(Boolean)
+        sub.finalSlots.map(code => (activeSlotsMap[code]?.weekdayToken || CLUB_SLOTS[code]?.weekdayToken)).filter(Boolean)
       ));
 
       const res = await client.query(`
@@ -692,6 +706,10 @@ async function autoEnrollSubscribersForSession(sessionId, client = db) {
  * Thống kê rõ ràng theo từng SLOT CODE
  */
 async function getMonthlySubscriptionStats(monthYear, client = db) {
+  const slotConfig = await getClubSlotsForMonth(monthYear, client);
+  const activeSlotsMap = slotConfig.slotsMap;
+  const activeSlotsArray = slotConfig.slotsArray;
+
   const subsRes = await client.query(`
     SELECT ms.*, u.full_name, u.nickname, u.phone_zalo, u.role, u.badminton_level, u.status, u.avatar_url
     FROM monthly_subscriptions ms
@@ -701,7 +719,7 @@ async function getMonthlySubscriptionStats(monthYear, client = db) {
   `, [monthYear]);
 
   // Bộ đếm theo từng mã slot
-  const slotCounts = Object.keys(CLUB_SLOTS).reduce((acc, code) => {
+  const slotCounts = Object.keys(activeSlotsMap).reduce((acc, code) => {
     acc[code] = 0;
     return acc;
   }, {});
@@ -725,7 +743,7 @@ async function getMonthlySubscriptionStats(monthYear, client = db) {
       badmintonLevel: row.badminton_level,
       phone: row.phone_zalo,
       registeredSlots: slots,
-      registeredSlotsLabels: slots.map(getSlotLabel),
+      registeredSlotsLabels: slots.map(c => getSlotLabel(c, activeSlotsMap)),
       registeredDays: row.registered_days || [],
       registeredDaysVi: (row.registered_days || []).map(formatWeekdayVi),
       paymentStatus: row.payment_status,
@@ -736,14 +754,16 @@ async function getMonthlySubscriptionStats(monthYear, client = db) {
   });
 
   const slotCountsLabels = Object.entries(slotCounts).reduce((acc, [code, count]) => {
-    acc[getSlotLabel(code)] = count;
+    acc[getSlotLabel(code, activeSlotsMap)] = count;
     return acc;
   }, {});
 
   return {
     monthYear,
     totalSubscribers: subscribers.length,
-    clubSlots: CLUB_SLOTS,
+    clubSlots: activeSlotsMap,
+    clubSlotsArray: activeSlotsArray,
+    isCustomizedSlots: slotConfig.isCustomized,
     slotCounts,
     slotCountsLabels,
     subscribers
@@ -864,18 +884,27 @@ async function updateSingleSubscription({ subscriptionId, registeredSlots, payme
     throw new Error('Thiếu subscriptionId.');
   }
 
-  const validSlots = Array.isArray(registeredSlots) ? registeredSlots.filter(validateSlotCode) : [];
-  if (validSlots.length === 0) {
-    throw new Error('Phải chọn ít nhất 1 khung giờ hợp lệ.');
-  }
-
-  const legacyDays = Array.from(new Set(
-    validSlots.map(code => CLUB_SLOTS[code]?.weekdayToken).filter(Boolean)
-  ));
-
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+
+    // Tìm tháng của subscription hiện tại
+    const curRes = await client.query('SELECT month_year FROM monthly_subscriptions WHERE id = $1::uuid', [subscriptionId]);
+    if (curRes.rows.length === 0) {
+      throw new Error('Không tìm thấy bản ghi đăng ký cố định.');
+    }
+    const monthYear = curRes.rows[0].month_year;
+    const slotConfig = await getClubSlotsForMonth(monthYear, client);
+    const activeSlotsMap = slotConfig.slotsMap;
+
+    const validSlots = Array.isArray(registeredSlots) ? registeredSlots.filter(c => validateSlotCode(c, activeSlotsMap)) : [];
+    if (validSlots.length === 0) {
+      throw new Error('Phải chọn ít nhất 1 khung giờ hợp lệ.');
+    }
+
+    const legacyDays = Array.from(new Set(
+      validSlots.map(code => (activeSlotsMap[code]?.weekdayToken || CLUB_SLOTS[code]?.weekdayToken)).filter(Boolean)
+    ));
 
     // 1. Cập nhật subscription
     const updateRes = await client.query(`

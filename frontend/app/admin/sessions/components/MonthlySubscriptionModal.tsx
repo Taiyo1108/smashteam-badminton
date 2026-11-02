@@ -16,12 +16,82 @@ interface MonthlySubscriptionModalProps {
   allMembers?: any[];
 }
 
-const ALL_CLUB_SLOTS = [
-  { code: "WED_18_20", label: "Thứ 4 — 18:00–20:00", labelShort: "T4 (18-20h)", color: "emerald" },
-  { code: "THU_17_19", label: "Thứ 5 — 17:00–19:00", labelShort: "T5 Ca 1 (17-19h)", color: "indigo" },
-  { code: "THU_18_20", label: "Thứ 5 — 18:00–20:00", labelShort: "T5 Ca 2 (18-20h)", color: "blue" },
-  { code: "SAT_18_20", label: "Thứ 7 — 18:00–20:00", labelShort: "T7 (18-20h)", color: "purple" }
+export interface ClubSlotItem {
+  id?: string | null;
+  code: string;
+  weekday: number;
+  dayPrefix?: string;
+  weekdayToken?: string;
+  startTime: string;
+  endTime: string;
+  startHour?: number;
+  endHour?: number;
+  label: string;
+  shortLabel: string;
+  labelShort?: string;
+  color: string;
+  displayOrder?: number;
+  isActive?: boolean;
+}
+
+const DEFAULT_CLUB_SLOTS: ClubSlotItem[] = [
+  { code: "WED_18_20", weekday: 3, startTime: "18:00", endTime: "20:00", label: "Thứ 4 — 18:00–20:00", shortLabel: "T4 (18-20h)", color: "emerald" },
+  { code: "THU_17_19", weekday: 4, startTime: "17:00", endTime: "19:00", label: "Thứ 5 — 17:00–19:00", shortLabel: "T5 Ca 1 (17-19h)", color: "indigo" },
+  { code: "THU_18_20", weekday: 4, startTime: "18:00", endTime: "20:00", label: "Thứ 5 — 18:00–20:00", shortLabel: "T5 Ca 2 (18-20h)", color: "blue" },
+  { code: "SAT_18_20", weekday: 6, startTime: "18:00", endTime: "20:00", label: "Thứ 7 — 18:00–20:00", shortLabel: "T7 (18-20h)", color: "purple" }
 ];
+
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: "Thứ 2", prefix: "MON", viShort: "T2" },
+  { value: 2, label: "Thứ 3", prefix: "TUE", viShort: "T3" },
+  { value: 3, label: "Thứ 4", prefix: "WED", viShort: "T4" },
+  { value: 4, label: "Thứ 5", prefix: "THU", viShort: "T5" },
+  { value: 5, label: "Thứ 6", prefix: "FRI", viShort: "T6" },
+  { value: 6, label: "Thứ 7", prefix: "SAT", viShort: "T7" },
+  { value: 0, label: "Chủ Nhật", prefix: "SUN", viShort: "CN" }
+];
+
+const COLOR_OPTIONS = [
+  { value: "emerald", label: "Xanh lá", bg: "bg-emerald-500" },
+  { value: "indigo", label: "Tím chàm", bg: "bg-indigo-500" },
+  { value: "blue", label: "Xanh dương", bg: "bg-blue-500" },
+  { value: "purple", label: "Tím nhạt", bg: "bg-purple-500" },
+  { value: "amber", label: "Cam hổ phách", bg: "bg-amber-500" },
+  { value: "rose", label: "Đỏ hồng", bg: "bg-rose-500" },
+  { value: "teal", label: "Xanh ngọc", bg: "bg-teal-500" },
+  { value: "cyan", label: "Xanh lục lam", bg: "bg-cyan-500" }
+];
+
+const getSlotBadgeClass = (color: string, isSelected: boolean) => {
+  if (!isSelected) {
+    return "bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600";
+  }
+  switch (color) {
+    case "indigo": return "bg-indigo-600 text-white border-indigo-600 shadow-xs";
+    case "blue": return "bg-blue-600 text-white border-blue-600 shadow-xs";
+    case "emerald": return "bg-emerald-600 text-white border-emerald-600 shadow-xs";
+    case "purple": return "bg-purple-600 text-white border-purple-600 shadow-xs";
+    case "amber": return "bg-amber-600 text-white border-amber-600 shadow-xs";
+    case "rose": return "bg-rose-600 text-white border-rose-600 shadow-xs";
+    case "teal": return "bg-teal-600 text-white border-teal-600 shadow-xs";
+    case "cyan": return "bg-cyan-600 text-white border-cyan-600 shadow-xs";
+    default: return "bg-slate-700 text-white border-slate-700 shadow-xs";
+  }
+};
+
+const getSlotCardClass = (color: string) => {
+  switch (color) {
+    case "indigo": return "bg-indigo-50/70 border-indigo-200/70 text-indigo-700 font-bold";
+    case "blue": return "bg-blue-50/70 border-blue-200/70 text-blue-700 font-bold";
+    case "emerald": return "bg-emerald-50/70 border-emerald-200/70 text-emerald-700 font-bold";
+    case "purple": return "bg-purple-50/70 border-purple-200/70 text-purple-700 font-bold";
+    case "amber": return "bg-amber-50/70 border-amber-200/70 text-amber-700 font-bold";
+    case "rose": return "bg-rose-50/70 border-rose-200/70 text-rose-700 font-bold";
+    case "teal": return "bg-teal-50/70 border-teal-200/70 text-teal-700 font-bold";
+    case "cyan": return "bg-cyan-50/70 border-cyan-200/70 text-cyan-700 font-bold";
+    default: return "bg-slate-50 border-slate-200/70 text-slate-700 font-bold";
+  }
+};
 
 const safeFetchJson = async (res: Response) => {
   const contentType = res.headers.get("content-type") || "";
@@ -45,7 +115,7 @@ export default function MonthlySubscriptionModal({
   // Tab: 'dashboard' | 'import'
   const [activeTab, setActiveTab] = useState<"dashboard" | "import">("dashboard");
   
-  // Month selection: YYYY-MM
+    // Month selection: YYYY-MM
   const currentMonthStr = () => {
     const now = new Date();
     const y = now.getFullYear();
@@ -54,6 +124,28 @@ export default function MonthlySubscriptionModal({
   };
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr());
+  
+  // Dynamic club slots for selected month
+  const [clubSlots, setClubSlots] = useState<ClubSlotItem[]>(DEFAULT_CLUB_SLOTS);
+  const [isCustomizedSlots, setIsCustomizedSlots] = useState(false);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+
+  // Slot Configuration Dialog states
+  const [isSlotConfigOpen, setIsSlotConfigOpen] = useState(false);
+  const [editingSlotsDraft, setEditingSlotsDraft] = useState<ClubSlotItem[]>([]);
+  const [isSavingSlots, setIsSavingSlots] = useState(false);
+  const [isResettingSlots, setIsResettingSlots] = useState(false);
+
+  // Form thêm / sửa 1 slot trong dialog
+  const [slotFormMode, setSlotFormMode] = useState<"NONE" | "ADD" | "EDIT">("NONE");
+  const [slotFormIndex, setSlotFormIndex] = useState<number | null>(null);
+  const [slotFormWeekday, setSlotFormWeekday] = useState<number>(3);
+  const [slotFormStartTime, setSlotFormStartTime] = useState<string>("18:00");
+  const [slotFormEndTime, setSlotFormEndTime] = useState<string>("20:00");
+  const [slotFormLabel, setSlotFormLabel] = useState<string>("");
+  const [slotFormShortLabel, setSlotFormShortLabel] = useState<string>("");
+  const [slotFormColor, setSlotFormColor] = useState<string>("emerald");
+  const [slotFormCode, setSlotFormCode] = useState<string>("");
   
   // Danh sách hội viên dùng cho SearchableMemberSelect
   const [membersList, setMembersList] = useState<any[]>(allMembers || []);
@@ -127,10 +219,31 @@ export default function MonthlySubscriptionModal({
   const [isCommitting, setIsCommitting] = useState(false);
   const [importStatusFilter, setImportStatusFilter] = useState<"ALL" | "VALID" | "WARNING" | "ERROR">("ALL");
 
-  // Fetch stats when modal opens or month changes
+    // Fetch club slots configuration for selected month
+  const fetchClubSlots = async (month: string) => {
+    setIsLoadingSlots(true);
+    try {
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/admin/subscriptions/slots?month=${month}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await safeFetchJson(res);
+      if (res.ok && data.success && Array.isArray(data.slotsArray) && data.slotsArray.length > 0) {
+        setClubSlots(data.slotsArray);
+        setIsCustomizedSlots(Boolean(data.isCustomized));
+      }
+    } catch (err) {
+      console.error("Lỗi fetchClubSlots:", err);
+    } finally {
+      setIsLoadingSlots(false);
+    }
+  };
+
+  // Fetch stats and slots when modal opens or month changes
   useEffect(() => {
     if (isOpen) {
       fetchStats(selectedMonth);
+      fetchClubSlots(selectedMonth);
     }
   }, [isOpen, selectedMonth]);
 
@@ -145,6 +258,10 @@ export default function MonthlySubscriptionModal({
       const data = await safeFetchJson(res);
       if (res.ok && data.success) {
         setStatsData(data.stats);
+        if (Array.isArray(data.stats?.clubSlotsArray) && data.stats.clubSlotsArray.length > 0) {
+          setClubSlots(data.stats.clubSlotsArray);
+          setIsCustomizedSlots(Boolean(data.stats.isCustomizedSlots));
+        }
       } else {
         console.error("Lỗi lấy stats:", data.error);
       }
@@ -184,6 +301,189 @@ export default function MonthlySubscriptionModal({
       alert("Lỗi kết nối máy chủ: " + err.message);
     } finally {
       setIsSyncingMonth(false);
+    }
+  };
+
+  // Handlers cho Cấu hình Ca Đánh Tháng
+  const handleOpenSlotConfig = () => {
+    setEditingSlotsDraft(JSON.parse(JSON.stringify(clubSlots)));
+    setSlotFormMode("NONE");
+    setSlotFormIndex(null);
+    setIsSlotConfigOpen(true);
+  };
+
+  const handleStartAddSlot = () => {
+    setSlotFormMode("ADD");
+    setSlotFormIndex(null);
+    setSlotFormWeekday(3);
+    setSlotFormStartTime("18:00");
+    setSlotFormEndTime("20:00");
+    setSlotFormLabel("Thứ 4 — 18:00–20:00");
+    setSlotFormShortLabel("T4 (18-20h)");
+    setSlotFormColor("emerald");
+    setSlotFormCode("WED_18_20");
+  };
+
+  const handleStartEditSlot = (index: number) => {
+    const s = editingSlotsDraft[index];
+    if (!s) return;
+    setSlotFormMode("EDIT");
+    setSlotFormIndex(index);
+    setSlotFormWeekday(s.weekday);
+    setSlotFormStartTime(s.startTime || "18:00");
+    setSlotFormEndTime(s.endTime || "20:00");
+    setSlotFormLabel(s.label);
+    setSlotFormShortLabel(s.shortLabel || s.labelShort || "");
+    setSlotFormColor(s.color || "purple");
+    setSlotFormCode(s.code);
+  };
+
+  const handleUpdateSlotFormTimes = (weekday: number, start: string, end: string) => {
+    setSlotFormWeekday(weekday);
+    setSlotFormStartTime(start);
+    setSlotFormEndTime(end);
+
+    const wd = WEEKDAY_OPTIONS.find(w => w.value === weekday) || WEEKDAY_OPTIONS[0];
+    const sHour = parseInt(start.split(":")[0], 10) || 18;
+    const eHour = parseInt(end.split(":")[0], 10) || 20;
+
+    const suggestedCode = `${wd.prefix}_${sHour}_${eHour}`;
+    const suggestedLabel = `${wd.label} — ${start}–${end}`;
+    const suggestedShort = `${wd.viShort} (${sHour}-${eHour}h)`;
+
+    setSlotFormCode(suggestedCode);
+    setSlotFormLabel(suggestedLabel);
+    setSlotFormShortLabel(suggestedShort);
+  };
+
+  const handleApplySlotForm = () => {
+    if (!slotFormLabel.trim()) {
+      alert("Vui lòng nhập tên ca (nhãn hiển thị).");
+      return;
+    }
+    const derivedPrefix = WEEKDAY_OPTIONS.find(w => w.value === slotFormWeekday)?.prefix || "SLOT";
+    const sHour = slotFormStartTime.split(":")[0] || "18";
+    const eHour = slotFormEndTime.split(":")[0] || "20";
+    const cleanCode = (slotFormCode || `${derivedPrefix}_${sHour}_${eHour}`).trim().toUpperCase();
+
+    const duplicateIdx = editingSlotsDraft.findIndex((s, idx) => s.code === cleanCode && idx !== slotFormIndex);
+    if (duplicateIdx >= 0) {
+      alert(`Mã ca "${cleanCode}" đã tồn tại trong danh sách! Vui lòng chọn giờ hoặc thứ khác.`);
+      return;
+    }
+
+    const newSlot: ClubSlotItem = {
+      code: cleanCode,
+      weekday: slotFormWeekday,
+      startTime: slotFormStartTime,
+      endTime: slotFormEndTime,
+      label: slotFormLabel.trim(),
+      shortLabel: slotFormShortLabel.trim() || slotFormLabel.trim(),
+      color: slotFormColor
+    };
+
+    if (slotFormMode === "EDIT" && slotFormIndex !== null) {
+      setEditingSlotsDraft(prev => {
+        const copy = [...prev];
+        copy[slotFormIndex] = newSlot;
+        return copy;
+      });
+    } else {
+      setEditingSlotsDraft(prev => [...prev, newSlot]);
+    }
+
+    setSlotFormMode("NONE");
+    setSlotFormIndex(null);
+  };
+
+  const handleDeleteDraftSlot = (index: number) => {
+    if (editingSlotsDraft.length <= 1) {
+      alert("Phải giữ lại ít nhất 1 ca sinh hoạt trong tháng.");
+      return;
+    }
+    const toDelete = editingSlotsDraft[index];
+    if (confirm(`Bạn có chắc muốn xóa ca "${toDelete.label}" (${toDelete.code}) khỏi tháng ${selectedMonth}?`)) {
+      setEditingSlotsDraft(prev => prev.filter((_, idx) => idx !== index));
+      if (slotFormIndex === index) {
+        setSlotFormMode("NONE");
+        setSlotFormIndex(null);
+      }
+    }
+  };
+
+  const handleSaveSlotsConfig = async () => {
+    if (editingSlotsDraft.length === 0) {
+      alert("Cần có ít nhất 1 ca sinh hoạt.");
+      return;
+    }
+
+    setIsSavingSlots(true);
+    try {
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/admin/subscriptions/slots`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          monthYear: selectedMonth,
+          slots: editingSlotsDraft
+        })
+      });
+      const data = await safeFetchJson(res);
+      if (res.ok && data.success) {
+        alert(`✓ Đã lưu thành công cấu hình ${data.slotsArray.length} ca sinh hoạt cho tháng ${selectedMonth}!`);
+        setClubSlots(data.slotsArray);
+        setIsCustomizedSlots(true);
+        setIsSlotConfigOpen(false);
+        fetchStats(selectedMonth);
+        if (importFile) {
+          handlePreviewFile(importFile, selectedMonth);
+        }
+      } else {
+        alert(data.error || "Lỗi khi lưu cấu hình ca.");
+      }
+    } catch (err: any) {
+      alert("Lỗi kết nối: " + err.message);
+    } finally {
+      setIsSavingSlots(false);
+    }
+  };
+
+  const handleResetSlotsToDefault = async () => {
+    if (!confirm(`Bạn có chắc muốn khôi phục ca sinh hoạt của tháng ${selectedMonth} về cấu hình chuẩn ban đầu của CLB (4 ca: T4 18-20h, T5 17-19h, T5 18-20h, T7 18-20h)?`)) {
+      return;
+    }
+    setIsResettingSlots(true);
+    try {
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/admin/subscriptions/slots/reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ monthYear: selectedMonth })
+      });
+      const data = await safeFetchJson(res);
+      if (res.ok && data.success) {
+        alert(`✓ Đã khôi phục ca sinh hoạt tháng ${selectedMonth} về chuẩn CLB!`);
+        setClubSlots(data.slotsArray);
+        setIsCustomizedSlots(false);
+        setEditingSlotsDraft(JSON.parse(JSON.stringify(data.slotsArray)));
+        setIsSlotConfigOpen(false);
+        fetchStats(selectedMonth);
+        if (importFile) {
+          handlePreviewFile(importFile, selectedMonth);
+        }
+      } else {
+        alert(data.error || "Lỗi khôi phục ca mặc định.");
+      }
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
+    } finally {
+      setIsResettingSlots(false);
     }
   };
 
@@ -419,6 +719,10 @@ export default function MonthlySubscriptionModal({
       const data = await safeFetchJson(res);
       if (res.ok && data.success) {
         setPreviewData(data.preview);
+        if (Array.isArray(data.preview?.clubSlotsArray) && data.preview.clubSlotsArray.length > 0) {
+          setClubSlots(data.preview.clubSlotsArray);
+          setIsCustomizedSlots(Boolean(data.preview.isCustomizedSlots));
+        }
       } else {
         alert(data.error || "Lỗi khi đọc file Excel.");
       }
@@ -445,7 +749,8 @@ export default function MonthlySubscriptionModal({
       const warningCount = nextRows.filter((r: any) => r.status === "WARNING" || (r.status === "VALID" && !r.selectedForImport)).length;
       const errorCount = nextRows.filter((r: any) => r.status === "ERROR").length;
 
-      const slotDist: Record<string, number> = { WED_18_20: 0, THU_17_19: 0, THU_18_20: 0, SAT_18_20: 0 };
+      const slotDist: Record<string, number> = {};
+      for (const s of clubSlots) { slotDist[s.code] = 0; }
       for (const r of nextRows) {
         if (r.status !== "ERROR" && r.selectedForImport && Array.isArray(r.registeredSlots)) {
           for (const s of r.registeredSlots) {
@@ -488,7 +793,7 @@ export default function MonthlySubscriptionModal({
           ...r,
           registeredSlots: currentSlots,
           registeredSlotsLabels: currentSlots.map((c: string) => {
-            const found = ALL_CLUB_SLOTS.find(s => s.code === c);
+            const found = clubSlots.find(s => s.code === c);
             return found ? found.label : c;
           }),
           isAmbiguous: isStillAmbiguous,
@@ -501,7 +806,8 @@ export default function MonthlySubscriptionModal({
       const warningCount = nextRows.filter((r: any) => r.status === "WARNING" || (r.status === "VALID" && !r.selectedForImport)).length;
       const errorCount = nextRows.filter((r: any) => r.status === "ERROR").length;
 
-      const slotDist: Record<string, number> = { WED_18_20: 0, THU_17_19: 0, THU_18_20: 0, SAT_18_20: 0 };
+      const slotDist: Record<string, number> = {};
+      for (const s of clubSlots) { slotDist[s.code] = 0; }
       for (const r of nextRows) {
         if (r.status !== "ERROR" && r.selectedForImport && Array.isArray(r.registeredSlots)) {
           for (const s of r.registeredSlots) {
@@ -620,11 +926,29 @@ export default function MonthlySubscriptionModal({
             </div>
             <div>
               <h3 className="text-xl font-black text-secondary tracking-tight">Quản lý Đăng ký Cố định Tháng</h3>
-              <p className="text-xs text-slate-500">Định danh chính xác theo khung giờ (Slot Code: WED_18_20, THU_17_19, THU_18_20, SAT_18_20)</p>
+              <p className="text-xs text-slate-500">
+                {isCustomizedSlots ? "⚡ Đang áp dụng ca sinh hoạt tùy chỉnh tháng này" : "Chuẩn ca sinh hoạt CLB"}: {clubSlots.map(s => s.shortLabel || s.labelShort || s.code).join(" • ")}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Nút Cấu hình Ca Đánh Tháng */}
+            <button
+              type="button"
+              onClick={handleOpenSlotConfig}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition-all cursor-pointer"
+              title="Tùy chỉnh thêm, sửa, xóa các ca tập của tháng này"
+            >
+              <Clock className="w-3.5 h-3.5 text-primary" />
+              <span>Ca đánh tháng</span>
+              {isCustomizedSlots ? (
+                <span className="px-1.5 py-0.2 text-[9px] rounded-full bg-amber-100 text-amber-800 font-extrabold">Tùy biến</span>
+              ) : (
+                <span className="px-1.5 py-0.2 text-[9px] rounded-full bg-slate-100 text-slate-600 font-medium">Chuẩn CLB</span>
+              )}
+            </button>
+
             {/* Month Picker */}
             <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
               <span className="text-xs font-bold text-slate-500">Tháng:</span>
@@ -680,37 +1004,24 @@ export default function MonthlySubscriptionModal({
           {activeTab === "dashboard" && (
             <div className="space-y-6">
               {/* Stat Cards - Chi tiết từng khung giờ */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tổng thành viên</p>
                   <p className="text-xl font-black text-secondary mt-1">
                     {isLoadingStats ? "..." : subscribersList.length}
                   </p>
                 </div>
-                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/70">
-                  <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">T4 (18:00–20:00)</p>
-                  <p className="text-xl font-black text-amber-900 mt-1">
-                    {isLoadingStats ? "..." : statsData?.slotCounts?.WED_18_20 || 0}
-                  </p>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/70">
-                  <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">T5 Ca 1 (17-19h)</p>
-                  <p className="text-xl font-black text-indigo-900 mt-1">
-                    {isLoadingStats ? "..." : statsData?.slotCounts?.THU_17_19 || 0}
-                  </p>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200/70">
-                  <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">T5 Ca 2 (18-20h)</p>
-                  <p className="text-xl font-black text-blue-900 mt-1">
-                    {isLoadingStats ? "..." : statsData?.slotCounts?.THU_18_20 || 0}
-                  </p>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200/70">
-                  <p className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">T7 (18:00–20:00)</p>
-                  <p className="text-xl font-black text-purple-900 mt-1">
-                    {isLoadingStats ? "..." : statsData?.slotCounts?.SAT_18_20 || 0}
-                  </p>
-                </div>
+                {clubSlots.map((slot) => {
+                  const cardColor = getSlotCardClass(slot.color);
+                  return (
+                    <div key={slot.code} className={`p-3.5 rounded-2xl border ${cardColor}`}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider">{slot.shortLabel || slot.labelShort || slot.label}</p>
+                      <p className="text-xl font-black mt-1">
+                        {isLoadingStats ? "..." : (statsData?.slotCounts?.[slot.code] || 0)}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Action sync alert */}
@@ -822,20 +1133,24 @@ export default function MonthlySubscriptionModal({
                               <td className="py-3 px-4 font-mono text-slate-600">{sub.phone || "—"}</td>
                               <td className="py-3 px-4">
                                 <div className="flex flex-wrap gap-1">
-                                  {slotsLabels.map((lbl: string, i: number) => {
-                                    const isThu17 = lbl.includes("17:00") || lbl.includes("17-19h");
-                                    const isThu18 = lbl.includes("Thứ 5") && (lbl.includes("18:00") || lbl.includes("18-20h"));
-                                    const colorClass = isThu17 
-                                      ? "bg-indigo-100 text-indigo-800" 
-                                      : isThu18 
-                                        ? "bg-blue-100 text-blue-800" 
-                                        : "bg-amber-100 text-amber-800";
-                                    return (
-                                      <span key={i} className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${colorClass}`}>
+                                  {sub.registeredSlots && sub.registeredSlots.length > 0 ? (
+                                    sub.registeredSlots.map((code: string, i: number) => {
+                                      const slot = clubSlots.find(s => s.code === code);
+                                      const lbl = slot ? (slot.shortLabel || slot.labelShort || slot.label) : code;
+                                      const cardClass = getSlotCardClass(slot?.color || 'amber');
+                                      return (
+                                        <span key={i} className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${cardClass}`}>
+                                          {lbl}
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    slotsLabels.map((lbl: string, i: number) => (
+                                      <span key={i} className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800">
                                         {lbl}
                                       </span>
-                                    );
-                                  })}
+                                    ))
+                                  )}
                                 </div>
                               </td>
                               <td className="py-3 px-4">
@@ -964,7 +1279,7 @@ export default function MonthlySubscriptionModal({
                       {importFile ? importFile.name : "Kéo thả hoặc bấm để tải lên file Excel (.xlsx, .csv)"}
                     </p>
                     <p className="text-xs text-slate-400 mt-1">
-                      Hỗ trợ cả định dạng mới (WED_18_20, THU_17_19...) và định dạng khảo sát cũ
+                      Hỗ trợ định dạng mới (${clubSlots.map(s => s.code).join(", ")}) và định dạng khảo sát cũ
                     </p>
                   </div>
                 </label>
@@ -1053,8 +1368,13 @@ export default function MonthlySubscriptionModal({
                       </button>
                     </div>
 
-                    <div className="text-xs text-slate-500 font-medium">
-                      Phân bổ slot đã chọn: T4 18-20h ({previewData.slotDistribution?.WED_18_20 || 0}) • T5 17-19h ({previewData.slotDistribution?.THU_17_19 || 0}) • T5 18-20h ({previewData.slotDistribution?.THU_18_20 || 0}) • T7 18-20h ({previewData.slotDistribution?.SAT_18_20 || 0})
+                    <div className="text-xs text-slate-500 font-medium flex flex-wrap gap-x-2 gap-y-1">
+                      <span className="font-bold text-slate-700">Phân bổ slot đã chọn:</span>
+                      {clubSlots.map((slot) => (
+                        <span key={slot.code}>
+                          {slot.shortLabel || slot.labelShort || slot.label} ({previewData.slotDistribution?.[slot.code] || 0})
+                        </span>
+                      )).reduce((prev, curr, idx) => [prev, <span key={`sep-${idx}`} className="text-slate-300">•</span>, curr] as any)}
                     </div>
                   </div>
 
@@ -1143,24 +1463,17 @@ export default function MonthlySubscriptionModal({
                                 <td className="py-2.5 px-3">
                                   <div className="space-y-1.5">
                                     <div className="flex flex-wrap gap-1 items-center">
-                                      {ALL_CLUB_SLOTS.map((slot) => {
+                                      {clubSlots.map((slot) => {
                                         const isSelected = r.registeredSlots?.includes(slot.code);
                                         return (
                                           <button
                                             key={slot.code}
                                             type="button"
                                             onClick={() => toggleRowSlot(r.rowIndex, slot.code)}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
-                                              isSelected
-                                                ? (slot.code.includes("THU_17") ? "bg-indigo-600 text-white border-indigo-600" :
-                                                   slot.code.includes("THU_18") ? "bg-blue-600 text-white border-blue-600" :
-                                                   slot.code.includes("WED") ? "bg-emerald-600 text-white border-emerald-600" :
-                                                   "bg-purple-600 text-white border-purple-600")
-                                                : "bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600"
-                                            }`}
+                                            className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${getSlotBadgeClass(slot.color, isSelected)}`}
                                             title={`${isSelected ? "Bỏ chọn ca" : "Thêm ca"} ${slot.label}`}
                                           >
-                                            {isSelected ? "✓ " : "+ "}{slot.labelShort}
+                                            {isSelected ? "✓ " : "+ "}{slot.shortLabel || slot.labelShort || slot.code}
                                           </button>
                                         );
                                       })}
@@ -1254,7 +1567,7 @@ export default function MonthlySubscriptionModal({
                   Chọn các khung giờ cố định tham gia ({editSlots.length} ca đã chọn):
                 </label>
                 <div className="space-y-2">
-                  {ALL_CLUB_SLOTS.map((slot) => {
+                  {clubSlots.map((slot) => {
                     const isChecked = editSlots.includes(slot.code);
                     return (
                       <label
@@ -1275,7 +1588,7 @@ export default function MonthlySubscriptionModal({
                           <span>{slot.label}</span>
                         </div>
                         <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                          {slot.code}
+                          {slot.shortLabel || slot.labelShort || slot.code}
                         </span>
                       </label>
                     );
@@ -1446,7 +1759,7 @@ export default function MonthlySubscriptionModal({
                   Chọn các khung giờ cố định ({manualAddSlots.length} ca đã chọn) <span className="text-rose-500">*</span>
                 </label>
                 <div className="space-y-2">
-                  {ALL_CLUB_SLOTS.map((slot) => {
+                  {clubSlots.map((slot) => {
                     const isChecked = manualAddSlots.includes(slot.code);
                     return (
                       <label
@@ -1467,7 +1780,7 @@ export default function MonthlySubscriptionModal({
                           <span>{slot.label}</span>
                         </div>
                         <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                          {slot.labelShort}
+                          {slot.shortLabel || slot.labelShort || slot.code}
                         </span>
                       </label>
                     );
@@ -1534,6 +1847,309 @@ export default function MonthlySubscriptionModal({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+
+      {/* POPUP MODAL: CẤU HÌNH CA SINH HOẠT THÁNG */}
+      {isSlotConfigOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-2xl w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                  <Clock className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-secondary flex items-center gap-2">
+                    Cấu hình Ca Sinh Hoạt Tháng {selectedMonth}
+                    {isCustomizedSlots ? (
+                      <span className="px-2 py-0.5 text-[10px] rounded-full bg-amber-100 text-amber-800 font-extrabold">
+                        ⚡ Đã tùy chỉnh
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 text-[10px] rounded-full bg-slate-100 text-slate-600 font-bold">
+                        Chuẩn CLB
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Thêm, sửa, xóa các ca tập trong tuần áp dụng riêng cho tháng này trước khi import hoặc thêm hội viên.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSlotConfigOpen(false)}
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-400 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              {/* Alert reminder */}
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-600 text-xs flex items-start gap-2">
+                <Sparkles className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-slate-800">Lưu ý khi đổi khung giờ tháng:</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Hệ thống sẽ dùng cấu hình này để phân tích file Excel Google Form, thống kê thành viên, và đồng bộ tự động vào các buổi tập trong tháng {selectedMonth}.
+                  </p>
+                </div>
+              </div>
+
+              {/* Slot Cards List */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                    Danh sách ca tập áp dụng ({editingSlotsDraft.length} ca):
+                  </span>
+                  {slotFormMode === "NONE" && (
+                    <button
+                      type="button"
+                      onClick={handleStartAddSlot}
+                      className="px-3 py-1 text-xs font-bold rounded-xl bg-primary text-secondary hover:bg-primary-hover transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                    >
+                      + Thêm ca mới
+                    </button>
+                  )}
+                </div>
+
+                {editingSlotsDraft.map((slot, idx) => {
+                  const cardColor = getSlotCardClass(slot.color);
+                  return (
+                    <div
+                      key={slot.code || idx}
+                      className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${cardColor}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-xl bg-white/80 shadow-xs flex items-center justify-center font-black text-xs">
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-sm">{slot.label}</span>
+                            <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-white/90 text-slate-700 shadow-2xs font-bold">
+                              {slot.code}
+                            </span>
+                          </div>
+                          <p className="text-[11px] opacity-80 mt-0.5">
+                            Viết tắt: <strong className="font-semibold">{slot.shortLabel || slot.labelShort}</strong> &bull; {slot.startTime} – {slot.endTime}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditSlot(idx)}
+                          className="p-1.5 rounded-lg bg-white/80 hover:bg-white text-slate-700 shadow-2xs transition-all cursor-pointer"
+                          title="Chỉnh sửa ca này"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDraftSlot(idx)}
+                          className="p-1.5 rounded-lg bg-white/80 hover:bg-rose-50 text-rose-600 shadow-2xs transition-all cursor-pointer"
+                          title="Xóa ca này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Form Thêm/Sửa Ca */}
+              {slotFormMode !== "NONE" && (
+                <div className="p-4 rounded-2xl border-2 border-primary/40 bg-primary/5 space-y-3 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-secondary flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-primary" />
+                      {slotFormMode === "ADD" ? "Thêm ca tập mới cho tháng" : `Chỉnh sửa ca #${(slotFormIndex || 0) + 1}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSlotFormMode("NONE")}
+                      className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      Hủy form
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                        Thứ trong tuần
+                      </label>
+                      <select
+                        value={slotFormWeekday}
+                        onChange={(e) => handleUpdateSlotFormTimes(parseInt(e.target.value, 10), slotFormStartTime, slotFormEndTime)}
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white"
+                      >
+                        {WEEKDAY_OPTIONS.map((w) => (
+                          <option key={w.value} value={w.value}>{w.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                        Giờ bắt đầu
+                      </label>
+                      <input
+                        type="time"
+                        value={slotFormStartTime}
+                        onChange={(e) => handleUpdateSlotFormTimes(slotFormWeekday, e.target.value, slotFormEndTime)}
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                        Giờ kết thúc
+                      </label>
+                      <input
+                        type="time"
+                        value={slotFormEndTime}
+                        onChange={(e) => handleUpdateSlotFormTimes(slotFormWeekday, slotFormStartTime, e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                        Tên ca đầy đủ (Hiển thị)
+                      </label>
+                      <input
+                        type="text"
+                        value={slotFormLabel}
+                        onChange={(e) => setSlotFormLabel(e.target.value)}
+                        placeholder="VD: Thứ 3 — 18:00–20:00"
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                        Tên viết tắt (Badge / Tab)
+                      </label>
+                      <input
+                        type="text"
+                        value={slotFormShortLabel}
+                        onChange={(e) => setSlotFormShortLabel(e.target.value)}
+                        placeholder="VD: T3 (18-20h)"
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                        Mã hệ thống (Code)
+                      </label>
+                      <input
+                        type="text"
+                        value={slotFormCode}
+                        onChange={(e) => setSlotFormCode(e.target.value.toUpperCase())}
+                        placeholder="VD: TUE_18_20"
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-mono font-bold bg-slate-50"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                        Màu đại diện
+                      </label>
+                      <div className="flex items-center gap-1.5 pt-1">
+                        {COLOR_OPTIONS.map((c) => (
+                          <button
+                            key={c.value}
+                            type="button"
+                            onClick={() => setSlotFormColor(c.value)}
+                            className={`w-5 h-5 rounded-full ${c.bg} transition-all cursor-pointer ${
+                              slotFormColor === c.value ? "ring-2 ring-offset-2 ring-slate-800 scale-110" : "opacity-60 hover:opacity-100"
+                            }`}
+                            title={c.label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSlotFormMode("NONE")}
+                      className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200/50 rounded-xl transition-all cursor-pointer"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApplySlotForm}
+                      className="px-4 py-1.5 text-xs font-extrabold text-white bg-slate-900 hover:bg-black rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      {slotFormMode === "ADD" ? "Thêm vào danh sách" : "Cập nhật ca"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex items-center justify-between border-t border-slate-100 pt-3 shrink-0">
+              <button
+                type="button"
+                onClick={handleResetSlotsToDefault}
+                disabled={isResettingSlots}
+                className="px-3.5 py-2 text-xs font-bold rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer flex items-center gap-1.5"
+                title="Khôi phục danh sách 4 ca chuẩn mặc định của CLB"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isResettingSlots ? "animate-spin" : ""}`} />
+                Khôi phục chuẩn CLB
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSlotConfigOpen(false)}
+                  className="px-4 py-2 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSlotsConfig}
+                  disabled={isSavingSlots || editingSlotsDraft.length === 0}
+                  className="px-4 py-2 text-xs font-extrabold rounded-xl bg-primary text-secondary hover:bg-primary-hover transition-all flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingSlots ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Đang lưu cấu hình...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      Lưu cấu hình ca tháng {selectedMonth}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}

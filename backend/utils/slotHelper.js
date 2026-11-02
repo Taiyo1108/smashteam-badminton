@@ -1,27 +1,33 @@
-const { CLUB_SLOTS, SLOTS_BY_WEEKDAY, VI_WEEKDAY_MAP } = require('../config/clubSlots');
+const { CLUB_SLOTS: DEFAULT_CLUB_SLOTS, SLOTS_BY_WEEKDAY: DEFAULT_SLOTS_BY_WEEKDAY, VI_WEEKDAY_MAP } = require('../config/clubSlots');
 
 /**
  * Kiểm tra xem một mã slot có tồn tại trong cấu hình hệ thống không
+ * @param {string} code - Mã slot (ví dụ WED_18_20)
+ * @param {object|null} customSlotsMap - Bản đồ cấu hình slot tùy chỉnh theo tháng (tùy chọn)
  */
-function validateSlotCode(code) {
+function validateSlotCode(code, customSlotsMap = null) {
   if (!code || typeof code !== 'string') return false;
-  return Boolean(CLUB_SLOTS[code.trim().toUpperCase()]);
+  const pool = customSlotsMap || DEFAULT_CLUB_SLOTS;
+  return Boolean(pool[code.trim().toUpperCase()]);
 }
 
 /**
  * Lấy cấu hình chi tiết của một slot
+ * @param {string} code - Mã slot
+ * @param {object|null} customSlotsMap - Bản đồ cấu hình slot tùy chỉnh theo tháng (tùy chọn)
  */
-function getSlotConfig(code) {
+function getSlotConfig(code, customSlotsMap = null) {
   if (!code || typeof code !== 'string') return null;
-  return CLUB_SLOTS[code.trim().toUpperCase()] || null;
+  const pool = customSlotsMap || DEFAULT_CLUB_SLOTS;
+  return pool[code.trim().toUpperCase()] || null;
 }
 
 /**
  * Lấy nhãn hiển thị thân thiện của slot
  * Ví dụ: THU_17_19 -> "Thứ 5 — 17:00–19:00"
  */
-function getSlotLabel(code) {
-  const conf = getSlotConfig(code);
+function getSlotLabel(code, customSlotsMap = null) {
+  const conf = getSlotConfig(code, customSlotsMap);
   return conf ? conf.label : code;
 }
 
@@ -75,22 +81,28 @@ function getSessionSlotCode(session) {
  * - "THU_17_19" -> "THU_17_19"
  * - "THU_17_19 | Thứ 5 — 17:00–19:00" -> "THU_17_19"
  */
-function normalizeSlotCode(token) {
+function normalizeSlotCode(token, customSlotsMap = null) {
   if (!token || typeof token !== 'string') return null;
   const trimmed = token.trim();
+  const pool = customSlotsMap || DEFAULT_CLUB_SLOTS;
   
-  // Trích xuất mã SLOT_CODE dạng AAA_HH_HH (ví dụ THU_17_19, WED_18_20, SAT_18_20)
+  // Trích xuất mã SLOT_CODE dạng AAA_HH_HH (ví dụ THU_17_19, WED_18_20, SAT_18_20, TUE_18_20...)
   const match = trimmed.match(/\b([A-Z]{3}_\d{1,2}_\d{1,2})\b/i);
   if (match) {
     const code = match[1].toUpperCase();
-    if (CLUB_SLOTS[code]) return code;
+    if (pool[code]) return code;
   }
+
+  // Thử match trực tiếp nếu token chính là mã slot trong pool
+  const upper = trimmed.toUpperCase();
+  if (pool[upper]) return upper;
 
   return null;
 }
 
 /**
  * PARSER CHUYỂN TIẾP CHO DỮ LIỆU ĐĂNG KÝ (Legacy & New Format)
+ * Hỗ trợ bản đồ ca đánh động (customSlotsMap) theo từng tháng hoặc mặc định
  * 
  * Đầu vào có thể là:
  * 1. Định dạng mới (Google Form): "WED_18_20 | Thứ 4 — 18:00–20:00, THU_17_19 | Thứ 5 — 17:00–19:00"
@@ -100,11 +112,18 @@ function normalizeSlotCode(token) {
  * 
  * NGUYÊN TẮC:
  * - Nếu nhận diện được slot chính xác -> thêm vào slots[]
- * - Nếu chuỗi chỉ ghi thứ (ví dụ "Thứ 5") mà CLB có nhiều slot cho thứ đó:
+ * - Nếu chuỗi chỉ ghi thứ (ví dụ "Thứ 5") mà CLB có nhiều slot cho thứ đó trong cấu hình tháng:
  *   -> TUYỆT ĐỐI KHÔNG TỰ ĐOÁN, đưa vào ambiguousDays[] và gán isAmbiguous = true
  *   -> Đánh dấu row cần Admin review.
  */
-function normalizeLegacyScheduleInput(rawValue) {
+function normalizeLegacyScheduleInput(rawValue, customSlotsMap = null, customSlotsByWeekday = null) {
+  const poolSlots = customSlotsMap || DEFAULT_CLUB_SLOTS;
+  const poolSlotsByWeekday = customSlotsByWeekday || Object.values(poolSlots).reduce((acc, s) => {
+    if (!acc[s.weekday]) acc[s.weekday] = [];
+    acc[s.weekday].push(s.code);
+    return acc;
+  }, {});
+
   const result = {
     slots: [],            // Danh sách các mã slot hợp lệ duy nhất, ví dụ: ['THU_17_19', 'SAT_18_20']
     ambiguousDays: [],    // Danh sách các thứ bị nhập thiếu giờ gây mâu thuẫn
@@ -131,8 +150,8 @@ function normalizeLegacyScheduleInput(rawValue) {
   const ambiguousSet = new Set();
 
   for (const chunk of chunks) {
-    // 1. Thử match mã slot chuẩn trước (ví dụ THU_17_19, WED_18_20...)
-    const exactCode = normalizeSlotCode(chunk);
+    // 1. Thử match mã slot chuẩn trước (ví dụ THU_17_19, WED_18_20, TUE_18_20...)
+    const exactCode = normalizeSlotCode(chunk, poolSlots);
     if (exactCode) {
       detectedSlots.add(exactCode);
       continue;
@@ -145,7 +164,7 @@ function normalizeLegacyScheduleInput(rawValue) {
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/\s+/g, ' ');
 
-    // Trích xuất khung giờ nếu có: ví dụ "17-19h", "17h-19h", "17:00-19:00", "18-20"
+    // Trích xuất khung giờ nếu có: ví dụ "17-19h", "17h-19h", "17:00-19:00", "18-20", "18h30-20h30"
     const hourMatch = normalizedChunk.match(/(\d{1,2})(?:h|:00)?\s*[-~–—to]\s*(\d{1,2})(?:h|:00)?/);
     const startHour = hourMatch ? parseInt(hourMatch[1], 10) : null;
     const endHour = hourMatch ? parseInt(hourMatch[2], 10) : null;
@@ -182,30 +201,31 @@ function normalizeLegacyScheduleInput(rawValue) {
       continue;
     }
 
-    // Nếu có khung giờ cụ thể: tìm slot có weekday và start/end tương ứng
+    // Nếu có khung giờ cụ thể: tìm slot có weekday và start/end tương ứng trong poolSlots
     if (startHour !== null && endHour !== null) {
-      const matchedSlot = Object.values(CLUB_SLOTS).find(s => 
+      const matchedSlot = Object.values(poolSlots).find(s => 
         s.weekday === detectedWeekday && 
-        s.startHour === startHour && 
-        s.endHour === endHour
+        (
+          (s.startHour === startHour && s.endHour === endHour) ||
+          (s.startTime === `${startHour}:00` && s.endTime === `${endHour}:00`)
+        )
       );
 
       if (matchedSlot) {
         detectedSlots.add(matchedSlot.code);
       } else {
-        // Có giờ nhưng không khớp slot nào trong CLUB_SLOTS
+        // Có giờ nhưng không khớp slot nào trong poolSlots
         result.invalidTokens.push(chunk);
       }
     } else {
-      // KHÔNG CÓ KHUNG GIỜ CỤ THỂ TRONG CHUNK (ví dụ chỉ ghi "Thứ 5" hoặc "Thứ Tư")
-      const candidateSlots = SLOTS_BY_WEEKDAY[detectedWeekday] || [];
+      // KHÔNG CÓ KHUNG GIỜ CỤ THỂ TRONG CHUNK (ví dụ chỉ ghi "Thứ 5" hoặc "Thứ 3")
+      const candidateSlots = poolSlotsByWeekday[detectedWeekday] || [];
       
       if (candidateSlots.length === 1) {
-        // Thứ này chỉ có DUY NHẤT 1 khung giờ trong CLB (ví dụ Thứ 4 chỉ có 18-20h)
+        // Thứ này chỉ có DUY NHẤT 1 khung giờ trong tháng -> tự động chọn!
         detectedSlots.add(candidateSlots[0]);
       } else if (candidateSlots.length > 1) {
-        // THỨ NÀY CÓ NHIỀU KHUNG GIỜ (Ví dụ Thứ 5 có 17-19h và 18-20h)
-        // NGUYÊN TẮC: TUYỆT ĐỐI KHÔNG TỰ ĐOÁN!
+        // Thứ này có NHIỀU khung giờ -> AMBIGUOUS: Đánh dấu để Admin xác nhận
         ambiguousSet.add(dayTokenName);
       } else {
         result.invalidTokens.push(chunk);
@@ -222,7 +242,7 @@ function normalizeLegacyScheduleInput(rawValue) {
     const candidateLabels = result.ambiguousDays
       .flatMap(d => {
         const wIdx = VI_WEEKDAY_MAP[d.toLowerCase()] ?? 4;
-        return (SLOTS_BY_WEEKDAY[wIdx] || []).map(code => CLUB_SLOTS[code].label);
+        return (poolSlotsByWeekday[wIdx] || []).map(code => poolSlots[code]?.label || code);
       })
       .join(' hoặc ');
     result.error = `Đăng ký "${daysStr}" thiếu khung giờ cụ thể trong khi CLB có nhiều ca (${candidateLabels}). Cần Admin chọn slot cụ thể.`;

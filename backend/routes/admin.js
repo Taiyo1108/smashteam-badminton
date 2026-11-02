@@ -23,6 +23,7 @@ const {
   deleteSingleSubscription
 } = require('../services/monthlySubscriptionService');
 const { getSessionSlotCode, getSlotLabel } = require('../utils/slotHelper');
+const { getClubSlotsForMonth, saveClubSlotsForMonth, resetClubSlotsForMonth } = require('../services/clubSlotService');
 
 const multer = require('multer');
 const uploadExcel = multer({
@@ -877,6 +878,78 @@ router.delete('/subscriptions/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting subscription:', error);
     res.status(400).json({ error: error.message || 'Lỗi xóa đăng ký cố định.' });
+  }
+});
+
+// ==========================================
+// CLUB SESSION SLOTS CONFIGURATION APIS
+// ==========================================
+
+// GET /api/admin/subscriptions/slots - Lấy danh sách ca sinh hoạt của tháng (hoặc mặc định)
+router.get('/subscriptions/slots', async (req, res) => {
+  try {
+    let monthYear = req.query.month;
+    if (!monthYear) {
+      const now = new Date();
+      const vnYear = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric' });
+      const vnMonth = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', month: '2-digit' });
+      monthYear = `${vnYear}-${vnMonth}`;
+    }
+
+    const slotConfig = await getClubSlotsForMonth(monthYear);
+    res.json({ success: true, ...slotConfig });
+  } catch (error) {
+    console.error('Error fetching club slots:', error);
+    res.status(500).json({ error: error.message || 'Lỗi lấy danh sách ca sinh hoạt.' });
+  }
+});
+
+// POST /api/admin/subscriptions/slots - Lưu cấu hình ca sinh hoạt cho tháng
+router.post('/subscriptions/slots', async (req, res) => {
+  try {
+    const { monthYear, slots } = req.body;
+    if (!monthYear || !Array.isArray(slots)) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ monthYear và danh sách ca đánh (slots).' });
+    }
+
+    const updatedConfig = await saveClubSlotsForMonth({
+      monthYear,
+      slots,
+      adminId: req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: `Đã lưu cấu hình ${updatedConfig.slotsArray.length} ca sinh hoạt cho tháng ${monthYear}.`,
+      ...updatedConfig
+    });
+  } catch (error) {
+    console.error('Error saving club slots:', error);
+    res.status(400).json({ error: error.message || 'Lỗi lưu cấu hình ca sinh hoạt.' });
+  }
+});
+
+// POST /api/admin/subscriptions/slots/reset - Khôi phục cấu hình ca của tháng về mặc định
+router.post('/subscriptions/slots/reset', async (req, res) => {
+  try {
+    const { monthYear } = req.body;
+    if (!monthYear) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp monthYear cần khôi phục.' });
+    }
+
+    const resetConfig = await resetClubSlotsForMonth({
+      monthYear,
+      adminId: req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: `Đã khôi phục ca sinh hoạt tháng ${monthYear} về danh sách chuẩn của CLB.`,
+      ...resetConfig
+    });
+  } catch (error) {
+    console.error('Error resetting club slots:', error);
+    res.status(400).json({ error: error.message || 'Lỗi khôi phục cấu hình ca sinh hoạt.' });
   }
 });
 
