@@ -674,20 +674,6 @@ export default function Home() {
               </div>
 
               <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto py-16 sm:py-20 space-y-7">
-                {/* Brand / Campaign Tag */}
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4 }}
-                  className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-primary/25 border border-primary/50 text-purple-200 text-xs font-black uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(157,78,221,0.35)]"
-                >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                  </span>
-                  <span>Chiến Dịch Tuyển Vợt Thủ Mùa Giải {new Date().getFullYear()}</span>
-                </motion.div>
-
                 {/* Primary H1 Heading - Customizable Font & Style */}
                 <motion.h1 
                   id="hero-title"
