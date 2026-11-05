@@ -1122,15 +1122,15 @@ async function handleGenerateSessionQr(req, res) {
 // POST /api/admin/quests - Tạo nhiệm vụ mới
 router.post('/quests', async (req, res) => {
   try {
-    const { title, quest_type, xp_reward, coin_reward, action_type, target_count } = req.body;
+    const { title, description, quest_type, xp_reward, coin_reward, action_type, target_count } = req.body;
     if (!title || !quest_type || !xp_reward || !coin_reward || !action_type || !target_count) {
       return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ thông tin nhiệm vụ.' });
     }
 
     const result = await db.query(
-      `INSERT INTO quests (title, quest_type, xp_reward, coin_reward, action_type, target_count, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING *`,
-      [title, quest_type, xp_reward, coin_reward, action_type, target_count]
+      `INSERT INTO quests (title, description, quest_type, xp_reward, coin_reward, action_type, target_count, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *`,
+      [title, description || null, quest_type, parseInt(xp_reward) || 0, parseInt(coin_reward) || 0, action_type, parseInt(target_count) || 1]
     );
 
     res.status(201).json({ success: true, quest: result.rows[0] });
@@ -1181,15 +1181,16 @@ router.put('/quests/:id/toggle', async (req, res) => {
 router.put('/quests/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, quest_type, xp_reward, coin_reward, action_type, target_count, is_active } = req.body;
+    const { title, description, quest_type, xp_reward, coin_reward, action_type, target_count, is_active } = req.body;
 
     const result = await db.query(
       `UPDATE quests
-       SET title = $1, quest_type = $2, xp_reward = $3, coin_reward = $4, action_type = $5, target_count = $6, is_active = $7
-       WHERE id = $8
+       SET title = $1, description = $2, quest_type = $3, xp_reward = $4, coin_reward = $5, action_type = $6, target_count = $7, is_active = $8
+       WHERE id = $9
        RETURNING *`,
       [
         title,
+        description !== undefined ? description : null,
         quest_type,
         parseInt(xp_reward) || 0,
         parseInt(coin_reward) || 0,
@@ -1225,6 +1226,166 @@ router.delete('/quests/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting quest:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi xóa nhiệm vụ.' });
+  }
+});
+
+// GET /api/admin/quests/:id/members - Lấy danh sách thành viên và trạng thái hoàn thành nhiệm vụ này
+router.get('/quests/:id/members', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const questRes = await db.query('SELECT * FROM quests WHERE id = $1', [id]);
+    if (questRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy nhiệm vụ.' });
+    }
+    const quest = questRes.rows[0];
+
+    const membersRes = await db.query(
+      `SELECT 
+         u.id, u.full_name, u.nickname, u.phone_zalo, u.avatar_url, u.role, u.level, u.xp, u.smash_coins,
+         COALESCE(uq.is_completed, false) as is_completed,
+         COALESCE(uq.is_claimed, false) as is_claimed,
+         COALESCE(uq.current_count, 0) as current_count,
+         uq.updated_at
+       FROM users u
+       LEFT JOIN user_quests uq ON uq.user_id = u.id AND uq.quest_id = $1
+       WHERE u.role IN ('member', 'admin', 'guest') AND u.full_name != 'Super Admin'
+       ORDER BY uq.is_claimed DESC, uq.is_completed DESC, u.full_name ASC`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      quest,
+      members: membersRes.rows
+    });
+  } catch (error) {
+    console.error('Error fetching quest members:', error);
+    res.status(500).json({ error: 'Lỗi khi tải danh sách thành viên cho nhiệm vụ.' });
+  }
+});
+
+// POST /api/admin/quests/:id/award - Trao thưởng hoặc mở khóa hoàn thành nhiệm vụ cho các thành viên được chọn
+router.post('/quests/:id/award', async (req, res) => {
+  const { id } = req.params;
+  const { user_ids, mode = 'direct' } = req.body;
+  // mode: 'direct' (trao quà và cộng thưởng ngay) | 'unlock' (mở khóa hoàn thành để thành viên tự nhận trên Profile)
+
+  if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0) {
+    return res.status(400).json({ error: 'Vui lòng chọn ít nhất một thành viên để trao quà.' });
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    const questRes = await client.query('SELECT * FROM quests WHERE id = $1', [id]);
+    if (questRes.rows.length === 0) {
+      throw new Error('Nhiệm vụ không tồn tại.');
+    }
+    const quest = questRes.rows[0];
+    const targetCount = quest.target_count || 1;
+    const xpReward = parseInt(quest.xp_reward, 10) || 0;
+    const coinReward = parseInt(quest.coin_reward, 10) || 0;
+
+    const { addXpToUser } = require('../utils/gamification');
+    const awardedUsers = [];
+
+    for (const userId of user_ids) {
+      const userCheck = await client.query('SELECT id, full_name, level, xp, smash_coins FROM users WHERE id = $1', [userId]);
+      if (userCheck.rows.length === 0) continue;
+      const user = userCheck.rows[0];
+
+      if (mode === 'direct') {
+        // Cộng trực tiếp XP & Xu
+        const levelUp = await addXpToUser(userId, xpReward, client);
+        if (coinReward > 0) {
+          await client.query('UPDATE users SET smash_coins = smash_coins + $1 WHERE id = $2', [coinReward, userId]);
+        }
+
+        // Cập nhật user_quests: is_completed = true, is_claimed = true
+        await client.query(
+          `INSERT INTO user_quests (user_id, quest_id, current_count, is_completed, is_claimed, updated_at)
+           VALUES ($1, $2, $3, true, true, CURRENT_TIMESTAMP)
+           ON CONFLICT (user_id, quest_id)
+           DO UPDATE SET
+             current_count = $3,
+             is_completed = true,
+             is_claimed = true,
+             updated_at = CURRENT_TIMESTAMP`,
+          [userId, id, targetCount]
+        );
+
+        awardedUsers.push({
+          id: user.id,
+          full_name: user.full_name,
+          leveled_up: levelUp?.leveledUp,
+          new_level: levelUp?.currentLevel
+        });
+      } else {
+        // Mở khóa hoàn thành để thành viên tự nhận thưởng trên Profile
+        await client.query(
+          `INSERT INTO user_quests (user_id, quest_id, current_count, is_completed, is_claimed, updated_at)
+           VALUES ($1, $2, $3, true, false, CURRENT_TIMESTAMP)
+           ON CONFLICT (user_id, quest_id)
+           DO UPDATE SET
+             current_count = $3,
+             is_completed = true,
+             is_claimed = false,
+             updated_at = CURRENT_TIMESTAMP`,
+          [userId, id, targetCount]
+        );
+
+        awardedUsers.push({
+          id: user.id,
+          full_name: user.full_name
+        });
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      success: true,
+      message: mode === 'direct'
+        ? `Đã trao quà trực tiếp thành công cho ${awardedUsers.length} thành viên (+${xpReward} XP, +${coinReward} Xu)!`
+        : `Đã mở khóa hoàn thành nhiệm vụ cho ${awardedUsers.length} thành viên!`,
+      awarded_count: awardedUsers.length,
+      awarded_users: awardedUsers,
+      quest: {
+        id: quest.id,
+        title: quest.title,
+        xp_reward: xpReward,
+        coin_reward: coinReward
+      }
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error awarding quest to members:', error);
+    res.status(500).json({ error: error.message || 'Lỗi hệ thống khi trao quà nhiệm vụ.' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/admin/quests/:id/revoke - Thu hồi / Reset tiến trình nhiệm vụ của một thành viên
+router.post('/quests/:id/revoke', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id } = req.body;
+    if (!user_id) {
+      return res.status(400).json({ error: 'Thiếu user_id.' });
+    }
+
+    await db.query(
+      `UPDATE user_quests
+       SET current_count = 0, is_completed = false, is_claimed = false, updated_at = CURRENT_TIMESTAMP
+       WHERE quest_id = $1 AND user_id = $2`,
+      [id, user_id]
+    );
+
+    res.json({ success: true, message: 'Đã thu hồi / đặt lại trạng thái nhiệm vụ cho thành viên.' });
+  } catch (error) {
+    console.error('Error revoking quest:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi thu hồi nhiệm vụ.' });
   }
 });
 

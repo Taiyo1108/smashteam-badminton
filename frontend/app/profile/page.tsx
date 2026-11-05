@@ -1242,7 +1242,7 @@ export default function ProfilePage() {
                       return (
                         <div key={q.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-black/20 transition-all">
                           <div className="flex-1 space-y-1.5">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
                                 q.quest_type === 'daily'
                                   ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
@@ -1250,15 +1250,25 @@ export default function ProfilePage() {
                                   ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
                                   : q.quest_type === 'monthly'
                                   ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                                  : q.quest_type === 'one_time'
+                                  ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
                                   : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                               }`}>
-                                {q.quest_type === 'daily' ? 'Hàng ngày' : q.quest_type === 'weekly' ? 'Hàng tuần' : q.quest_type === 'monthly' ? 'Hàng tháng' : 'Mùa giải'}
+                                {q.quest_type === 'daily' ? 'Hàng ngày' : q.quest_type === 'weekly' ? 'Hàng tuần' : q.quest_type === 'monthly' ? 'Hàng tháng' : q.quest_type === 'one_time' ? 'Nhiệm vụ đặc biệt' : 'Mùa giải'}
                               </span>
+                              {(q.action_type === 'custom' || q.action_type === 'manual') && (
+                                <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                  🎯 Ngoài lề
+                                </span>
+                              )}
                               <span className="text-[10px] text-slate-500">
                                 Phần thưởng: <span className="text-emerald-400">+{q.xp_reward} XP</span> • <span className="text-amber-400">+{q.coin_reward} Xu</span>
                               </span>
                             </div>
                             <h4 className="text-sm font-bold text-slate-900 tracking-wide">{q.title}</h4>
+                            {q.description && (
+                              <p className="text-xs text-slate-500 line-clamp-2">{q.description}</p>
+                            )}
                             <div className="flex items-center gap-3">
                               <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                                 <div className="h-full bg-black" style={{ width: `${pct}%` }} />
@@ -1268,7 +1278,9 @@ export default function ProfilePage() {
                           </div>
                           <div className="shrink-0 flex items-center justify-end">
                             {q.is_claimed ? (
-                              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Đã nhận</span>
+                              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1">
+                                ✓ Đã nhận
+                              </span>
                             ) : isDone ? (
                               <button
                                 onClick={() => handleClaimQuest(q.id)}
@@ -1277,6 +1289,10 @@ export default function ProfilePage() {
                               >
                                 {claimingQuestId === q.id ? "Đang nhận..." : "Nhận Quà"}
                               </button>
+                            ) : (q.action_type === 'custom' || q.action_type === 'manual') ? (
+                              <span className="text-[11px] font-bold text-purple-600 bg-purple-50 px-2.5 py-1.5 rounded-lg border border-purple-100 text-center" title="Admin sẽ duyệt và trao quà khi bạn hoàn thành nhiệm vụ này">
+                                Chờ xét duyệt
+                              </span>
                             ) : (
                               <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Đang làm</span>
                             )}
