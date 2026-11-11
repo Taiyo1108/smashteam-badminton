@@ -123,61 +123,6 @@ function calculateAchievements({ player, singles, doubles, streak }) {
     });
   }
 
-  // 5. Club Contribution Badges (from users.soft_skills)
-  let skills = [];
-  if (player.soft_skills) {
-    try {
-      skills = typeof player.soft_skills === 'string'
-        ? JSON.parse(player.soft_skills)
-        : player.soft_skills;
-    } catch (e) {
-      skills = Array.isArray(player.soft_skills) ? player.soft_skills : [];
-    }
-  }
-
-  if (Array.isArray(skills)) {
-    skills.forEach(skill => {
-      const s = skill.toLowerCase();
-      if (s.includes('chụp') || s.includes('ảnh') || s.includes('media') || s.includes('quay')) {
-        achievements.push({
-          id: 'contrib_media',
-          name: 'Nhiếp Ảnh Gia',
-          description: 'Đóng góp hình ảnh & truyền thông cho CLB',
-          icon: 'Camera',
-          tier: 'platinum',
-          category: 'contribution'
-        });
-      } else if (s.includes('thiết kế') || s.includes('design') || s.includes('cọ') || s.includes('vẽ')) {
-        achievements.push({
-          id: 'contrib_design',
-          name: 'Nhà Thiết Kế',
-          description: 'Sáng tạo ấn phẩm hình ảnh cho CLB',
-          icon: 'Paintbrush',
-          tier: 'platinum',
-          category: 'contribution'
-        });
-      } else if (s.includes('tổ chức') || s.includes('sự kiện') || s.includes('event')) {
-        achievements.push({
-          id: 'contrib_event',
-          name: 'Tổ Chức Sự Kiện',
-          description: 'Góp sức điều phối các giải đấu và hoạt động CLB',
-          icon: 'Calendar',
-          tier: 'gold',
-          category: 'contribution'
-        });
-      } else if (s.includes('code') || s.includes('lập trình') || s.includes('dev') || s.includes('web')) {
-        achievements.push({
-          id: 'contrib_dev',
-          name: 'Lập Trình Viên',
-          description: 'Đóng góp phát triển nền tảng công nghệ CLB',
-          icon: 'Code',
-          tier: 'diamond',
-          category: 'contribution'
-        });
-      }
-    });
-  }
-
   return achievements;
 }
 

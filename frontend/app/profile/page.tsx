@@ -8,15 +8,21 @@ import {
   Trophy, Flame, Calendar, Check, X, Sparkles, 
   Camera, Paintbrush, Shield, CalendarDays, Activity, 
   MapPin, Clock, LogOut, Edit2, Home, Loader2, Settings,
-  ShoppingBag, Lock, Gift, Coins
+  ShoppingBag, Lock, Gift, Coins,
+  Users, User, Swords, TrendingUp, TrendingDown, CheckCircle2, XCircle, Filter, ShieldCheck
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { API_URL } from "@/app/config";
 import AvatarWithFrame from "@/app/components/AvatarWithFrame";
 import CompetitivePlayerCard from "@/app/components/CompetitivePlayerCard";
 import SharePlayerCard from "@/app/components/SharePlayerCard";
+import ReputationHistoryModal from "@/app/components/ReputationHistoryModal";
 import { formatVietnamDate } from "@/app/utils/date";
 import SessionReservationWidget from "@/app/components/SessionReservationWidget";
+import NotificationBell from "@/app/components/notifications/NotificationBell";
+import RewardCelebrationModal, { RewardCelebrationData } from "@/app/components/RewardCelebrationModal";
+import MemberOnlyModal from "@/app/components/MemberOnlyModal";
+import InactivityWarningModal, { InactivityWarningData } from "@/app/components/InactivityWarningModal";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -25,6 +31,10 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingRsvp, setUpdatingRsvp] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isReputationModalOpen, setIsReputationModalOpen] = useState(false);
+  const [isMemberOnlyModalOpen, setIsMemberOnlyModalOpen] = useState(false);
+  const [inactivityWarning, setInactivityWarning] = useState<InactivityWarningData | null>(null);
+  const [isInactivityModalOpen, setIsInactivityModalOpen] = useState(false);
 
   // Gamification states
   const [gamProfile, setGamProfile] = useState<any>(null);
@@ -33,18 +43,32 @@ export default function ProfilePage() {
   const [shopItems, setShopItems] = useState<any[]>([]);
   const [activeGamTab, setActiveGamTab] = useState<"quests" | "inventory" | "shop" | "matches">("quests");
   const [matchFilter, setMatchFilter] = useState<"all" | "month" | "week">("all");
+  const [matchModeFilter, setMatchModeFilter] = useState<"all" | "doubles" | "singles">("all");
+  const [matchOutcomeFilter, setMatchOutcomeFilter] = useState<"all" | "won" | "lost">("all");
   
   const [claimingQuestId, setClaimingQuestId] = useState<number | null>(null);
   const [equippingItemId, setEquippingItemId] = useState<number | null>(null);
   const [buyingItemId, setBuyingItemId] = useState<number | null>(null);
   const [isOpeningBox, setIsOpeningBox] = useState(false);
   const [boxCooldown, setBoxCooldown] = useState<number | null>(null);
-  const [mysteryBoxReward, setMysteryBoxReward] = useState<any | null>(null);
+  const [rewardCelebration, setRewardCelebration] = useState<RewardCelebrationData | null>(null);
   
   // Phân mục kho đồ: "physical" (vật phẩm) | "virtual" (trang bị)
   const [inventorySubTab, setInventorySubTab] = useState<"physical" | "virtual">("physical");
   // Lưu item cần mở modal xem mã QR
   const [qrModalItem, setQrModalItem] = useState<any | null>(null);
+
+  // Shield states (Khiên bảo vệ ELO & chuỗi)
+  const [shieldStatus, setShieldStatus] = useState<any>(null);
+  const [isUsingShield, setIsUsingShield] = useState(false);
+  const [isActivatingHopeStar, setIsActivatingHopeStar] = useState<number | null>(null);
+  const [shieldAnimation, setShieldAnimation] = useState<{
+    isOpen: boolean;
+    eloRestored: number;
+    streakRestored: number;
+    hasStreakFlame: boolean;
+    mode?: string;
+  } | null>(null);
 
   // Settings Modal states
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -100,23 +124,43 @@ export default function ProfilePage() {
 
   const filteredMatches = useMemo(() => {
     const list: any[] = playerData?.matches ?? [];
-    if (matchFilter === "all") return list;
-    const now = new Date();
     return list.filter((m: any) => {
-      const matchDate = new Date(m.created_at);
-      if (matchFilter === "month") {
-        return matchDate.getMonth() === now.getMonth() && matchDate.getFullYear() === now.getFullYear();
+      // Bộ lọc thời gian
+      if (matchFilter !== "all") {
+        const now = new Date();
+        const matchDate = new Date(m.created_at);
+        if (matchFilter === "month") {
+          const isMonth = matchDate.getMonth() === now.getMonth() && matchDate.getFullYear() === now.getFullYear();
+          if (!isMonth) return false;
+        } else if (matchFilter === "week") {
+          const isWeek = Math.abs(now.getTime() - matchDate.getTime()) / (1000 * 60 * 60 * 24) <= 7;
+          if (!isWeek) return false;
+        }
       }
-      // week: trong 7 ngày gần nhất
-      return Math.abs(now.getTime() - matchDate.getTime()) / (1000 * 60 * 60 * 24) <= 7;
+      // Bộ lọc thể thức
+      if (matchModeFilter === "doubles" && !m.isDoubles) return false;
+      if (matchModeFilter === "singles" && m.isDoubles) return false;
+      // Bộ lọc kết quả
+      if (matchOutcomeFilter === "won" && !m.won) return false;
+      if (matchOutcomeFilter === "lost" && m.won) return false;
+
+      return true;
     });
-  }, [playerData, matchFilter]);
+  }, [playerData, matchFilter, matchModeFilter, matchOutcomeFilter]);
 
   const matchStats = useMemo(() => {
+    // Nếu chọn tất cả và backend đã tính matchStats trọn đời chuẩn xác từ DB
+    if (matchFilter === "all" && matchModeFilter === "all" && matchOutcomeFilter === "all" && playerData?.matchStats) {
+      return playerData.matchStats;
+    }
     const total = filteredMatches.length;
     const won = filteredMatches.filter((m: any) => m.won).length;
-    return { total, won, winRate: total > 0 ? Math.round((won / total) * 100) : 0 };
-  }, [filteredMatches]);
+    const lost = total - won;
+    const winRate = total > 0 ? Math.round((won / total) * 100) : 0;
+    const doubles = filteredMatches.filter((m: any) => m.isDoubles).length;
+    const singles = filteredMatches.filter((m: any) => !m.isDoubles).length;
+    return { total, won, lost, winRate, doubles, singles };
+  }, [filteredMatches, matchFilter, matchModeFilter, matchOutcomeFilter, playerData]);
 
   // Fetch dữ liệu từ API /api/profile/me
   const fetchProfileData = async () => {
@@ -134,6 +178,7 @@ export default function ProfilePage() {
       });
 
       if (res.status === 401 || res.status === 403 || res.status === 404) {
+        localStorage.removeItem("token");
         localStorage.removeItem("admin_token");
         localStorage.removeItem("user_role");
         localStorage.removeItem("user");
@@ -147,7 +192,21 @@ export default function ProfilePage() {
       }
 
       const data = await res.json();
+      
+      // Chốt chặn Onboarding: nếu user chưa hoàn tất hồ sơ thì chuyển sang /onboarding
+      if (data?.player && data.player.is_profile_completed === false) {
+        router.replace("/onboarding");
+        return;
+      }
+
       setPlayerData(data);
+      if (data?.inactivity_warning) {
+        const isAckLocally = typeof window !== "undefined" && localStorage.getItem(`ack_inactivity_${data.inactivity_warning.recordId}`);
+        if (!isAckLocally) {
+          setInactivityWarning(data.inactivity_warning);
+          setIsInactivityModalOpen(true);
+        }
+      }
       
       // Khởi tạo form fields
       setFullName(data.player.full_name || "");
@@ -183,11 +242,12 @@ export default function ProfilePage() {
       const headers = { Authorization: `Bearer ${token}` };
 
       // Chạy song song thay vì nối tiếp để giảm ~5x RTT
-      const [profileRes, questsRes, invRes, shopRes] = await Promise.all([
+      const [profileRes, questsRes, invRes, shopRes, shieldRes] = await Promise.all([
         fetch(`${API_URL}/api/gamification/profile`, { headers }),
         fetch(`${API_URL}/api/gamification/quests`, { headers }),
         fetch(`${API_URL}/api/gamification/inventory`, { headers }),
         fetch(`${API_URL}/api/shop/items`, { headers }),
+        fetch(`${API_URL}/api/gamification/shield/status`, { headers }),
       ]);
 
       if (profileRes.ok) {
@@ -200,9 +260,103 @@ export default function ProfilePage() {
       if (questsRes.ok) setQuests(await questsRes.json());
       if (invRes.ok) setInventory(await invRes.json());
       if (shopRes.ok) setShopItems(await shopRes.json());
+      if (shieldRes.ok) setShieldStatus(await shieldRes.json());
 
     } catch (e) {
       console.error("Error fetching gamification data:", e);
+    }
+  };
+
+  const handleUseShield = async () => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
+    if (!confirm("Xác nhận kích hoạt 1 Khiên Hộ Mệnh để hồi phục điểm ELO và bảo toàn chuỗi thắng cho trận thua gần nhất?")) {
+      return;
+    }
+
+    setIsUsingShield(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/gamification/shield/use`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Không thể sử dụng khiên bảo vệ.", "error");
+        return;
+      }
+
+      // Kích hoạt hiệu ứng hồi điểm và bùng cháy ngọn lửa chuỗi thắng
+      setShieldAnimation({
+        isOpen: true,
+        eloRestored: data.eloRestored,
+        streakRestored: data.streakRestored,
+        hasStreakFlame: data.hasStreakFlame,
+        mode: data.mode
+      });
+
+      // Tự động đóng sau 3 giây
+      setTimeout(() => {
+        setShieldAnimation(null);
+      }, 3000);
+
+      showToast(data.message || "Đã kích hoạt Khiên Hộ Mệnh thành công!", "success");
+
+      // Cập nhật lại dữ liệu
+      await Promise.all([
+        fetchProfileData(),
+        fetchGamificationData()
+      ]);
+    } catch (err: any) {
+      console.error("Error using shield:", err);
+      showToast(err.message || "Lỗi kết nối khi dùng khiên.", "error");
+    } finally {
+      setIsUsingShield(false);
+    }
+  };
+
+  const handleActivateHopeStar = async (itemId: number) => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
+    if (!confirm("⭐ Xác nhận kích hoạt Ngôi Sao Hy Vọng?\n\nVật phẩm sẽ áp dụng cho 1 trận đấu chính thức kế tiếp của bạn. Nếu thắng, bạn sẽ được thưởng nhân đôi ELO (tối đa +20 ELO). Nếu thua, bạn không nhận được bonus và vật phẩm vẫn sẽ tiêu hao.")) {
+      return;
+    }
+
+    setIsActivatingHopeStar(itemId);
+    try {
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/gamification/inventory/${itemId}/activate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Đã kích hoạt Ngôi Sao Hy Vọng thành công!", "success");
+        await Promise.all([
+          fetchProfileData(),
+          fetchGamificationData()
+        ]);
+      } else {
+        showToast(data.error || "Kích hoạt vật phẩm thất bại.", "error");
+      }
+    } catch (err: any) {
+      console.error("Error activating hope star:", err);
+      showToast(err.message || "Lỗi kết nối khi kích hoạt.", "error");
+    } finally {
+      setIsActivatingHopeStar(null);
     }
   };
 
@@ -219,13 +373,18 @@ export default function ProfilePage() {
   };
 
   const handleBuyItem = async (itemId: number, itemName: string, price: number) => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     if (!confirm(`Xác nhận dùng ${price} xu Smash Coins để đổi "${itemName}"?`)) {
       return;
     }
     
     setBuyingItemId(itemId);
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const url = `${API_URL}/api/shop/buy`;
       const res = await fetch(url, {
         method: "POST",
@@ -237,9 +396,26 @@ export default function ProfilePage() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast(data.message || `Đổi thành công: ${itemName}!`);
+        const item = shopItems.find((i: any) => i.id === itemId);
         await fetchGamificationData();
         await fetchProfileData();
+
+        setRewardCelebration({
+          isOpen: true,
+          type: "shop_purchase",
+          title: item?.name || itemName,
+          subtitle: item?.item_type === "physical"
+            ? "Đổi quà thành công! Hãy xuất trình mã nhận quà trong Túi đồ tại sân CLB."
+            : "Mua thành công! Trang bị đã sẵn sàng sử dụng trong Túi đồ của bạn.",
+          item: {
+            name: item?.name || itemName,
+            imageUrl: item?.image_url || null,
+            description: item?.description || (item?.item_type === "physical" ? "Vật phẩm lưu niệm / nước uống CLB" : "Trang bị hỗ trợ thi đấu"),
+            type: item?.item_type || "virtual"
+          },
+          couponCode: data.couponCode || null,
+          spentCoins: price
+        });
       } else {
         showToast(data.error || "Lỗi khi đổi quà.", "error");
       }
@@ -251,10 +427,14 @@ export default function ProfilePage() {
   };
 
   const handleOpenMysteryBox = async () => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     setIsOpeningBox(true);
-    setMysteryBoxReward(null);
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const url = `${API_URL}/api/shop/mystery-box`;
       const res = await fetch(url, {
         method: "POST",
@@ -262,11 +442,30 @@ export default function ProfilePage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMysteryBoxReward(data.reward);
         setBoxCooldown(168 * 3600); // 7 ngày = 168 giờ
-        showToast(data.message || "Mở hộp quà thành công!", "success");
         await fetchGamificationData();
         await fetchProfileData();
+
+        const isCoins = data.reward?.type === "coins";
+        const coinVal = isCoins ? parseInt(data.reward?.value, 10) || 0 : 0;
+
+        setRewardCelebration({
+          isOpen: true,
+          type: "mystery_box",
+          title: isCoins ? `+${coinVal} SMASH COINS!` : "VẬT PHẨM BÍ ẨN HIẾM!",
+          subtitle: isCoins
+            ? (coinVal >= 40
+                ? "🔥 CHÚC MỪNG BẠN TRÚNG JACKPOT HỘP QUÀ! 🔥"
+                : "Phần thưởng đã được cộng trực tiếp vào ví xu của bạn!")
+            : "Vật phẩm đã được cất an toàn vào Túi đồ của bạn!",
+          coins: isCoins ? coinVal : 0,
+          item: !isCoins && data.reward ? {
+            name: data.reward.name,
+            imageUrl: data.reward.imageUrl,
+            description: "Bảo vệ chuỗi thắng của bạn khi thua trận (hạn dùng 7 ngày)",
+            type: data.reward.type,
+          } : undefined,
+        });
       } else {
         if (data.remainingMs) {
           setBoxCooldown(Math.ceil(data.remainingMs / 1000));
@@ -302,23 +501,89 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory]);
 
+  // Hàm chạy thử nghiệm hiệu ứng nhận thưởng lộng lẫy trên local
+  const handleTestRewardEffect = (type: "quest" | "coins" | "shield" | "shop") => {
+    if (type === "quest") {
+      setRewardCelebration({
+        isOpen: true,
+        type: "quest",
+        title: "Chiến Thắng 3 Trận Đấu Xếp Hạng",
+        subtitle: "Chúc mừng bạn đã hoàn thành xuất sắc nhiệm vụ tuần!",
+        coins: 50,
+        xp: 100,
+        levelUp: {
+          leveledUp: true,
+          currentLevel: (gamProfile?.level || 1) + 1,
+        },
+      });
+    } else if (type === "coins") {
+      setRewardCelebration({
+        isOpen: true,
+        type: "mystery_box",
+        title: "+50 SMASH COINS!",
+        subtitle: "🔥 CHÚC MỪNG BẠN TRÚNG JACKPOT HỘP QUÀ BÍ ẨN! 🔥",
+        coins: 50,
+      });
+    } else if (type === "shield") {
+      setRewardCelebration({
+        isOpen: true,
+        type: "mystery_box",
+        title: "VẬT PHẨM BÍ ẨN HIẾM!",
+        subtitle: "Vật phẩm đã được cất an toàn vào Túi đồ của bạn!",
+        item: {
+          name: "1 Khiên Hộ Mệnh (Hạn dùng 7 ngày)",
+          imageUrl: "https://res.cloudinary.com/skdav4ik/image/upload/v1791398450/smashteam/xvoqoys5kpaeo7qgpne0.png",
+          description: "Tự động bảo vệ chuỗi thắng của bạn khi thua trận trong đấu xếp hạng!",
+          type: "streak_shield",
+        },
+      });
+    } else if (type === "shop") {
+      setRewardCelebration({
+        isOpen: true,
+        type: "shop_purchase",
+        title: "🐉 Long Bào Smash Team",
+        subtitle: "Đổi quà thành công! Hãy xuất trình mã nhận quà trong Túi đồ tại sân CLB.",
+        item: {
+          name: "🐉 Long Bào Smash Team",
+          imageUrl: "https://res.cloudinary.com/skdav4ik/image/upload/v1783008571/smashteam/imnss0sgahnx2phzgxjo.png",
+          description: "Áo đấu rồng thiêng cao cấp phiên bản giới hạn của CLB SmashTeam.",
+          type: "physical",
+        },
+        couponCode: "SM-TEE-VIP888",
+        spentCoins: 2000,
+      });
+    }
+  };
+
   // Gamification Claim Handlers
   const handleClaimQuest = async (questId: number) => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     setClaimingQuestId(questId);
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/gamification/quests/${questId}/claim`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
       if (res.ok) {
-        showToast(data.message || "Nhận thưởng thành công!");
-        if (data.level_up?.leveledUp) {
-          showToast(`LÊN CẤP! Bạn đạt Cấp độ ${data.level_up.currentLevel}!`, "success");
-        }
+        const quest = quests.find((q: any) => q.id === questId);
         await fetchGamificationData();
         await fetchProfileData();
+
+        setRewardCelebration({
+          isOpen: true,
+          type: "quest",
+          title: quest?.title || "Nhiệm Vụ Hoàn Thành!",
+          subtitle: "Chúc mừng bạn đã hoàn thành xuất sắc thử thách!",
+          coins: data.coin_reward ?? quest?.coin_reward ?? 0,
+          xp: data.xp_reward ?? quest?.xp_reward ?? 0,
+          levelUp: data.level_up,
+        });
       } else {
         showToast(data.error || "Lỗi khi nhận thưởng.", "error");
       }
@@ -330,6 +595,11 @@ export default function ProfilePage() {
   };
 
   const handleEquipItem = async (itemId: number, isEquipped: boolean) => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     setEquippingItemId(itemId);
     try {
       const token = localStorage.getItem("admin_token");
@@ -354,11 +624,22 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        if (u.is_profile_completed === false) {
+          router.replace("/onboarding");
+          return;
+        }
+      } catch (e) {}
+    }
     fetchProfileData();
     fetchGamificationData();
   }, []);
 
   const handleLogout = () => {
+    localStorage.removeItem("token");
     localStorage.removeItem("admin_token");
     localStorage.removeItem("user_role");
     localStorage.removeItem("user");
@@ -451,6 +732,11 @@ export default function ProfilePage() {
   };
 
   const handleUploadAvatar = async () => {
+    if (playerData?.player?.role === "guest") {
+      setIsMemberOnlyModalOpen(true);
+      return;
+    }
+
     if (!avatarFile || isUploadingAvatar) return;
     setIsUploadingAvatar(true);
 
@@ -546,50 +832,56 @@ export default function ProfilePage() {
   const getRankConfig = (elo: number) => {
     if (elo >= 1800) return {
       name: "Challenger",
+      label: "Thách Đấu",
       borderClass: "bg-gradient-to-r from-red-500 via-purple-600 to-red-500 p-[3px]",
       glowClass: "rank-glow-challenger",
-      badgeClass: "bg-gradient-to-r from-red-500 to-purple-600 text-white border border-red-400",
+      badgeClass: "bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white font-black shadow-md border border-red-400",
       nextElo: 2500,
       prevElo: 1800
     };
     if (elo >= 1600) return {
       name: "Diamond",
+      label: "Kim Cương",
       borderClass: "border-4 border-blue-500",
       glowClass: "rank-glow-diamond",
-      badgeClass: "bg-blue-600/30 text-blue-400 border border-blue-500/50",
+      badgeClass: "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white font-black shadow-md border border-cyan-300",
       nextElo: 1800,
       prevElo: 1600
     };
     if (elo >= 1400) return {
       name: "Platinum",
+      label: "Bạch Kim",
       borderClass: "border-4 border-teal-400",
       glowClass: "rank-glow-platinum",
-      badgeClass: "bg-teal-600/30 text-teal-400 border border-teal-500/50",
+      badgeClass: "bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white font-black shadow-md border border-emerald-300",
       nextElo: 1600,
       prevElo: 1400
     };
     if (elo >= 1200) return {
       name: "Gold",
+      label: "Vàng",
       borderClass: "border-4 border-amber-400",
       glowClass: "rank-glow-gold",
-      badgeClass: "bg-amber-600/30 text-amber-400 border border-amber-500/50",
+      badgeClass: "bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-black shadow-md border border-yellow-300",
       nextElo: 1400,
       prevElo: 1200
     };
-    if (elo >= 1100) return {
+    if (elo >= 1000) return {
       name: "Silver",
+      label: "Bạc",
       borderClass: "border-4 border-slate-300",
       glowClass: "rank-glow-silver",
-      badgeClass: "bg-slate-600/30 text-slate-300 border border-slate-400/50",
+      badgeClass: "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 font-black shadow-md border border-slate-300",
       nextElo: 1200,
-      prevElo: 1100
+      prevElo: 1000
     };
     return {
       name: "Bronze",
+      label: "Đồng",
       borderClass: "border-4 border-amber-800",
       glowClass: "rank-glow-bronze",
-      badgeClass: "bg-amber-800/30 text-amber-600 border border-amber-800/50",
-      nextElo: 1100,
+      badgeClass: "bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 font-black shadow-md border border-amber-600",
+      nextElo: 1000,
       prevElo: 800
     };
   };
@@ -628,6 +920,7 @@ export default function ProfilePage() {
             </button>
             <button 
               onClick={() => {
+                localStorage.removeItem("token");
                 localStorage.removeItem("admin_token");
                 localStorage.removeItem("user_role");
                 localStorage.removeItem("user");
@@ -651,35 +944,7 @@ export default function ProfilePage() {
 
   const { player, upcomingSession, attendanceHistory } = playerData;
 
-  // Phân tích kỹ năng đóng góp
-  let softSkills: string[] = [];
-  if (player.soft_skills) {
-    try {
-      softSkills = typeof player.soft_skills === "string" 
-        ? JSON.parse(player.soft_skills) 
-        : player.soft_skills;
-    } catch (e) {
-      softSkills = Array.isArray(player.soft_skills) ? player.soft_skills : [];
-    }
-  }
 
-  // Map huy hiệu đóng góp
-  const getBadgeIcon = (skill: string) => {
-    const s = skill.toLowerCase();
-    if (s.includes("chụp") || s.includes("ảnh") || s.includes("media") || s.includes("quay")) {
-      return { icon: <Camera className="w-5 h-5" />, label: "Nhiếp ảnh gia", color: "from-cyan-500 to-blue-500" };
-    }
-    if (s.includes("thiết kế") || s.includes("design") || s.includes("cọ") || s.includes("vẽ")) {
-      return { icon: <Paintbrush className="w-5 h-5" />, label: "Nhà thiết kế", color: "from-pink-500 to-purple-500" };
-    }
-    if (s.includes("tổ chức") || s.includes("sự kiện") || s.includes("event")) {
-      return { icon: <CalendarDays className="w-5 h-5" />, label: "Tổ chức sự kiện", color: "from-amber-500 to-orange-500" };
-    }
-    if (s.includes("code") || s.includes("lập trình") || s.includes("dev") || s.includes("web") || s.includes("phát triển")) {
-      return { icon: <Shield className="w-5 h-5" />, label: "Lập trình viên", color: "from-emerald-500 to-teal-500" };
-    }
-    return { icon: <Activity className="w-5 h-5" />, label: skill, color: "from-slate-900 to-black" };
-  };
 
   // Real-time password validations
   const isPasswordLengthValid = newPassword.length >= 6;
@@ -705,34 +970,43 @@ export default function ProfilePage() {
         className="w-full bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 pt-safe"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200">
-                <Image src="/logo.png" alt="Logo" fill className="object-cover" />
+              <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                <Image src="/logo.png" alt="Logo" fill className="object-cover" priority />
               </div>
-              <span className="font-extrabold text-lg text-slate-900 tracking-wider">SMASH TEAM</span>
+              <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-wider whitespace-nowrap">
+                <span className="sm:hidden">SMASH</span>
+                <span className="hidden sm:inline">SMASH TEAM</span>
+              </span>
             </Link>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4">
-            <Link href="/">
-              <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all text-sm font-semibold">
-                <Home className="w-4 h-4" /> Trang chủ
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            <NotificationBell />
+            <Link href="/" title="Quay về Trang chủ">
+              <button className="flex items-center justify-center gap-1.5 p-2 sm:px-3.5 sm:py-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all text-xs sm:text-sm font-semibold cursor-pointer shrink-0 min-h-[38px]">
+                <Home className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline whitespace-nowrap">Trang chủ</span>
               </button>
             </Link>
             {playerData?.player?.role === "admin" && (
-              <Link href="/admin">
-                <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-black/5 text-black hover:bg-black/10 transition-all text-sm font-bold border border-slate-200">
-                  <Shield className="w-4 h-4" /> Trang Admin
+              <Link href="/admin" title="Trang Quản trị Admin">
+                <button className="flex items-center justify-center gap-1.5 p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-all text-xs sm:text-sm font-bold border border-slate-700 cursor-pointer shrink-0 min-h-[38px] shadow-xs">
+                  <Shield className="w-4 h-4 shrink-0 text-amber-300" />
+                  <span className="hidden sm:inline whitespace-nowrap">Trang Admin</span>
                 </button>
               </Link>
             )}
             <button 
               onClick={handleLogout} 
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all text-sm font-bold border border-rose-500/20"
+              title="Đăng xuất khỏi tài khoản"
+              aria-label="Đăng xuất khỏi tài khoản"
+              className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all text-xs sm:text-sm font-bold border border-rose-200 cursor-pointer shrink-0 min-h-[38px] shadow-xs active:scale-95"
             >
-              <LogOut className="w-4 h-4" /> Đăng xuất
+              <LogOut className="w-4 h-4 shrink-0 text-rose-500" />
+              <span className="whitespace-nowrap">Đăng xuất</span>
             </button>
           </div>
         </div>
@@ -741,9 +1015,60 @@ export default function ProfilePage() {
       {/* Main Grid Content */}
       <div className="max-w-7xl w-full mx-auto px-4 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8 flex-grow">
         
-        {/* LEFT COLUMN: Player Card & Badges */}
-        <div className="lg:col-span-1 space-y-8">
+        {/* LEFT COLUMN: Player Card & Reputation Score */}
+        <div className="lg:col-span-1 space-y-6">
           
+          {/* BANNER HIỆU CHUẨN PHÂN HẠNG (NẾU DƯỚI 3 TRẬN) */}
+          {((playerData.player?.matches_played ?? playerData.matchStats?.total ?? 0) < 3) && (
+            <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-500/15 via-purple-600/15 to-amber-500/15 border-2 border-amber-400/50 shadow-md shadow-amber-500/10">
+              <div className="flex items-center gap-2.5 mb-2">
+                <span className="w-7 h-7 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center text-slate-950 font-black text-xs shadow-xs">
+                  ⚡
+                </span>
+                <span className="text-xs font-black uppercase tracking-wider text-amber-600">
+                  Trạng Thái Phân Hạng
+                </span>
+              </div>
+              <h4 className="text-sm font-black text-slate-900 leading-snug">
+                Đang phân hạng: Hoàn thành thêm {Math.max(0, 3 - (playerData.player?.matches_played ?? playerData.matchStats?.total ?? 0))} trận để xuất hiện trên BXH
+              </h4>
+              <div className="mt-3">
+                <div className="flex justify-between items-center text-[11px] font-bold text-slate-500 mb-1">
+                  <span>Tiến độ xếp hạng</span>
+                  <span className="text-amber-600 font-black">{Math.min(3, (playerData.player?.matches_played ?? playerData.matchStats?.total ?? 0))}/3 trận</span>
+                </div>
+                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full"
+                    style={{ width: `${Math.min(100, (((playerData.player?.matches_played ?? playerData.matchStats?.total ?? 0)) / 3) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* HOAP STAR ACTIVE BANNER */}
+          {gamProfile?.has_active_hope_star && (
+            <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 border-2 border-amber-400/70 shadow-lg shadow-amber-500/10 flex items-center justify-between gap-3 animate-fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-300 border border-amber-200 flex items-center justify-center text-xl shrink-0 shadow-sm animate-bounce">
+                  ⭐
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-amber-900 uppercase tracking-wide flex items-center gap-1.5">
+                    <span>Ngôi Sao Hy Vọng Đang Kích Hoạt</span>
+                  </h4>
+                  <p className="text-[11px] text-amber-800 font-medium">
+                    Nhân đôi ELO trận thắng chính thức kế tiếp (tối đa +20 ELO).
+                  </p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 bg-amber-400 text-slate-950 font-black text-[10px] rounded-full uppercase shrink-0 shadow-2xs">
+                Hiệu lực trận tới
+              </span>
+            </div>
+          )}
+
           {/* COMPETITIVE PLAYER CARD */}
           <CompetitivePlayerCard
             player={playerData.player}
@@ -760,40 +1085,11 @@ export default function ProfilePage() {
               smashCoins: gamProfile?.smash_coins ?? 0,
               dailyStreak: gamProfile?.current_streak ?? 0
             }}
+            reputationScore={playerData.reputation?.score}
             onOpenSettings={() => setIsSettingsModalOpen(true)}
             onOpenShareModal={() => setIsShareModalOpen(true)}
+            onOpenReputationModal={() => setIsReputationModalOpen(true)}
           />
-
-          {/* BADGES WIDGET */}
-          <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
-            <h3 className="font-extrabold text-slate-900 text-lg mb-4 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-black" /> Huy hiệu Đóng góp
-            </h3>
-            
-            {softSkills.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                {softSkills.map((skill, index) => {
-                  const b = getBadgeIcon(skill);
-                  return (
-                    <div key={index} className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-center hover:border-black/30 transition-colors group">
-                      <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${b.color} text-white flex items-center justify-center mb-2 shadow-lg group-hover:scale-110 transition-transform`}>
-                        {b.icon}
-                      </div>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{b.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
-                <div className="w-10 h-10 rounded-full bg-black/5 text-black flex items-center justify-center mb-2">
-                  <Trophy className="w-5 h-5" />
-                </div>
-                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Thành viên tích cực</span>
-                <p className="text-[9px] text-slate-500 mt-1 max-w-[150px]">Hãy tích cực tham gia CLB để nhận các huy hiệu đóng góp nhé!</p>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* RIGHT COLUMN: RSVP & Match History */}
@@ -801,6 +1097,71 @@ export default function ProfilePage() {
           
           {/* RSVP & RESERVATION WIDGET */}
           <div className="rounded-2xl bg-white border border-slate-200 p-6 relative overflow-hidden shadow-sm space-y-4">
+            {/* THẺ PHẠT & TIẾN TRÌNH XÓA THẺ VÀNG CHO KHÁCH VÃNG LAI */}
+            {playerData?.inactivity_warning && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3.5 animate-fade-in">
+                <div className="w-8 h-10 rounded bg-gradient-to-br from-amber-400 to-yellow-500 border border-yellow-200 shadow-md shrink-0 flex items-center justify-center text-xs font-black text-slate-950 mt-0.5">
+                  🟨
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-amber-900 text-xs sm:text-sm">
+                      Kỷ luật chuyên cần: 1 Thẻ vàng ({playerData.inactivity_warning.penaltyReputation} điểm uy tín)
+                    </span>
+                    <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                      {playerData.inactivity_warning.monthDisplay}
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    Bạn chỉ tham gia {playerData.inactivity_warning.sessionsAttended}/{playerData.inactivity_warning.requiredSessions} buổi sinh hoạt trong {playerData.inactivity_warning.monthDisplay}. Hãy tích cực tham gia tối thiểu 2 buổi/tháng để phục hồi điểm uy tín và tránh bị phạt -40 điểm vào lần 2!
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {playerData?.guest_penalty?.hasYellowCard && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3.5 animate-fade-in">
+                <div className="w-8 h-10 rounded bg-gradient-to-br from-amber-400 to-yellow-500 border border-yellow-200 shadow-md shrink-0 flex items-center justify-center text-xs font-black text-slate-950 mt-0.5">
+                  1
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-amber-900 text-xs sm:text-sm">
+                      Đang chịu án phạt: 1 Thẻ vàng (-50 điểm uy tín)
+                    </span>
+                    <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                      {playerData.guest_penalty.cleanSessions}/5 buổi tập
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    Bạn đã giữ chỗ nhưng không tham gia buổi tập trước đó. Hãy hoàn thành điểm danh tại 5 buổi tập tiếp theo để được tự động gỡ bỏ thẻ phạt và phục hồi điểm uy tín.
+                  </p>
+                  <div className="w-full h-2 bg-amber-200/60 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, (playerData.guest_penalty.cleanSessions / 5) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {playerData?.guest_penalty?.hasRedCard && (
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-3.5 animate-fade-in">
+                <div className="w-8 h-10 rounded bg-gradient-to-br from-rose-500 to-red-600 border border-rose-300 shadow-md shrink-0 flex items-center justify-center text-xs font-black text-white mt-0.5">
+                  !
+                </div>
+                <div className="flex-1 space-y-1">
+                  <span className="font-extrabold text-rose-900 text-xs sm:text-sm">
+                    Tài khoản bị phạt Thẻ đỏ & Khóa vĩnh viễn
+                  </span>
+                  <p className="text-xs text-rose-700 leading-relaxed">
+                    Tài khoản đã vi phạm quy chế giữ chỗ 2 lần (No-show tái phạm). Toàn bộ quyền đặt chỗ đã bị hủy và thông tin này đã bị cấm trên toàn hệ thống.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <h3 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
               <Calendar className="w-5 h-5 text-primary" /> Đăng ký Lịch tập & Giữ chỗ (Reservation)
             </h3>
@@ -870,6 +1231,7 @@ export default function ProfilePage() {
             {/* TAB CONTENT: QUESTS */}
             {activeGamTab === "quests" && (
               <div className="space-y-4">
+
                 {sortedQuests.length === 0 ? (
                     <div className="text-center py-8 text-slate-500 text-sm">Không có nhiệm vụ khả dụng.</div>
                   ) : (
@@ -880,7 +1242,7 @@ export default function ProfilePage() {
                       return (
                         <div key={q.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-black/20 transition-all">
                           <div className="flex-1 space-y-1.5">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
                                 q.quest_type === 'daily'
                                   ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
@@ -888,15 +1250,25 @@ export default function ProfilePage() {
                                   ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
                                   : q.quest_type === 'monthly'
                                   ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                                  : q.quest_type === 'one_time'
+                                  ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
                                   : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                               }`}>
-                                {q.quest_type === 'daily' ? 'Hàng ngày' : q.quest_type === 'weekly' ? 'Hàng tuần' : q.quest_type === 'monthly' ? 'Hàng tháng' : 'Mùa giải'}
+                                {q.quest_type === 'daily' ? 'Hàng ngày' : q.quest_type === 'weekly' ? 'Hàng tuần' : q.quest_type === 'monthly' ? 'Hàng tháng' : q.quest_type === 'one_time' ? 'Nhiệm vụ đặc biệt' : 'Mùa giải'}
                               </span>
+                              {(q.action_type === 'custom' || q.action_type === 'manual') && (
+                                <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                  🎯 Ngoài lề
+                                </span>
+                              )}
                               <span className="text-[10px] text-slate-500">
                                 Phần thưởng: <span className="text-emerald-400">+{q.xp_reward} XP</span> • <span className="text-amber-400">+{q.coin_reward} Xu</span>
                               </span>
                             </div>
                             <h4 className="text-sm font-bold text-slate-900 tracking-wide">{q.title}</h4>
+                            {q.description && (
+                              <p className="text-xs text-slate-500 line-clamp-2">{q.description}</p>
+                            )}
                             <div className="flex items-center gap-3">
                               <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                                 <div className="h-full bg-black" style={{ width: `${pct}%` }} />
@@ -906,7 +1278,9 @@ export default function ProfilePage() {
                           </div>
                           <div className="shrink-0 flex items-center justify-end">
                             {q.is_claimed ? (
-                              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Đã nhận</span>
+                              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1">
+                                ✓ Đã nhận
+                              </span>
                             ) : isDone ? (
                               <button
                                 onClick={() => handleClaimQuest(q.id)}
@@ -915,6 +1289,10 @@ export default function ProfilePage() {
                               >
                                 {claimingQuestId === q.id ? "Đang nhận..." : "Nhận Quà"}
                               </button>
+                            ) : (q.action_type === 'custom' || q.action_type === 'manual') ? (
+                              <span className="text-[11px] font-bold text-purple-600 bg-purple-50 px-2.5 py-1.5 rounded-lg border border-purple-100 text-center" title="Admin sẽ duyệt và trao quà khi bạn hoàn thành nhiệm vụ này">
+                                Chờ xét duyệt
+                              </span>
                             ) : (
                               <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">Đang làm</span>
                             )}
@@ -972,9 +1350,40 @@ export default function ProfilePage() {
                           : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
-                      Trang bị (Danh hiệu...)
+                      Trang bị & Bảo bối
                     </button>
                   </div>
+
+                  {/* Banner phát hiện trận thua có thể bảo vệ */}
+                  {shieldStatus?.canUse && (
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-950 via-slate-900 to-indigo-950 border border-cyan-400/40 text-white flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-cyan-950/40">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center text-cyan-300 shrink-0">
+                          <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">
+                              Trận thua gần nhất
+                            </span>
+                            <span className="text-xs font-bold text-slate-300">
+                              (-{shieldStatus.lastMatch?.eloLost} ELO)
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 mt-1">
+                            Bạn đang có <strong>{shieldStatus.availableShields} Khiên Hộ Mệnh</strong>. Dùng khiên ngay để hồi phục điểm ELO và bảo toàn chuỗi thắng!
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleUseShield}
+                        disabled={isUsingShield}
+                        className="w-full sm:w-auto px-5 py-2 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+                      >
+                        {isUsingShield ? "Đang xử lý..." : "Dùng Khiên Ngay"}
+                      </button>
+                    </div>
+                  )}
 
                   {filteredAndSortedInventory.length === 0 ? (
                     <div className="text-center py-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200">
@@ -985,7 +1394,7 @@ export default function ProfilePage() {
                       <p className="text-xs text-slate-500 mt-1 max-w-[200px] mx-auto">
                         {inventorySubTab === "physical" 
                           ? "Hãy tích cực thi đấu, tích lũy xu để đổi những phần quà vật lý hấp dẫn tại Cửa hàng!"
-                          : "Hoàn thành nhiệm vụ và mở hộp quà mỗi tuần để sưu tầm thêm danh hiệu độc quyền nhé!"}
+                          : "Hoàn thành nhiệm vụ và mở hộp quà mỗi tuần để sưu tầm thêm danh hiệu và khiên bảo vệ nhé!"}
                       </p>
                     </div>
                   ) : (
@@ -993,7 +1402,8 @@ export default function ProfilePage() {
                       {filteredAndSortedInventory.map((item: any) => {
                         const isEquipped = item.is_equipped;
                         const isPhysical = item.item_type === 'physical';
-                        const isRedeemed = item.status === 'redeemed';
+                        const isRedeemed = item.status === 'redeemed' || item.status === 'used';
+                        const isShield = item.item_type === 'shield' || (item.item_name && item.item_name.includes('Khiên'));
                         const canEquip = item.item_type === 'title';
                         
                         if (isPhysical) {
@@ -1022,8 +1432,25 @@ export default function ProfilePage() {
                                     {isRedeemed ? "✓ Đã nhận" : "● Chưa sử dụng"}
                                   </span>
                                 </div>
-                                <h4 className="text-sm font-bold text-white tracking-wide">{item.item_name}</h4>
-                                <p className="text-[10px] text-slate-400 mt-1">Đổi lúc: {formatVietnamDate(item.acquired_at)}</p>
+                                <div className="flex items-start gap-3">
+                                  {item.image_url && (
+                                    <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-50 relative">
+                                      <Image
+                                        src={item.image_url}
+                                        alt={item.item_name}
+                                        fill
+                                        sizes="48px"
+                                        loading="lazy"
+                                        unoptimized
+                                        className="object-cover"
+                                      />
+                                    </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 tracking-wide">{item.item_name}</h4>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">Đổi lúc: {formatVietnamDate(item.acquired_at)}</p>
+                                  </div>
+                                </div>
                               </div>
 
                               <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
@@ -1045,6 +1472,166 @@ export default function ProfilePage() {
                           );
                         }
 
+                        // Vật phẩm Khiên Hộ Mệnh (Bảo vệ ELO & chuỗi)
+                        if (isShield) {
+                          const isUsed = item.status === 'used';
+                          const isExpired = item.status === 'expired' || (!isUsed && item.expires_at && new Date(item.expires_at).getTime() <= Date.now());
+                          return (
+                            <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-3 ${
+                              isUsed || isExpired ? "border-slate-200 opacity-60 bg-slate-50/50" : "border-cyan-500/40 hover:border-cyan-500 shadow-xs"
+                            }`}>
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-600 border border-cyan-500/20 flex items-center gap-1">
+                                    <Shield className="w-3 h-3 text-cyan-500" /> Bảo Bối Thi Đấu
+                                  </span>
+                                  <span className={`text-[10px] font-bold ${
+                                    isUsed ? "text-slate-400" : isExpired ? "text-red-500" : "text-emerald-500 flex items-center gap-1"
+                                  }`}>
+                                    {isUsed ? "✓ Đã kích hoạt" : isExpired ? "✕ Đã hết hạn" : "● Sẵn sàng bảo vệ"}
+                                  </span>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                  {item.image_url && (
+                                    <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-50 relative">
+                                      <Image
+                                        src={item.image_url}
+                                        alt={item.item_name}
+                                        fill
+                                        sizes="48px"
+                                        loading="lazy"
+                                        unoptimized
+                                        className="object-cover"
+                                      />
+                                    </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 tracking-wide flex items-center gap-1.5">
+                                      {item.item_name}
+                                    </h4>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">
+                                      Bảo vệ điểm ELO và bảo toàn chuỗi thắng khi bạn gặp thất bại trong trận đấu.
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex flex-col gap-0.5 mt-2 text-[10px]">
+                                  <span className="text-slate-400">Sở hữu: {formatVietnamDate(item.acquired_at)}</span>
+                                  {item.expires_at && !isUsed && (
+                                    <span className={isExpired ? "text-red-500 font-bold" : "text-amber-600 font-bold"}>
+                                      {isExpired ? "Đã hết hạn lúc:" : "Hạn dùng (1 tuần):"} {formatVietnamDate(item.expires_at)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {!isUsed && !isExpired && (
+                                <button
+                                  onClick={handleUseShield}
+                                  disabled={!shieldStatus?.canUse || isUsingShield}
+                                  className={`w-full py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                                    shieldStatus?.canUse 
+                                      ? "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-md shadow-cyan-500/20 active:scale-95 animate-pulse" 
+                                      : "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                                  }`}
+                                >
+                                  {isUsingShield 
+                                    ? "Đang xử lý..." 
+                                    : shieldStatus?.canUse 
+                                    ? `Sử Dụng Khiên Ngay (-${shieldStatus.lastMatch?.eloLost || 0} ELO)` 
+                                    : "Chưa có trận thua cần bảo vệ"}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        // Ngôi Sao Hy Vọng (Hope Star)
+                        const isHopeStar = item.item_type === 'hope_star' || (item.item_name && item.item_name.toLowerCase().includes('ngôi sao hy vọng'));
+                        if (isHopeStar) {
+                          const isActivated = item.status === 'ACTIVATED';
+                          const isConsumed = item.status === 'CONSUMED';
+                          const isRefunded = item.status === 'REFUNDED';
+                          const isExpired = item.status === 'expired' || (item.expires_at && new Date(item.expires_at) <= new Date());
+                          const isUsable = !isActivated && !isConsumed && !isExpired && (item.status === 'OWNED' || item.status === 'unused');
+
+                          return (
+                            <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-3 shadow-xs ${
+                              isActivated ? "border-amber-400 bg-amber-50/20 ring-2 ring-amber-300/40" : "border-slate-200 hover:border-amber-300/60"
+                            }`}>
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center gap-1">
+                                    ⭐ Bảo bối ELO
+                                  </span>
+                                  {isActivated ? (
+                                    <span className="text-[10px] text-amber-600 font-black flex items-center gap-1 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse">
+                                      ● Đang kích hoạt
+                                    </span>
+                                  ) : isConsumed ? (
+                                    <span className="text-[10px] text-slate-400 font-bold">
+                                      Đã tiêu hao
+                                    </span>
+                                  ) : isRefunded ? (
+                                    <span className="text-[10px] text-purple-600 font-bold bg-purple-50 px-1.5 py-0.2 rounded">
+                                      Đã hoàn trả
+                                    </span>
+                                  ) : isExpired ? (
+                                    <span className="text-[10px] text-rose-500 font-bold">
+                                      Hết hạn
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-emerald-600 font-bold">
+                                      Sẵn sàng
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-start gap-3">
+                                  <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-amber-400 to-yellow-300 border border-amber-300 flex items-center justify-center shrink-0 shadow-sm text-2xl">
+                                    ⭐
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 tracking-wide flex items-center gap-1.5">
+                                      {item.item_name}
+                                    </h4>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">
+                                      Nhân đôi ELO khi thắng trận chính thức kế tiếp (tối đa +20 ELO). Không bonus khi thua.
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col gap-0.5 mt-2 text-[10px]">
+                                  <span className="text-slate-400">Sở hữu: {formatVietnamDate(item.acquired_at)}</span>
+                                  {item.expires_at && !isConsumed && (
+                                    <span className={isExpired ? "text-red-500 font-bold" : "text-amber-600 font-bold"}>
+                                      {isExpired ? "Đã hết hạn lúc:" : "Hạn dùng (7 ngày):"} {formatVietnamDate(item.expires_at)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isActivated ? (
+                                <div className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 text-center text-xs font-black rounded-xl shadow-sm flex items-center justify-center gap-1.5 animate-pulse">
+                                  <span>⭐ ĐÃ KÍCH HOẠT (x2 ELO Trận Tới)</span>
+                                </div>
+                              ) : isUsable ? (
+                                <button
+                                  onClick={() => handleActivateHopeStar(item.id)}
+                                  disabled={isActivatingHopeStar === item.id}
+                                  className="w-full py-2 bg-gradient-to-r from-amber-500 hover:from-amber-400 to-yellow-500 text-slate-950 text-xs font-black rounded-xl transition-all shadow-md shadow-amber-500/20 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                >
+                                  {isActivatingHopeStar === item.id ? (
+                                    <span>Đang kích hoạt...</span>
+                                  ) : (
+                                    <span>⭐ Kích Hoạt Trước Trận</span>
+                                  )}
+                                </button>
+                              ) : null}
+                            </div>
+                          );
+                        }
+
+                        // Danh hiệu & các vật phẩm ảo khác
                         return (
                           <div key={item.id} className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between gap-3 ${
                             isEquipped ? "border-black/30" : "border-slate-200 hover:border-black/20"
@@ -1128,6 +1715,75 @@ export default function ProfilePage() {
                     </div>
                   )}
 
+                  {/* Shield Activation & Win Streak Reignited Animation Modal */}
+                  {shieldAnimation && (
+                    <div 
+                      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in cursor-pointer select-none"
+                      onClick={() => setShieldAnimation(null)}
+                    >
+                      <div 
+                        className="relative w-full max-w-sm sm:max-w-md bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-950 border-2 border-cyan-400/60 rounded-3xl p-6 sm:p-8 shadow-[0_0_50px_rgba(6,182,212,0.5)] text-center text-white overflow-hidden animate-scale-up"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Background glowing radiating orbs */}
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
+                        {shieldAnimation.hasStreakFlame && (
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-amber-500/30 rounded-full blur-3xl pointer-events-none animate-pulse" />
+                        )}
+
+                        {/* Radiant Shield Icon */}
+                        <div className="relative mx-auto w-20 h-20 sm:w-24 sm:h-24 mb-3 flex items-center justify-center">
+                          <div className="absolute inset-0 bg-cyan-400/30 rounded-full blur-xl animate-ping" />
+                          <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-500 border border-cyan-300 flex items-center justify-center shadow-lg shadow-cyan-500/50">
+                            <Shield className="w-10 h-10 sm:w-12 sm:h-12 text-white animate-bounce" />
+                          </div>
+                        </div>
+
+                        <span className="inline-block text-[10px] font-black uppercase tracking-widest text-cyan-300 bg-cyan-950/90 border border-cyan-500/40 px-3 py-1 rounded-full mb-2">
+                          Khiên Hộ Mệnh Kích Hoạt
+                        </span>
+
+                        {/* Restored ELO Counter Effect */}
+                        <div className="space-y-1 my-3">
+                          <div className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-cyan-300 to-teal-200 tabular-nums tracking-tight animate-pulse">
+                            +{shieldAnimation.eloRestored} ELO
+                          </div>
+                          <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                            Điểm ELO đã được bảo vệ & hoàn trả
+                          </p>
+                        </div>
+
+                        {/* Flame Win Streak Bursting in Center for 1-3s */}
+                        {shieldAnimation.hasStreakFlame && (
+                          <div className="mt-4 pt-4 border-t border-white/10 flex flex-col items-center justify-center">
+                            <div className="relative my-2">
+                              <div className="text-6xl sm:text-7xl animate-bounce filter drop-shadow-[0_0_30px_rgba(245,158,11,1)]">
+                                🔥
+                              </div>
+                              <div className="absolute -inset-2 bg-amber-500/40 rounded-full blur-xl pointer-events-none animate-ping" />
+                            </div>
+                            <p className="text-sm sm:text-base font-black text-amber-300 uppercase tracking-wide mt-1">
+                              Ngọn Lửa Chuỗi Thắng Bùng Sáng!
+                            </p>
+                            <div className="inline-flex items-center gap-1.5 mt-1.5 px-3.5 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs font-black">
+                              <Flame className="w-4 h-4 text-amber-400 fill-amber-400" />
+                              Bảo toàn chuỗi {shieldAnimation.streakRestored} trận thắng liên tiếp
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-6">
+                          <button
+                            onClick={() => setShieldAnimation(null)}
+                            className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-xs rounded-xl shadow-lg transition-transform active:scale-95 cursor-pointer"
+                          >
+                            Đồng ý & Đóng (Tự đóng sau 3s)
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               );
             })()}
@@ -1151,9 +1807,9 @@ export default function ProfilePage() {
                       <p className="text-xs text-slate-500 mt-1">Mỗi tuần mở 1 lần để có cơ hội nhận lượng lớn Smash Coins hoặc Khiên bảo vệ chuỗi!</p>
                       
                       {/* Tỉ lệ mở hộp quà */}
-                      <div className="flex gap-4 mt-2 text-[10px] text-slate-500 font-bold justify-center sm:justify-start">
-                        <span>💰 75% Xu (20-50)</span>
-                        <span>🛡️ 25% Khiên Bảo Vệ</span>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] text-slate-500 font-bold justify-center sm:justify-start">
+                        <span>💰 85% Xu (5-50)</span>
+                        <span>🛡️ 15% Khiên Bảo Vệ (Tối đa 1 khiên, hạn 7 ngày)</span>
                       </div>
                     </div>
                   </div>
@@ -1186,26 +1842,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Modal thông báo nhận quà Mystery Box */}
-                {mysteryBoxReward && (
-                  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="p-6 rounded-2xl bg-white border border-slate-200 max-w-sm w-full text-center relative overflow-hidden shadow-2xl">
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-black animate-pulse"></div>
-                      <div className="text-5xl my-4">🎉</div>
-                      <h4 className="text-lg font-black text-slate-900">Bạn Đã Nhận Được Quà!</h4>
-                      <p className="text-base font-black text-amber-400 mt-2">{mysteryBoxReward.name}</p>
-                      <p className="text-xs text-slate-500 mt-2">
-                        Phần thưởng đã được cộng trực tiếp vào tài khoản của bạn.
-                      </p>
-                      <button
-                        onClick={() => setMysteryBoxReward(null)}
-                        className="mt-6 w-full py-2 bg-black hover:bg-black/85 text-white text-xs font-black rounded-full cursor-pointer transition-colors"
-                      >
-                        Đồng ý
-                      </button>
-                    </div>
-                  </div>
-                )}
+
 
                 {/* 2. Cửa hàng chính */}
                 <div className="flex items-center justify-between">
@@ -1268,7 +1905,7 @@ export default function ProfilePage() {
                           </div>
 
                           <div className="flex gap-3">
-                            {isPhysical && item.image_url ? (
+                            {item.image_url ? (
                               <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-50 relative">
                                 <Image
                                   src={item.image_url}
@@ -1282,7 +1919,11 @@ export default function ProfilePage() {
                               </div>
                             ) : (
                               <div className="w-20 h-20 rounded-xl bg-black/5 border border-slate-200 flex items-center justify-center shrink-0 text-black">
-                                <Trophy className="w-8 h-8" />
+                                {item.name.toLowerCase().includes('khiên') ? (
+                                  <Shield className="w-8 h-8 text-cyan-600" />
+                                ) : (
+                                  <Trophy className="w-8 h-8" />
+                                )}
                               </div>
                             )}
 
@@ -1352,107 +1993,154 @@ export default function ProfilePage() {
 
             {/* TAB CONTENT: MATCHES */}
             {activeGamTab === "matches" && (
-              <div className="space-y-6">
-                  {/* Title & Dropdown Filter Row */}
-                  <div className="flex items-center justify-between gap-4">
-                    <h4 className="text-xs uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5">
-                      <Trophy className="w-3.5 h-3.5 text-black" /> Hiệu số thi đấu
-                    </h4>
-                    
+              <div className="space-y-4 sm:space-y-5">
+                {/* Title & Filter Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                  <h4 className="text-xs uppercase font-black tracking-widest text-slate-500 flex items-center gap-1.5">
+                    <Trophy className="w-3.5 h-3.5 text-black" /> Hiệu số thi đấu
+                    <span className="text-[10px] text-slate-400 font-bold lowercase">
+                      ({filteredMatches.length} trận)
+                    </span>
+                  </h4>
+                  
+                  {/* Compact Filters Toolbar */}
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                    {/* Thể thức */}
+                    <select
+                      value={matchModeFilter}
+                      onChange={(e) => setMatchModeFilter(e.target.value as any)}
+                      className="text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl px-2.5 py-1.5 focus:ring-1 focus:ring-black/10 focus:border-black outline-none cursor-pointer shadow-2xs"
+                    >
+                      <option value="all">Tất cả thể thức</option>
+                      <option value="doubles">🏸 Đôi</option>
+                      <option value="singles">👤 Đơn</option>
+                    </select>
+
+                    {/* Kết quả */}
+                    <select
+                      value={matchOutcomeFilter}
+                      onChange={(e) => setMatchOutcomeFilter(e.target.value as any)}
+                      className="text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl px-2.5 py-1.5 focus:ring-1 focus:ring-black/10 focus:border-black outline-none cursor-pointer shadow-2xs"
+                    >
+                      <option value="all">Tất cả kết quả</option>
+                      <option value="won">🏆 Thắng</option>
+                      <option value="lost">❌ Thua</option>
+                    </select>
+
+                    {/* Thời gian */}
                     <select
                       value={matchFilter}
                       onChange={(e) => setMatchFilter(e.target.value as any)}
-                      className="text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl px-3 py-1.5 focus:ring-1 focus:ring-black/10 focus:border-black outline-none cursor-pointer"
+                      className="text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl px-2.5 sm:px-3 py-1.5 focus:ring-1 focus:ring-black/10 focus:border-black outline-none cursor-pointer shadow-2xs"
                     >
                       <option value="all">Tất cả thời gian</option>
                       <option value="month">Trong tháng này</option>
                       <option value="week">Trong tuần này</option>
                     </select>
                   </div>
+                </div>
 
-                  {/* 3 Prominent Stats Cards */}
-                  <div className="grid grid-cols-3 gap-3">
-                    {/* Card 1: Total matches */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
-                      <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Tổng Trận</span>
-                      <span className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums tracking-tight">{matchStats.total}</span>
-                    </div>
-
-                    {/* Card 2: Winrate */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
-                      <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Tỷ Lệ Thắng</span>
-                      <span className={`text-xl sm:text-2xl font-black tabular-nums tracking-tight ${matchStats.winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {matchStats.winRate}%
-                      </span>
-                    </div>
-
-                    {/* Card 3: Wins / Losses */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center flex flex-col justify-center items-center gap-1">
-                      <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-500">Thắng / Bại</span>
-                      <span className="text-xl sm:text-2xl font-black tabular-nums tracking-tight text-slate-600">
-                        <span className="text-emerald-400">{matchStats.won}</span>
-                        <span className="text-slate-400 px-0.5">/</span>
-                        <span className="text-rose-400">{matchStats.total - matchStats.won}</span>
-                      </span>
-                    </div>
+                {/* 3 Prominent Stats Cards (Tỉ lệ chuẩn gọn gàng, không chiếm diện tích) */}
+                <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                  {/* Card 1: Total matches */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-2.5 sm:p-3 text-center flex flex-col justify-center items-center gap-0.5 sm:gap-1 shadow-2xs">
+                    <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-400">Tổng Trận</span>
+                    <span className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums tracking-tight">{matchStats.total}</span>
                   </div>
 
-                  {filteredMatches.length > 0 ? (
-                    <div className="space-y-4">
-                      {filteredMatches.map((m: any) => (
-                        <div key={m.id} className="p-4 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-black/20 transition-all">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
-                                m.isDoubles 
-                                  ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" 
-                                  : "bg-black/5 text-black border border-slate-200"
-                              }`}>
-                                {m.isDoubles ? "Đôi" : "Đơn"}
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                {formatVietnamDate(m.created_at)}
-                              </span>
-                            </div>
-                            <p className="text-sm font-bold text-slate-900">
-                              đối thủ: <span className="text-slate-600">{m.opponent}</span>
-                            </p>
-                          </div>
+                  {/* Card 2: Winrate */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-2.5 sm:p-3 text-center flex flex-col justify-center items-center gap-0.5 sm:gap-1 shadow-2xs">
+                    <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-400">Tỷ Lệ Thắng</span>
+                    <span className={`text-xl sm:text-2xl font-black tabular-nums tracking-tight ${matchStats.winRate >= 50 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {matchStats.winRate}%
+                    </span>
+                  </div>
 
-                          <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-10">
-                            <span className="font-extrabold text-base text-slate-600 tracking-wider tabular-nums">
-                              {m.score}
-                            </span>
-                            
-                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full text-center min-w-[70px] ${
-                              m.won
-                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
-                                : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
-                            }`}>
-                              {m.won ? "Thắng" : "Thua"}
-                            </span>
-
-                            <span className={`text-sm font-black tracking-wide min-w-[65px] text-right ${
-                              m.eloChange >= 0 ? "text-emerald-400" : "text-rose-400"
-                            }`}>
-                              {m.eloChange >= 0 ? `+${m.eloChange}` : m.eloChange} ELO
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center p-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
-                      <div className="w-12 h-12 rounded-full bg-black/5 text-black flex items-center justify-center mb-4 border border-slate-200 shadow-inner animate-pulse">
-                        <Trophy className="w-6 h-6" />
-                      </div>
-                      <h4 className="text-slate-900 font-bold text-base mb-1.5">Không tìm thấy trận đấu nào</h4>
-                      <p className="text-xs text-slate-500 max-w-sm mb-6 leading-relaxed">
-                        Không có trận đấu nào được ghi nhận trong khoảng thời gian đã chọn.
-                      </p>
-                    </div>
-                  )}
+                  {/* Card 3: Wins / Losses */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-2.5 sm:p-3 text-center flex flex-col justify-center items-center gap-0.5 sm:gap-1 shadow-2xs">
+                    <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-widest text-slate-400">Thắng / Bại</span>
+                    <span className="text-xl sm:text-2xl font-black tabular-nums tracking-tight text-slate-700">
+                      <span className="text-emerald-500">{matchStats.won}</span>
+                      <span className="text-slate-300 px-0.5">/</span>
+                      <span className="text-rose-500">{matchStats.lost ?? (matchStats.total - matchStats.won)}</span>
+                    </span>
+                  </div>
                 </div>
+
+                {/* Match Cards List (Gọn gàng, thanh thoát, hiển thị nhiều trận để sống ảo/chụp màn hình) */}
+                {filteredMatches.length > 0 ? (
+                  <div className="space-y-2.5 sm:space-y-3">
+                    {filteredMatches.map((m: any) => (
+                      <div 
+                        key={m.id} 
+                        className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 hover:border-black/20 hover:shadow-xs transition-all"
+                      >
+                        {/* Cột trái: Thể thức, Ngày giờ, Đồng đội (nếu có), Đối thủ */}
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded ${
+                              m.isDoubles 
+                                ? "bg-blue-500/10 text-blue-600 border border-blue-500/20" 
+                                : "bg-black/5 text-black border border-slate-200"
+                            }`}>
+                              {m.isDoubles ? "Đôi" : "Đơn"}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {formatVietnamDate(m.created_at)}
+                            </span>
+                          </div>
+
+                          {/* Dòng Đồng đội (khi đánh đôi) */}
+                          {m.isDoubles && (
+                            <p className="text-xs sm:text-sm font-semibold text-slate-700 truncate">
+                              Đồng đội: <span className="font-bold text-slate-900">{m.teammate?.name || m.teammate?.nickname || "Đang cập nhật"}</span>
+                              {m.teammate?.nickname && m.teammate?.name && (
+                                <span className="text-slate-400 text-xs font-normal ml-1">({m.teammate.nickname})</span>
+                              )}
+                            </p>
+                          )}
+
+                          {/* Dòng Đối thủ (chữ Đối thủ viết hoa chỉn chu) */}
+                          <p className="text-xs sm:text-sm font-semibold text-slate-700 truncate">
+                            Đối thủ: <span className="font-bold text-slate-900">{m.opponent}</span>
+                          </p>
+                        </div>
+
+                        {/* Cột phải: Tỉ số, Badge Thắng/Thua, Biến động ELO */}
+                        <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                          <span className="font-black text-base sm:text-lg text-slate-800 tracking-wider tabular-nums min-w-[55px] text-left sm:text-center">
+                            {m.score}
+                          </span>
+                          
+                          <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 sm:px-3 py-1 rounded-full text-center min-w-[65px] ${
+                            m.won
+                              ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                              : "bg-rose-500/10 text-rose-600 border border-rose-500/30"
+                          }`}>
+                            {m.won ? "Thắng" : "Thua"}
+                          </span>
+
+                          <span className={`text-xs sm:text-sm font-black tracking-wide min-w-[65px] text-right ${
+                            m.eloChange >= 0 ? "text-emerald-500" : "text-rose-500"
+                          }`}>
+                            {m.eloChange >= 0 ? `+${m.eloChange}` : m.eloChange} ELO
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-8 sm:p-10 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/5 text-black flex items-center justify-center mb-3 sm:mb-4 border border-slate-200 shadow-inner">
+                      <Trophy className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </div>
+                    <h4 className="text-slate-900 font-bold text-sm sm:text-base mb-1">Không tìm thấy trận đấu nào</h4>
+                    <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
+                      Không có trận đấu nào thỏa mãn bộ lọc đã chọn. Hãy thử thay đổi bộ lọc thời gian, thể thức hoặc kết quả.
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -1513,53 +2201,85 @@ export default function ProfilePage() {
             {/* TAB CONTENTS */}
             {/* 1. Tab Avatar */}
             {activeTab === "avatar" && (
-              <div className="space-y-6 flex flex-col items-center py-4">
-                {/* Preview Circle */}
-                <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-black relative bg-slate-100 flex items-center justify-center">
-                  {avatarPreview ? (
-                    <Image src={avatarPreview} alt="Avatar Preview" fill className="object-cover" />
-                  ) : player.avatar_url ? (
-                    <Image src={player.avatar_url} alt="Current Avatar" fill className="object-cover" unoptimized />
-                  ) : (
-                    <Trophy className="w-12 h-12 text-slate-700" />
+              player.role === "guest" ? (
+                <div className="space-y-4 flex flex-col items-center py-6 text-center">
+                  <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-slate-300 relative bg-slate-100 flex items-center justify-center shadow-inner">
+                    {player.avatar_url ? (
+                      <Image src={player.avatar_url} alt="Current Avatar" fill className="object-cover" unoptimized />
+                    ) : (
+                      <Trophy className="w-12 h-12 text-slate-700" />
+                    )}
+                  </div>
+
+                  <div className="p-4 bg-amber-500/10 border border-amber-400/40 rounded-2xl max-w-sm text-center">
+                    <p className="text-xs font-black text-amber-800 uppercase tracking-wide flex items-center justify-center gap-1.5">
+                      <span>🛡️</span> Tài khoản Vãng lai
+                    </p>
+                    <p className="text-[11px] text-slate-600 mt-1.5 leading-relaxed font-medium">
+                      Tài khoản vãng lai được đồng bộ avatar tự động từ Google hoặc bộ avatar mặc định của CLB để tối ưu lưu trữ. Để tải ảnh đại diện tuỳ chọn từ thiết bị, hãy đăng ký trở thành Thành viên chính thức!
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSettingsModalOpen(false);
+                      setIsMemberOnlyModalOpen(true);
+                    }}
+                    className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs rounded-xl shadow-md hover:opacity-90 transition-all cursor-pointer"
+                  >
+                    Xem đặc quyền Thành viên
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6 flex flex-col items-center py-4">
+                  {/* Preview Circle */}
+                  <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-black relative bg-slate-100 flex items-center justify-center">
+                    {avatarPreview ? (
+                      <Image src={avatarPreview} alt="Avatar Preview" fill className="object-cover" />
+                    ) : player.avatar_url ? (
+                      <Image src={player.avatar_url} alt="Current Avatar" fill className="object-cover" unoptimized />
+                    ) : (
+                      <Trophy className="w-12 h-12 text-slate-700" />
+                    )}
+                  </div>
+
+                  <div className="w-full text-center">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 rounded-xl font-bold text-xs transition-all cursor-pointer active:scale-95"
+                    >
+                      Chọn file ảnh đại diện
+                    </button>
+                    <p className="text-[10px] text-slate-500 mt-2">Định dạng hỗ trợ: JPG, PNG, WEBP. Tối đa 5MB.</p>
+                  </div>
+
+                  {avatarFile && (
+                    <button
+                      onClick={handleUploadAvatar}
+                      disabled={isUploadingAvatar}
+                      className="w-full py-3 bg-black text-white rounded-full font-bold text-xs hover:bg-black/85 transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                    >
+                      {isUploadingAvatar ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Đang tải ảnh lên Cloudinary...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" /> Xác nhận Cập nhật Avatar
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
-
-                <div className="w-full text-center">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="image/*"
-                    className="hidden"
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 rounded-xl font-bold text-xs transition-all cursor-pointer active:scale-95"
-                  >
-                    Chọn file ảnh đại diện
-                  </button>
-                  <p className="text-[10px] text-slate-500 mt-2">Định dạng hỗ trợ: JPG, PNG, WEBP. Tối đa 5MB.</p>
-                </div>
-
-                {avatarFile && (
-                  <button
-                    onClick={handleUploadAvatar}
-                    disabled={isUploadingAvatar}
-                    className="w-full py-3 bg-black text-white rounded-full font-bold text-xs hover:bg-black/85 transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
-                  >
-                    {isUploadingAvatar ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Đang tải ảnh lên Cloudinary...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" /> Xác nhận Cập nhật Avatar
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
+              )
             )}
 
             {/* 2. Tab Profile */}
@@ -1711,6 +2431,21 @@ export default function ProfilePage() {
               </form>
             )}
 
+            {/* Logout Action in Settings */}
+            <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsModalOpen(false);
+                  handleLogout();
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-rose-600 bg-rose-50/60 hover:bg-rose-100 border border-rose-200 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                <LogOut className="w-4 h-4 text-rose-500" />
+                <span>Đăng xuất tài khoản</span>
+              </button>
+            </div>
+
           </div>
         </div>
       )}
@@ -1725,6 +2460,32 @@ export default function ProfilePage() {
         achievements={playerData.achievements}
         streak={playerData.streak}
         title={playerData.title}
+      />
+
+      {/* REPUTATION HISTORY MODAL */}
+      <ReputationHistoryModal
+        isOpen={isReputationModalOpen}
+        onClose={() => setIsReputationModalOpen(false)}
+        reputation={playerData.reputation}
+      />
+
+      {/* HIỆU ỨNG NHẬN THƯỞNG LỘNG LẪY GIỮA MÀN HÌNH (QUESTS & MYSTERY BOX) */}
+      <RewardCelebrationModal
+        data={rewardCelebration}
+        onClose={() => setRewardCelebration(null)}
+      />
+
+      {/* MODAL TEASER & LOCK ĐẶC QUYỀN THÀNH VIÊN CHO TÀI KHOẢN GUEST */}
+      <InactivityWarningModal
+        warning={inactivityWarning}
+        isOpen={isInactivityModalOpen}
+        onClose={() => setIsInactivityModalOpen(false)}
+        onAcknowledgeSuccess={() => fetchProfileData()}
+      />
+
+      <MemberOnlyModal
+        isOpen={isMemberOnlyModalOpen}
+        onClose={() => setIsMemberOnlyModalOpen(false)}
       />
 
       <footer className="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-xs">

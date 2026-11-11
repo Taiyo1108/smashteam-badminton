@@ -21,9 +21,12 @@ import ClubBenefitsBento from "@/app/components/recruitment/ClubBenefitsBento";
 import ClubHighlightsMasonry from "@/app/components/recruitment/ClubHighlightsMasonry";
 import EventRecruitmentCard from "@/app/components/recruitment/EventRecruitmentCard";
 import RegistrationModal from "@/app/components/recruitment/RegistrationModal";
+import SponsorsMarquee, { SponsorItem, DEFAULT_SPONSORS } from "@/app/components/home/SponsorsMarquee";
 import { formatVietnamDate } from "@/app/utils/date";
 import { format } from "date-fns";
+import NotificationBell from "@/app/components/notifications/NotificationBell";
 import SessionReservationWidget from "@/app/components/SessionReservationWidget";
+import InactivityWarningModal, { InactivityWarningData } from "@/app/components/InactivityWarningModal";
 
 // ===== Giới thiệu & Liên hệ động từ site_settings (admin chỉnh ở Quản lý nội dung) =====
 const ADDRESS_FALLBACK = "304 ĐT743A, Đông Hòa, Hồ Chí Minh";
@@ -73,7 +76,20 @@ export default function Home() {
   const [activeCampaign, setActiveCampaign] = useState<any>(null);
 
   // Site Settings (Featured event, cover, config)
-  const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
+  const [siteSettings, setSiteSettings] = useState<Record<string, string>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        if ((window as any).__INITIAL_SITE_SETTINGS__) {
+          return (window as any).__INITIAL_SITE_SETTINGS__;
+        }
+        const cached = localStorage.getItem("site_settings_cache");
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return {};
+  });
+  const [isMounted, setIsMounted] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [featuredEvent, setFeaturedEvent] = useState<any>(null);
 
   // Số liệu thật cho dải stats (rớt về số mặc định của ClubStats khi API lỗi)
@@ -88,10 +104,44 @@ export default function Home() {
     siteSettings.social_links, [...SOCIAL_FALLBACK]
   ).filter((s) => s && String(s.label || "").trim());
 
+  // Tiêu đề & Kiểu chữ Hero trang chủ do admin cấu hình trong Quản lý nội dung
+  const heroTitleLine1 = (siteSettings.homepage_hero_title_line1 || "").trim() || "ĐAM MÊ DẪN LỐI";
+  const heroTitleLine2 = (siteSettings.homepage_hero_title_line2 !== undefined ? siteSettings.homepage_hero_title_line2 : "ĐẬP TAN GIỚI HẠN").trim();
+  const heroSubtitle = (siteSettings.homepage_hero_subtitle || "").trim() || "Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!";
+  const heroFont = siteSettings.homepage_hero_font || "inter";
+  const heroStyle = siteSettings.homepage_hero_style || "classic";
+  // 2 Nút hành động CTA Hero trang chủ do admin cấu hình trong Quản lý nội dung
+  const heroCtaPrimaryText = (siteSettings.homepage_hero_cta_primary_text || "").trim() || "Đăng ký tài khoản vãng lai ngay";
+  const heroCtaPrimaryLink = (siteSettings.homepage_hero_cta_primary_link || "").trim() || "/login?mode=register";
+  const heroCtaSecondaryText = (siteSettings.homepage_hero_cta_secondary_text || "").trim() || "Khám phá hoạt động CLB";
+  const heroCtaSecondaryLink = (siteSettings.homepage_hero_cta_secondary_link || "").trim() || "#recruitment-event-section";
+  // Cấu hình Dải Nhà tài trợ CLB chạy ngang ở đáy hình nền Hero
+  const sponsorsEnabled = siteSettings.sponsors_enabled !== "false";
+  const sponsorsSpeed = (siteSettings.sponsors_speed || "normal") as "fast" | "normal" | "slow" | "paused";
+  const sponsorsTitle = siteSettings.sponsors_title !== undefined ? siteSettings.sponsors_title : "Nhà Tài Trợ & Đối Tác Đồng Hành";
+  const sponsorsList = parseJsonSetting<SponsorItem[]>(siteSettings.sponsors_list, DEFAULT_SPONSORS);
+
+  const isHeroReady = isMounted && (settingsLoaded || Object.keys(siteSettings).length > 0);
+
+  const getHeroFontClass = (fontKey?: string) => {
+    switch (fontKey) {
+      case "montserrat": return "font-hero-montserrat";
+      case "bevietnam": return "font-hero-bevietnam";
+      case "oswald": return "font-hero-oswald uppercase tracking-wide";
+      case "kanit": return "font-hero-kanit";
+      case "barlow": return "font-hero-barlow uppercase tracking-wider";
+      case "inter":
+      default:
+        return "font-hero-inter";
+    }
+  };
+
   // User auth and profile state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState("");
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [inactivityWarning, setInactivityWarning] = useState<InactivityWarningData | null>(null);
+  const [isInactivityModalOpen, setIsInactivityModalOpen] = useState(false);
 
   // Home cover image
   const [coverUrl, setCoverUrl] = useState("");
@@ -129,6 +179,7 @@ export default function Home() {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem("token");
     localStorage.removeItem("admin_token");
     localStorage.removeItem("user_role");
     localStorage.removeItem("user");
@@ -148,12 +199,23 @@ export default function Home() {
       setIsLoggedIn(true);
       if (role) setUserRole(role);
 
+      try {
+        const cachedUser = localStorage.getItem("user");
+        if (cachedUser) {
+          setCurrentUser(JSON.parse(cachedUser));
+        }
+      } catch {}
+
       fetch(`${API_URL}/api/profile/me?t=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(res => res.ok ? res.json() : null)
         .then(data => {
           if (data && data.player) {
+            if (data.player.is_profile_completed === false) {
+              router.push("/onboarding");
+              return;
+            }
             setCurrentUser(data.player);
             if (data.upcomingSession) {
               setUpcomingSessionHighlight(data.upcomingSession);
@@ -163,6 +225,18 @@ export default function Home() {
         .catch(e => console.error("Error loading user profile:", e));
     }
 
+    setIsMounted(true);
+
+    // Sync with cached settings if state was empty during hydration
+    try {
+      const cached = (window as any).__INITIAL_SITE_SETTINGS__ ||
+        (localStorage.getItem("site_settings_cache") ? JSON.parse(localStorage.getItem("site_settings_cache")!) : null);
+      if (cached) {
+        setSiteSettings((prev) => Object.keys(prev).length === 0 ? cached : prev);
+        setSettingsLoaded(true);
+      }
+    } catch {}
+
     const cachedCover = localStorage.getItem("homepage_cover_url");
     if (cachedCover) setCoverUrl(cachedCover);
 
@@ -171,13 +245,20 @@ export default function Home() {
       .then(data => {
         if (data) {
           setSiteSettings(data);
+          setSettingsLoaded(true);
+          try {
+            localStorage.setItem("site_settings_cache", JSON.stringify(data));
+          } catch {}
           if (data.homepage_cover_url) {
             setCoverUrl(data.homepage_cover_url);
             localStorage.setItem("homepage_cover_url", data.homepage_cover_url);
           }
         }
       })
-      .catch(e => console.error("Error loading settings:", e));
+      .catch(e => {
+        console.error("Error loading settings:", e);
+        setSettingsLoaded(true);
+      });
 
     fetch(`${API_URL}/api/media?t=${Date.now()}`)
       .then(res => res.json())
@@ -347,7 +428,7 @@ export default function Home() {
         className="fixed top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-purple-100 shadow-sm transition-all pt-safe"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-18 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 sm:h-18 flex items-center justify-between gap-2 sm:gap-3">
           
           {/* LOGO LINK */}
           <Link 
@@ -357,10 +438,10 @@ export default function Home() {
               setActiveTab("intro");
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            className="flex items-center gap-2.5 group cursor-pointer focus-ring rounded-xl p-1"
+            className="flex items-center gap-2 sm:gap-2.5 group cursor-pointer focus-ring rounded-xl p-1 shrink-0"
             title="SmashTeam - Về trang chủ"
           >
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_15px_rgba(122,34,224,0.35)] border border-primary/30 group-hover:border-primary group-hover:scale-105 transition-all bg-secondary">
+            <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_15px_rgba(122,34,224,0.35)] border border-primary/30 group-hover:border-primary group-hover:scale-105 transition-all bg-secondary shrink-0">
               <Image
                 src="/logo.png"
                 alt="SmashTeam Logo"
@@ -371,10 +452,10 @@ export default function Home() {
               />
             </div>
             <div className="flex flex-col text-left">
-              <span className="font-black text-xl sm:text-2xl tracking-tight text-secondary leading-none group-hover:text-primary transition-colors">
+              <span className="font-black text-lg sm:text-2xl tracking-tight text-secondary leading-none group-hover:text-primary transition-colors whitespace-nowrap">
                 Smash<span className="text-primary">Team</span>
               </span>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Badminton Club</span>
+              <span className="hidden sm:block text-[9px] font-bold uppercase tracking-widest text-slate-400">Badminton Club</span>
             </div>
           </Link>
 
@@ -407,17 +488,23 @@ export default function Home() {
           </nav>
 
           {/* RIGHT ACTIONS: AUTH BUTTONS / USER PROFILE */}
-          <div className="flex gap-2 sm:gap-3 items-center">
-            {isLoggedIn ? (
-              <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex gap-1.5 sm:gap-3 items-center shrink-0">
+            {/* Chuông Thông Báo Website */}
+            <NotificationBell />
+
+            {!isMounted ? (
+              <div className="w-20 sm:w-28 h-9 rounded-full bg-slate-100/80 animate-pulse shrink-0" />
+            ) : isLoggedIn ? (
+              <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
                 {/* Nút Quản trị cho Admin */}
                 {userRole === "admin" && (
                   <Link href="/admin">
                     <button 
                       id="nav-admin-link"
-                      className="min-h-[40px] px-4 py-1.5 bg-secondary hover:bg-slate-900 text-white rounded-full font-bold text-xs shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer focus-ring border border-slate-700"
+                      className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-4 py-1.5 bg-secondary hover:bg-slate-900 text-white rounded-full font-bold text-xs shadow-xs hover:shadow-md transition-all active:scale-95 cursor-pointer focus-ring border border-slate-700 shrink-0 whitespace-nowrap"
                     >
-                      Quản trị
+                      <span className="sm:hidden">Admin</span>
+                      <span className="hidden sm:inline">Quản trị</span>
                     </button>
                   </Link>
                 )}
@@ -425,23 +512,29 @@ export default function Home() {
                 {/* Profile Avatar Chip */}
                 <button
                   id="nav-user-profile"
-                  onClick={() => router.push("/profile")}
-                  className="group relative flex items-center gap-2.5 p-1 rounded-full hover:bg-purple-50 transition-all focus-ring cursor-pointer min-h-[44px]"
+                  onClick={() => {
+                    if (currentUser?.is_profile_completed === false) {
+                      router.push("/onboarding");
+                    } else {
+                      router.push("/profile");
+                    }
+                  }}
+                  className="group relative flex items-center gap-2 p-0.5 sm:p-1 rounded-full hover:bg-purple-50 transition-all focus-ring cursor-pointer min-h-[36px] sm:min-h-[44px] shrink-0"
                   title={`Trang cá nhân: ${currentUser?.full_name || "Hội viên"}`}
                   aria-label={`Trang cá nhân của ${currentUser?.full_name || "Hội viên"}`}
                 >
                   {currentUser?.selected_avatar_frame ? (
-                    <div className="relative transition-transform group-hover:scale-105">
+                    <div className="relative transition-transform group-hover:scale-105 shrink-0">
                       <AvatarWithFrame
                         avatarUrl={currentUser.avatar_url || ""}
                         frameStyle={currentUser.selected_avatar_frame}
-                        sizeClass="w-9 h-9 sm:w-10 sm:h-10"
+                        sizeClass="w-8 h-8 sm:w-10 sm:h-10"
                         alt={currentUser.full_name || "Profile"}
                       />
                       <span className="absolute bottom-0 right-0 z-30 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full shadow-sm" aria-hidden="true" />
                     </div>
                   ) : (
-                    <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full p-0.5 bg-gradient-to-tr from-primary to-smash-violet shadow-sm transition-transform group-hover:scale-105 group-hover:shadow-[0_0_12px_rgba(122,34,224,0.4)]">
+                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-full p-0.5 bg-gradient-to-tr from-primary to-smash-violet shadow-sm transition-transform group-hover:scale-105 group-hover:shadow-[0_0_12px_rgba(122,34,224,0.4)] shrink-0">
                       <div className="w-full h-full rounded-full overflow-hidden bg-secondary flex items-center justify-center relative">
                         {currentUser?.avatar_url ? (
                           <Image
@@ -481,29 +574,31 @@ export default function Home() {
                   onClick={handleLogout}
                   title="Đăng xuất khỏi tài khoản"
                   aria-label="Đăng xuất khỏi tài khoản"
-                  className="min-h-[40px] min-w-[40px] sm:min-w-0 sm:px-4 py-1.5 rounded-full border border-slate-200 hover:border-rose-300 hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer focus-ring"
+                  className="shrink-0 min-h-[36px] min-w-[36px] sm:min-h-[40px] sm:min-w-0 px-2 sm:px-3.5 py-1.5 rounded-full border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer focus-ring shadow-xs"
                 >
-                  <LogOut className="w-4 h-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Đăng xuất</span>
+                  <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500 shrink-0" aria-hidden="true" />
+                  <span className="hidden sm:inline whitespace-nowrap">Đăng xuất</span>
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 <Link href="/login">
                   <button 
                     id="nav-login-btn"
-                    className="min-h-[40px] px-4 py-1.5 text-secondary hover:text-primary transition-all font-bold text-xs cursor-pointer focus-ring rounded-full hover:bg-slate-100"
+                    className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-4 py-1.5 text-secondary hover:text-primary transition-all font-bold text-xs cursor-pointer focus-ring rounded-full hover:bg-slate-100 whitespace-nowrap"
                   >
                     Đăng nhập
                   </button>
                 </Link>
-                <button 
-                  id="nav-register-btn"
-                  onClick={() => setIsRegisterModalOpen(true)}
-                  className="min-h-[40px] px-5 py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform active:scale-95 shadow-md shadow-primary/30 text-xs cursor-pointer focus-ring"
-                >
-                  Gia nhập ngay
-                </button>
+                <Link href="/login?mode=register">
+                  <button 
+                    id="nav-register-btn"
+                    className="min-h-[36px] sm:min-h-[40px] px-3 sm:px-5 py-1.5 sm:py-2 bg-primary hover:bg-primary-hover text-white rounded-full font-bold transition-all transform active:scale-95 shadow-md shadow-primary/30 text-xs cursor-pointer focus-ring whitespace-nowrap flex items-center justify-center"
+                  >
+                    <span className="sm:hidden">Đăng ký</span>
+                    <span className="hidden sm:inline">Đăng ký tài khoản vãng lai</span>
+                  </button>
+                </Link>
               </div>
             )}
           </div>
@@ -554,14 +649,14 @@ export default function Home() {
             className="flex-1 flex flex-col"
           >
             {/* HERO SECTION: High-Energy Athletic Purple-Black Theme */}
-            <section aria-labelledby="hero-title" className="relative min-h-[620px] md:min-h-[700px] flex items-center justify-center overflow-hidden bg-secondary">
+            <section aria-labelledby="hero-title" className="relative min-h-[600px] md:min-h-[660px] lg:min-h-[700px] flex items-center justify-center overflow-hidden bg-secondary">
               {/* Background Cover + Radial Gradient Mesh */}
               <div className="absolute inset-0 z-0">
                 {coverUrl ? (
                   <motion.div
                     key={coverUrl}
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.35 }}
+                    animate={{ opacity: 0.75 }}
                     transition={{ duration: 0.8 }}
                     className="absolute inset-0"
                   >
@@ -570,7 +665,7 @@ export default function Home() {
                       alt="SmashTeam Hero Badminton"
                       fill
                       sizes="100vw"
-                      className="object-cover"
+                      className="object-cover brightness-110 contrast-105"
                       priority
                     />
                   </motion.div>
@@ -582,44 +677,78 @@ export default function Home() {
                 <div className="absolute inset-0 bg-[radial-gradient(#7A22E0_1px,transparent_1px)] [background-size:32px_32px] opacity-15 pointer-events-none" />
                 <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-primary/30 rounded-full blur-[140px] pointer-events-none" />
                 <div className="absolute bottom-0 right-1/4 w-[400px] h-[300px] bg-fuchsia-600/20 rounded-full blur-[120px] pointer-events-none" />
-                <div className="absolute inset-0 bg-gradient-to-t from-secondary via-secondary/70 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-secondary/85 via-secondary/25 to-black/20" />
               </div>
 
-              <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto py-16 sm:py-20 space-y-7">
-                {/* Brand / Campaign Tag */}
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4 }}
-                  className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-primary/25 border border-primary/50 text-purple-200 text-xs font-black uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(157,78,221,0.35)]"
-                >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                  </span>
-                  <span>Chiến Dịch Tuyển Vợt Thủ Mùa Giải {new Date().getFullYear()}</span>
-                </motion.div>
-
-                {/* Primary H1 Heading */}
+              <div className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto py-16 sm:py-20 md:py-24 space-y-7 flex flex-col justify-center items-center w-full">
+                {/* Primary H1 Heading - Customizable Font & Style */}
                 <motion.h1 
                   id="hero-title"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.1 }}
-                  className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight leading-[1.08]"
+                  suppressHydrationWarning
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: isHeroReady ? 1 : 0, y: isHeroReady ? 0 : 15 }}
+                  transition={{ duration: 0.35 }}
+                  className={`text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.15] sm:leading-[1.12] ${getHeroFontClass(heroFont)}`}
                 >
-                  ĐAM MÊ DẪN LỐI <br className="hidden sm:inline" />
-                  <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent">ĐẬP TAN GIỚI HẠN</span>
+                  {heroStyle === "hollow" ? (
+                    <>
+                      <span className="hero-hollow-text-white block sm:inline-block">{heroTitleLine1}</span>
+                      {heroTitleLine2 && (
+                        <>
+                          {" "}
+                          <br className="hidden sm:inline" />
+                          <span className="hero-hollow-text-glow block sm:inline-block">{heroTitleLine2}</span>
+                        </>
+                      )}
+                    </>
+                  ) : heroStyle === "neon" ? (
+                    <>
+                      <span className="text-white block sm:inline-block drop-shadow-[0_0_20px_rgba(255,255,255,0.7)]">{heroTitleLine1}</span>
+                      {heroTitleLine2 && (
+                        <>
+                          {" "}
+                          <br className="hidden sm:inline" />
+                          <span className="text-fuchsia-400 block sm:inline-block drop-shadow-[0_0_28px_rgba(217,70,239,0.9)]">{heroTitleLine2}</span>
+                        </>
+                      )}
+                    </>
+                  ) : heroStyle === "solid_white" ? (
+                    <>
+                      <span className="text-white block sm:inline-block drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">{heroTitleLine1}</span>
+                      {heroTitleLine2 && (
+                        <>
+                          {" "}
+                          <br className="hidden sm:inline" />
+                          <span className="text-white/95 block sm:inline-block drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">{heroTitleLine2}</span>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    /* Default "classic": Kiểu cũ nguyên bản (Trắng + Gradient tím hồng rực rỡ) */
+                    <>
+                      <span className="text-white block sm:inline-block drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">{heroTitleLine1}</span>
+                      {heroTitleLine2 && (
+                        <>
+                          {" "}
+                          <br className="hidden sm:inline" />
+                          <span className="bg-gradient-to-r from-purple-400 via-primary-hover to-pink-400 bg-clip-text text-transparent block sm:inline-block drop-shadow-[0_0_30px_rgba(157,78,221,0.55)]">
+                            {heroTitleLine2}
+                          </span>
+                        </>
+                      )}
+                    </>
+                  )}
                 </motion.h1>
                 
-                {/* Value Proposition Subtitle */}
+                {/* Value Proposition Subtitle (Smaller size) */}
                 <motion.p 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
-                  className="text-base sm:text-lg md:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-normal"
+                  suppressHydrationWarning
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: isHeroReady ? 1 : 0, y: isHeroReady ? 0 : 15 }}
+                  transition={{ duration: 0.35, delay: 0.05 }}
+                  className="text-xs sm:text-sm md:text-base text-slate-300/90 max-w-2xl mx-auto leading-relaxed font-normal"
                 >
-                  Smash Team - Câu lạc bộ cầu lông sinh viên năng động, chuyên nghiệp và nhiệt huyết hàng đầu khu vực Làng Đại Học. Nơi thanh xuân bùng nổ cùng những đường cầu!
+                  {heroSubtitle}
                 </motion.p>
 
                 {/* 2 Prominent Action CTA Buttons */}
@@ -629,27 +758,91 @@ export default function Home() {
                   transition={{ duration: 0.4, delay: 0.3 }}
                   className="flex flex-wrap items-center justify-center gap-4 pt-2"
                 >
-                  <button 
-                    id="hero-cta-apply-now"
-                    onClick={() => setIsRegisterModalOpen(true)}
-                    className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
-                  >
-                    <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
-                    <span>Ứng tuyển thành viên ngay</span>
-                    <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
-                  </button>
+                  {!isMounted ? (
+                    <div className="min-h-[52px] w-64 bg-white/10 backdrop-blur-md rounded-full animate-pulse" />
+                  ) : isLoggedIn && (heroCtaPrimaryLink.toLowerCase().includes("register") || heroCtaPrimaryLink.toLowerCase().includes("dang-ky")) ? (
+                    <Link href={userRole === "admin" || currentUser?.role === "admin" ? "/admin" : (currentUser?.is_profile_completed === false ? "/onboarding" : "/profile")}>
+                      <button 
+                        id="hero-cta-profile"
+                        className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
+                      >
+                        <User className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                        <span>{userRole === "admin" || currentUser?.role === "admin" ? "Vào trang quản trị" : "Trang cá nhân của bạn"}</span>
+                        <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
+                      </button>
+                    </Link>
+                  ) : heroCtaPrimaryLink.startsWith("#") ? (
+                    <button 
+                      id="hero-cta-primary-anchor"
+                      onClick={() => {
+                        const el = document.getElementById(heroCtaPrimaryLink.replace(/^#/, ""));
+                        if (el) el.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
+                    >
+                      <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                      <span>{heroCtaPrimaryText}</span>
+                      <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
+                    </button>
+                  ) : heroCtaPrimaryLink.startsWith("http://") || heroCtaPrimaryLink.startsWith("https://") ? (
+                    <a
+                      id="hero-cta-primary-external"
+                      href={heroCtaPrimaryLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
+                    >
+                      <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                      <span>{heroCtaPrimaryText}</span>
+                      <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
+                    </a>
+                  ) : (
+                    <Link href={heroCtaPrimaryLink}>
+                      <button 
+                        id="hero-cta-apply-now"
+                        className="min-h-[52px] px-8 sm:px-10 py-4 bg-primary hover:bg-primary-hover text-white text-sm sm:text-base font-black rounded-full shadow-[0_0_30px_rgba(122,34,224,0.6)] hover:shadow-[0_0_40px_rgba(157,78,221,0.85)] transition-all transform active:scale-95 flex items-center gap-2.5 cursor-pointer focus-ring"
+                      >
+                        <Sparkles className="w-5 h-5 text-amber-300" aria-hidden="true" />
+                        <span>{heroCtaPrimaryText}</span>
+                        <ArrowRight className="w-4 h-4 text-purple-200" aria-hidden="true" />
+                      </button>
+                    </Link>
+                  )}
 
-                  <button 
-                    id="hero-cta-explore-activities"
-                    onClick={() => {
-                      const el = document.getElementById('recruitment-event-section');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="min-h-[52px] px-8 sm:px-9 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
-                  >
-                    <Activity className="w-4 h-4 text-cyan-300" aria-hidden="true" />
-                    <span>Khám phá hoạt động CLB</span>
-                  </button>
+                  {heroCtaSecondaryLink.startsWith("#") ? (
+                    <button 
+                      id="hero-cta-explore-activities"
+                      onClick={() => {
+                        const el = document.getElementById(heroCtaSecondaryLink.replace(/^#/, ""));
+                        if (el) el.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="min-h-[52px] px-8 sm:px-9 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                    >
+                      <Activity className="w-4 h-4 text-cyan-300" aria-hidden="true" />
+                      <span>{heroCtaSecondaryText}</span>
+                    </button>
+                  ) : heroCtaSecondaryLink.startsWith("http://") || heroCtaSecondaryLink.startsWith("https://") ? (
+                    <a
+                      id="hero-cta-secondary-external"
+                      href={heroCtaSecondaryLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[52px] px-8 sm:px-9 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                    >
+                      <Activity className="w-4 h-4 text-cyan-300" aria-hidden="true" />
+                      <span>{heroCtaSecondaryText}</span>
+                    </a>
+                  ) : (
+                    <Link href={heroCtaSecondaryLink}>
+                      <button 
+                        id="hero-cta-secondary-internal"
+                        className="min-h-[52px] px-8 sm:px-9 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-sm sm:text-base font-bold rounded-full border border-white/25 hover:border-white/50 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer focus-ring"
+                      >
+                        <Activity className="w-4 h-4 text-cyan-300" aria-hidden="true" />
+                        <span>{heroCtaSecondaryText}</span>
+                      </button>
+                    </Link>
+                  )}
                 </motion.div>
 
                 {/* DẢI STATS COUNTER UY TÍN (số thật từ /api/stats) */}
@@ -661,40 +854,53 @@ export default function Home() {
                 >
                   <ClubStats
                     memberCount={clubStats ? String(clubStats.activeMembers) : undefined}
-                     sessionsPerWeek="2 - 3"
-                    tournamentsCount={clubStats ? String(clubStats.eventsCount) : undefined}
+                    sessionsPerWeek="2 - 3"
+                    totalMatchesCount={clubStats ? String(clubStats.recordedMatches ?? 0) : undefined}
                     topElo={clubStats ? String(clubStats.topElo) : undefined}
                   />
                 </motion.div>
               </div>
+
             </section>
 
-            {/* FEATURED EVENT COUNTDOWN BOARD (For Upcoming Sessions / Matches / Recruitment) */}
-            <FeaturedEventCountdown
-              settings={siteSettings}
-              featuredEvent={featuredEvent}
-              upcomingSession={upcomingSessionHighlight || upcomingSessions[0]}
-              onViewSchedule={() => {
-                setActiveTab("schedule");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              onRecruitmentClick={() => {
-                const el = document.getElementById("recruitment-event-section");
-                if (el) {
-                  el.scrollIntoView({ behavior: "smooth" });
-                }
-                setIsRegisterModalOpen(true);
-              }}
-              isLoggedIn={isLoggedIn}
+            {/* DẢI HÌNH ẢNH NHÀ TÀI TRỢ CHẠY NGANG (HÀNG RIÊNG BIỆT DƯỚI ẢNH BÌA HERO) */}
+            <SponsorsMarquee
+              sponsors={sponsorsList}
+              speed={sponsorsSpeed}
+              title={sponsorsTitle}
+              enabled={sponsorsEnabled}
             />
 
-            {/* RECRUITMENT EVENT HIGHLIGHT CARD (MODULE 2A - User Flow) */}
-            <div id="recruitment-event-section" className="pt-8">
-              <EventRecruitmentCard
-                campaign={activeCampaign}
-                onOpenRegister={() => setIsRegisterModalOpen(true)}
+            {/* FEATURED EVENT COUNTDOWN BOARD (For Upcoming Sessions / Matches / Recruitment) */}
+            {siteSettings.featured_event_enabled !== "false" && (
+              <FeaturedEventCountdown
+                settings={siteSettings}
+                featuredEvent={featuredEvent}
+                upcomingSession={upcomingSessionHighlight || upcomingSessions[0]}
+                onViewSchedule={() => {
+                  setActiveTab("schedule");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                onRecruitmentClick={() => {
+                  const el = document.getElementById("recruitment-event-section");
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth" });
+                  }
+                  setIsRegisterModalOpen(true);
+                }}
+                isLoggedIn={isLoggedIn}
               />
-            </div>
+            )}
+
+            {/* RECRUITMENT EVENT HIGHLIGHT CARD (MODULE 2A - User Flow) */}
+            {siteSettings.recruitment_card_enabled !== "false" && (
+              <div id="recruitment-event-section" className="pt-8">
+                <EventRecruitmentCard
+                  campaign={activeCampaign}
+                  onOpenRegister={() => setIsRegisterModalOpen(true)}
+                />
+              </div>
+            )}
 
             {/* BENTO GRID: WHY JOIN US & CULTURE */}
             <div id="club-benefits-section">
@@ -1058,6 +1264,12 @@ export default function Home() {
       </footer>
 
       {/* Global Recruitment Registration Modal */}
+      <InactivityWarningModal
+        warning={inactivityWarning}
+        isOpen={isInactivityModalOpen}
+        onClose={() => setIsInactivityModalOpen(false)}
+      />
+
       <RegistrationModal 
         isOpen={isRegisterModalOpen} 
         onClose={() => setIsRegisterModalOpen(false)} 

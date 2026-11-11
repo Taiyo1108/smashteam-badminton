@@ -141,11 +141,48 @@ export default function AdminEventsPage() {
           fetchCampaignSlots(activeCamp.id, token);
         }
       }
+
+      // 3. Fetch site settings (Trạng thái bật/tắt hiển thị box đếm ngược & box sự kiện)
+      const settingsRes = await fetch(`${API_URL}/api/settings?t=${Date.now()}`);
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        setSiteSettings(settings);
+      }
     } catch (err) {
       console.error("Error fetching events data:", err);
       showToast("Lỗi khi tải dữ liệu sự kiện.", "error");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Cài đặt hiển thị trên Trang Chủ
+  const [siteSettings, setSiteSettings] = useState<Record<string, string>>({});
+  const [isUpdatingSetting, setIsUpdatingSetting] = useState(false);
+
+  const handleToggleSiteSetting = async (key: string, currentVal: boolean) => {
+    const nextVal = !currentVal;
+    setIsUpdatingSetting(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ key, value: String(nextVal) })
+      });
+      if (res.ok) {
+        setSiteSettings((prev) => ({ ...prev, [key]: String(nextVal) }));
+        showToast(`Đã ${nextVal ? "BẬT" : "TẮT"} hiển thị trên Trang Chủ thành công!`);
+      } else {
+        showToast("Lỗi khi cập nhật cài đặt.", "error");
+      }
+    } catch {
+      showToast("Lỗi kết nối máy chủ.", "error");
+    } finally {
+      setIsUpdatingSetting(false);
     }
   };
 
@@ -611,6 +648,61 @@ export default function AdminEventsPage() {
           {activeMainTab === "featured" && (
             <div className="space-y-8 animate-fade-in">
               
+              {/* TOGGLE SWITCH HIỂN THỊ TRANG CHỦ */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                    siteSettings.featured_event_enabled !== "false"
+                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                      : "bg-slate-100 text-slate-500 border border-slate-200"
+                  }`}>
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm sm:text-base font-black text-secondary">
+                        Hiển Thị Box Đếm Ngược Trên Trang Chủ
+                      </h3>
+                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
+                        siteSettings.featured_event_enabled !== "false"
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                          : "bg-slate-100 text-slate-600 border border-slate-300"
+                      }`}>
+                        {siteSettings.featured_event_enabled !== "false" ? "🟢 ĐANG BẬT" : "⚪ ĐANG TẮT (ẨN)"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {siteSettings.featured_event_enabled !== "false"
+                        ? "Box đếm ngược đang hiển thị trên trang chủ cho mọi người xem."
+                        : "Box đếm ngược đang được ẩn hoàn toàn khỏi trang chủ."}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isUpdatingSetting}
+                  onClick={() => handleToggleSiteSetting("featured_event_enabled", siteSettings.featured_event_enabled !== "false")}
+                  className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50 ${
+                    siteSettings.featured_event_enabled !== "false"
+                      ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
+                      : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20"
+                  }`}
+                >
+                  {siteSettings.featured_event_enabled !== "false" ? (
+                    <>
+                      <EyeOff className="w-4 h-4 text-rose-600" />
+                      <span>Tắt hiển thị trên Trang Chủ</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-4 h-4 text-white" />
+                      <span>Bật hiển thị lên Trang Chủ</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
               {/* LIVE PREVIEW & EDIT FORM GRID */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 
@@ -1044,6 +1136,61 @@ export default function AdminEventsPage() {
           {activeMainTab === "recruitment" && (
             <div className="space-y-8 animate-fade-in">
               
+              {/* TOGGLE SWITCH HIỂN THỊ TRANG CHỦ */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                    siteSettings.recruitment_card_enabled !== "false"
+                      ? "bg-cyan-100 text-cyan-700 border border-cyan-200"
+                      : "bg-slate-100 text-slate-500 border border-slate-200"
+                  }`}>
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm sm:text-base font-black text-secondary">
+                        Hiển Thị Box Sự Kiện / Tuyển Quân Trên Trang Chủ
+                      </h3>
+                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
+                        siteSettings.recruitment_card_enabled !== "false"
+                          ? "bg-cyan-100 text-cyan-800 border border-cyan-300"
+                          : "bg-slate-100 text-slate-600 border border-slate-300"
+                      }`}>
+                        {siteSettings.recruitment_card_enabled !== "false" ? "🟢 ĐANG BẬT" : "⚪ ĐANG TẮT (ẨN)"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {siteSettings.recruitment_card_enabled !== "false"
+                        ? "Thẻ thông tin chiến dịch tuyển quân đang hiển thị trên trang chủ cho mọi người xem."
+                        : "Box sự kiện / tuyển quân đang được ẩn hoàn toàn khỏi trang chủ."}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isUpdatingSetting}
+                  onClick={() => handleToggleSiteSetting("recruitment_card_enabled", siteSettings.recruitment_card_enabled !== "false")}
+                  className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50 ${
+                    siteSettings.recruitment_card_enabled !== "false"
+                      ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
+                      : "bg-cyan-600 hover:bg-cyan-700 text-white shadow-cyan-600/20"
+                  }`}
+                >
+                  {siteSettings.recruitment_card_enabled !== "false" ? (
+                    <>
+                      <EyeOff className="w-4 h-4 text-rose-600" />
+                      <span>Tắt hiển thị trên Trang Chủ</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-4 h-4 text-white" />
+                      <span>Bật hiển thị lên Trang Chủ</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
               {/* LIVE PREVIEW & EDIT FORM GRID */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 

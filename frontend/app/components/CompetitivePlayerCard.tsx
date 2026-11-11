@@ -6,9 +6,10 @@ import {
   Target, Swords, Crown, Award, ChevronRight,
   TrendingUp, Users, User, Zap, ShieldAlert,
   Camera, Paintbrush, Calendar, Code, CheckCircle2,
-  Coins
+  Coins, Star, ShieldCheck
 } from "lucide-react";
 import AvatarWithFrame from "./AvatarWithFrame";
+import { calculateRankStars } from "@/app/utils/rank";
 
 export interface CompetitiveCardProps {
   player: {
@@ -21,6 +22,8 @@ export interface CompetitiveCardProps {
     badminton_level?: string;
     role?: string;
     academic_info?: string;
+    grind_matches_count?: number;
+    grind_loss_count?: number;
   };
   singles?: {
     elo: number;
@@ -111,8 +114,10 @@ export interface CompetitiveCardProps {
     smashCoins: number;
     dailyStreak?: number;
   };
+  reputationScore?: number;
   onOpenSettings?: () => void;
   onOpenShareModal?: () => void;
+  onOpenReputationModal?: () => void;
 }
 
 // Icon mapper for achievements
@@ -142,8 +147,10 @@ export default function CompetitivePlayerCard({
   streak,
   title,
   meta,
+  reputationScore,
   onOpenSettings,
-  onOpenShareModal
+  onOpenShareModal,
+  onOpenReputationModal
 }: CompetitiveCardProps) {
   // Mode selection: default to doubles
   const [activeMode, setActiveMode] = useState<"singles" | "doubles">("doubles");
@@ -152,9 +159,10 @@ export default function CompetitivePlayerCard({
   const currentModeStats = activeMode === "doubles" ? doubles : singles;
   const otherModeStats = activeMode === "doubles" ? singles : doubles;
 
-  const tier = currentModeStats?.tier || "Bronze";
-  const tierLabel = currentModeStats?.tierLabel || "Đồng";
   const elo = currentModeStats?.elo || 1000;
+  const starInfo = calculateRankStars(elo);
+  const tier = starInfo.tierName;
+  const tierLabel = starInfo.tierLabel;
   const peakElo = currentModeStats?.peakElo || elo;
   const matches = currentModeStats?.matches || 0;
   const wins = currentModeStats?.wins || 0;
@@ -170,14 +178,24 @@ export default function CompetitivePlayerCard({
     ? (streak?.doubles?.current || 0) 
     : (streak?.singles?.current || 0);
 
+  // MOBA Ranked Grind Metrics (Cơ Chế Cày Cuốc Leo Rank)
+  const grindMatchesCount = Math.max(0, Math.min(5, Number(player?.grind_matches_count) || 0));
+  const grindLossCount = Math.max(0, Math.min(5, Number(player?.grind_loss_count) || 0));
+
   // Next tier progress
-  const nextTierMinElo = activeMode === "doubles"
-    ? (doubles?.tier === "Challenger" ? 2500 : (doubles?.tier === "Diamond" ? 1800 : (doubles?.tier === "Platinum" ? 1600 : (doubles?.tier === "Gold" ? 1400 : (doubles?.tier === "Silver" ? 1200 : 1100)))))
-    : (singles?.tier === "Challenger" ? 2500 : (singles?.tier === "Diamond" ? 1800 : (singles?.tier === "Platinum" ? 1600 : (singles?.tier === "Gold" ? 1400 : (singles?.tier === "Silver" ? 1200 : 1100)))));
+  const nextTierMinElo = 
+    tier === "Challenger" ? 2500 : 
+    tier === "Diamond" ? 1800 : 
+    tier === "Platinum" ? 1600 : 
+    tier === "Gold" ? 1400 : 
+    tier === "Silver" ? 1200 : 1000;
   
-  const prevTierMinElo = activeMode === "doubles"
-    ? (doubles?.tier === "Challenger" ? 1800 : (doubles?.tier === "Diamond" ? 1600 : (doubles?.tier === "Platinum" ? 1400 : (doubles?.tier === "Gold" ? 1200 : (doubles?.tier === "Silver" ? 1100 : 800)))))
-    : (singles?.tier === "Challenger" ? 1800 : (singles?.tier === "Diamond" ? 1600 : (singles?.tier === "Platinum" ? 1400 : (singles?.tier === "Gold" ? 1200 : (singles?.tier === "Silver" ? 1100 : 800)))));
+  const prevTierMinElo = 
+    tier === "Challenger" ? 1800 : 
+    tier === "Diamond" ? 1600 : 
+    tier === "Platinum" ? 1400 : 
+    tier === "Gold" ? 1200 : 
+    tier === "Silver" ? 1000 : 800;
 
   const tierSpan = nextTierMinElo - prevTierMinElo;
   const tierProgress = tierSpan > 0 ? Math.min(100, Math.max(0, Math.round(((elo - prevTierMinElo) / tierSpan) * 100))) : 100;
@@ -187,59 +205,139 @@ export default function CompetitivePlayerCard({
   const tierTheme = {
     Challenger: {
       accentGrad: "from-red-600 via-rose-600 to-purple-600",
-      borderGrad: "border-rose-500/40 hover:border-rose-500/70",
-      glowBg: "from-rose-500/10 via-purple-500/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-red-600 to-purple-600 text-white shadow-lg shadow-red-500/30",
-      textAcc: "text-rose-500",
+      borderGrad: "border-rose-500/70 hover:border-rose-500 shadow-[0_0_25px_rgba(239,68,68,0.25)]",
+      glowBg: "from-rose-500/25 via-purple-500/15 to-transparent",
+      badgeColor: "bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white shadow-md shadow-red-500/40 border border-red-400 font-black",
+      textAcc: "text-rose-600",
       ringColor: "stroke-rose-500"
     },
     Diamond: {
-      accentGrad: "from-cyan-500 via-blue-600 to-indigo-600",
-      borderGrad: "border-blue-500/40 hover:border-blue-500/70",
-      glowBg: "from-blue-500/10 via-cyan-500/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-blue-500/30",
-      textAcc: "text-blue-500",
+      accentGrad: "from-cyan-400 via-blue-500 to-indigo-600",
+      borderGrad: "border-blue-500/60 hover:border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.25)]",
+      glowBg: "from-blue-500/20 via-cyan-500/15 to-transparent",
+      badgeColor: "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/40 border border-cyan-300 font-black",
+      textAcc: "text-blue-600",
       ringColor: "stroke-blue-500"
     },
     Platinum: {
-      accentGrad: "from-emerald-500 via-teal-500 to-cyan-600",
-      borderGrad: "border-teal-500/40 hover:border-teal-500/70",
-      glowBg: "from-teal-500/10 via-emerald-500/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-teal-500 to-emerald-600 text-white shadow-lg shadow-teal-500/30",
-      textAcc: "text-teal-500",
+      accentGrad: "from-emerald-400 via-teal-500 to-cyan-500",
+      borderGrad: "border-teal-400/60 hover:border-teal-500 shadow-[0_0_25px_rgba(20,184,166,0.2)]",
+      glowBg: "from-teal-500/20 via-emerald-500/10 to-transparent",
+      badgeColor: "bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white shadow-md shadow-teal-500/35 border border-emerald-300 font-black",
+      textAcc: "text-teal-600",
       ringColor: "stroke-teal-500"
     },
     Gold: {
-      accentGrad: "from-amber-400 via-yellow-500 to-orange-500",
-      borderGrad: "border-amber-400/50 hover:border-amber-500/80",
-      glowBg: "from-amber-500/10 via-yellow-500/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 shadow-lg shadow-amber-500/30",
-      textAcc: "text-amber-500",
+      accentGrad: "from-amber-400 via-yellow-400 to-amber-500",
+      borderGrad: "border-amber-400/60 hover:border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.25)]",
+      glowBg: "from-amber-500/20 via-yellow-500/15 to-transparent",
+      badgeColor: "bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 shadow-md shadow-amber-500/35 border border-yellow-300 font-black",
+      textAcc: "text-amber-600",
       ringColor: "stroke-amber-500"
     },
     Silver: {
-      accentGrad: "from-slate-300 via-slate-400 to-slate-500",
-      borderGrad: "border-slate-300 hover:border-slate-400",
-      glowBg: "from-slate-200/40 via-slate-100/20 to-transparent",
-      badgeColor: "bg-gradient-to-r from-slate-200 to-slate-400 text-slate-800 shadow-md",
-      textAcc: "text-slate-600",
+      accentGrad: "from-slate-200 via-white to-slate-300",
+      borderGrad: "border-slate-300 hover:border-slate-400 shadow-[0_0_20px_rgba(148,163,184,0.2)]",
+      glowBg: "from-slate-300/30 via-slate-200/15 to-transparent",
+      badgeColor: "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 shadow-md shadow-slate-300/40 border border-slate-300 font-black",
+      textAcc: "text-slate-700",
       ringColor: "stroke-slate-400"
     },
     Bronze: {
-      accentGrad: "from-amber-700 via-amber-800 to-amber-900",
-      borderGrad: "border-amber-700/30 hover:border-amber-700/60",
-      glowBg: "from-amber-800/10 via-amber-900/5 to-transparent",
-      badgeColor: "bg-gradient-to-r from-amber-700 to-amber-900 text-amber-100 shadow-md",
-      textAcc: "text-amber-700",
+      accentGrad: "from-amber-700 via-orange-800 to-amber-900",
+      borderGrad: "border-amber-700/50 hover:border-amber-700 shadow-[0_0_20px_rgba(180,83,9,0.2)]",
+      glowBg: "from-amber-800/20 via-amber-900/10 to-transparent",
+      badgeColor: "bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 shadow-md shadow-amber-900/40 border border-amber-600 font-black",
+      textAcc: "text-amber-800",
       ringColor: "stroke-amber-700"
     }
   }[tier] || {
     accentGrad: "from-slate-700 to-slate-900",
     borderGrad: "border-slate-200",
     glowBg: "from-slate-100 to-transparent",
-    badgeColor: "bg-slate-800 text-white",
+    badgeColor: "bg-slate-800 text-white font-black",
     textAcc: "text-slate-800",
     ringColor: "stroke-slate-800"
+  };
+
+  // Rank material styling for Rank Stars Box (Authentic metallic & crystal material aesthetics)
+  const rankMaterial = {
+    Gold: {
+      boxBg: "bg-gradient-to-b from-amber-500/10 via-yellow-400/5 to-amber-500/15",
+      boxBorder: "border-2 border-amber-400/60 shadow-[0_4px_25px_rgba(245,158,11,0.18)]",
+      starRowBg: "bg-white/70 border border-amber-300/40",
+      badgeStyle: "bg-gradient-to-r from-amber-400 via-yellow-200 to-amber-500 text-slate-900 border-2 border-yellow-300 shadow-md shadow-amber-500/30 font-black",
+      badgeIcon: "text-amber-700 fill-amber-700",
+      subtextColor: "text-amber-800",
+      starFilled: "fill-amber-400 text-amber-500 filter drop-shadow-[0_0_8px_rgba(245,158,11,0.7)]",
+      starEmpty: "text-amber-300/40 fill-amber-100/30",
+      highlightElo: "text-amber-600 font-black"
+    },
+    Diamond: {
+      boxBg: "bg-gradient-to-b from-cyan-500/10 via-blue-400/5 to-indigo-500/15",
+      boxBorder: "border-2 border-blue-400/60 shadow-[0_4px_25px_rgba(59,130,246,0.2)]",
+      starRowBg: "bg-white/70 border border-blue-300/40",
+      badgeStyle: "bg-gradient-to-r from-cyan-300 via-blue-400 to-indigo-500 text-white border-2 border-cyan-200 shadow-md shadow-blue-500/35 font-black",
+      badgeIcon: "text-cyan-100 fill-cyan-100",
+      subtextColor: "text-blue-800",
+      starFilled: "fill-cyan-400 text-blue-500 filter drop-shadow-[0_0_8px_rgba(59,130,246,0.7)]",
+      starEmpty: "text-blue-300/40 fill-blue-100/30",
+      highlightElo: "text-blue-600 font-black"
+    },
+    Platinum: {
+      boxBg: "bg-gradient-to-b from-emerald-500/10 via-teal-400/5 to-cyan-500/15",
+      boxBorder: "border-2 border-teal-400/60 shadow-[0_4px_25px_rgba(20,184,166,0.2)]",
+      starRowBg: "bg-white/70 border border-teal-300/40",
+      badgeStyle: "bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 text-slate-900 border-2 border-emerald-300 shadow-md shadow-teal-500/30 font-black",
+      badgeIcon: "text-teal-800 fill-teal-800",
+      subtextColor: "text-teal-900",
+      starFilled: "fill-teal-400 text-emerald-500 filter drop-shadow-[0_0_8px_rgba(20,184,166,0.7)]",
+      starEmpty: "text-teal-300/40 fill-teal-100/30",
+      highlightElo: "text-teal-600 font-black"
+    },
+    Silver: {
+      boxBg: "bg-gradient-to-b from-slate-200/50 via-white to-slate-200/60",
+      boxBorder: "border-2 border-slate-300 shadow-[0_4px_20px_rgba(148,163,184,0.2)]",
+      starRowBg: "bg-white/80 border border-slate-200",
+      badgeStyle: "bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-800 border-2 border-slate-300 shadow-md shadow-slate-300/40 font-black",
+      badgeIcon: "text-slate-600 fill-slate-600",
+      subtextColor: "text-slate-700",
+      starFilled: "fill-slate-400 text-slate-500 filter drop-shadow-[0_0_8px_rgba(148,163,184,0.65)]",
+      starEmpty: "text-slate-300 fill-slate-100",
+      highlightElo: "text-slate-800 font-black"
+    },
+    Bronze: {
+      boxBg: "bg-gradient-to-b from-orange-500/10 via-amber-700/5 to-amber-900/15",
+      boxBorder: "border-2 border-amber-700/50 shadow-[0_4px_20px_rgba(180,83,9,0.18)]",
+      starRowBg: "bg-white/70 border border-amber-700/20",
+      badgeStyle: "bg-gradient-to-r from-amber-700 via-orange-600 to-amber-800 text-amber-50 border-2 border-amber-600 shadow-md shadow-amber-900/30 font-black",
+      badgeIcon: "text-amber-200 fill-amber-200",
+      subtextColor: "text-amber-900",
+      starFilled: "fill-amber-600 text-amber-700 filter drop-shadow-[0_0_8px_rgba(217,119,6,0.65)]",
+      starEmpty: "text-amber-300/40 fill-amber-100/30",
+      highlightElo: "text-amber-700 font-black"
+    },
+    Challenger: {
+      boxBg: "bg-gradient-to-b from-rose-500/10 via-red-500/5 to-purple-500/15",
+      boxBorder: "border-2 border-rose-500/60 shadow-[0_4px_25px_rgba(244,63,94,0.25)]",
+      starRowBg: "bg-white/70 border border-rose-300/40",
+      badgeStyle: "bg-gradient-to-r from-red-600 via-rose-500 to-purple-600 text-white border-2 border-red-300 shadow-md shadow-red-500/35 font-black",
+      badgeIcon: "text-amber-300 fill-amber-300",
+      subtextColor: "text-rose-900",
+      starFilled: "fill-rose-500 text-rose-600 filter drop-shadow-[0_0_8px_rgba(244,63,94,0.7)]",
+      starEmpty: "text-rose-300/40 fill-rose-100/30",
+      highlightElo: "text-rose-600 font-black"
+    }
+  }[tier] || {
+    boxBg: "bg-slate-50",
+    boxBorder: "border-2 border-slate-200",
+    starRowBg: "bg-white border border-slate-200",
+    badgeStyle: "bg-slate-800 text-white font-black",
+    badgeIcon: "text-white fill-white",
+    subtextColor: "text-slate-600",
+    starFilled: "fill-amber-400 text-amber-500",
+    starEmpty: "text-slate-300 fill-slate-100",
+    highlightElo: "text-slate-800 font-black"
   };
 
   return (
@@ -254,38 +352,17 @@ export default function CompetitivePlayerCard({
         <div className="absolute top-0 right-0 w-32 h-32 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-100 to-transparent pointer-events-none -z-0" />
 
         {/* 1. TOP HEADER: Tier & Quick Actions */}
-        <div className="flex items-center justify-between relative z-10 mb-4">
-          <div className="flex items-center gap-2">
-            {/* Tier Badge */}
-            <span className={`text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${tierTheme.badgeColor} flex items-center gap-1`}>
-              <Trophy className="w-3.5 h-3.5" />
-              {tier.toUpperCase()} {tierLabel !== tier && `(${tierLabel})`}
+        <div className="flex items-center justify-between relative z-10 mb-4 gap-3">
+          {/* Tier Badge: stretched to fill space previously occupied by Top% & Tập sự */}
+          <div className="flex-1 min-w-0">
+            <span className={`w-full text-[12px] font-black uppercase tracking-wider px-4 py-2 rounded-full ${tierTheme.badgeColor} flex items-center justify-center gap-2 shadow-sm truncate`}>
+              <Trophy className="w-4 h-4 shrink-0" />
+              <span>HẠNG {tierLabel.toUpperCase()}</span>
             </span>
-
-            {/* Standing or Percentile */}
-            {percentile ? (
-              <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full bg-slate-900 text-white tracking-wider shadow-sm">
-                {percentile}
-              </span>
-            ) : rankNumber ? (
-              <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                #{rankNumber} CLB
-              </span>
-            ) : null}
-
-            {/* Provisional Pill */}
-            {isProvisional && (
-              <span 
-                className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1"
-                title={`Cần đấu tối thiểu ${currentModeStats?.provisionalThreshold || 3} trận để xác lập thứ hạng chính thức`}
-              >
-                <ShieldAlert className="w-3 h-3 text-amber-600" /> TẬP SỰ
-              </span>
-            )}
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {onOpenShareModal && (
               <button
                 onClick={onOpenShareModal}
@@ -320,7 +397,6 @@ export default function CompetitivePlayerCard({
             >
               <User className="w-3.5 h-3.5" />
               <span>ĐẤU ĐƠN</span>
-              <span className="text-[10px] font-semibold opacity-70">({singles?.elo || 1000})</span>
             </button>
 
             <button
@@ -333,7 +409,6 @@ export default function CompetitivePlayerCard({
             >
               <Users className="w-3.5 h-3.5" />
               <span>ĐẤU ĐÔI</span>
-              <span className="text-[10px] font-semibold opacity-70">({doubles?.elo || 1000})</span>
             </button>
           </div>
         </div>
@@ -354,9 +429,16 @@ export default function CompetitivePlayerCard({
             )}
           </div>
 
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
-            {player.full_name}
-          </h2>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
+              {player.full_name}
+            </h2>
+            {player.role === "guest" && (
+              <span className="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-700 text-[10px] font-black uppercase tracking-wider">
+                Vãng lai
+              </span>
+            )}
+          </div>
 
           {/* Nickname & Academic */}
           <div className="flex items-center gap-2 mt-1 text-slate-500 text-xs">
@@ -404,8 +486,8 @@ export default function CompetitivePlayerCard({
                 <span className="text-4xl font-black text-slate-900 tracking-tight">
                   {elo}
                 </span>
-                <span className="text-xs font-extrabold uppercase px-2 py-0.5 rounded bg-slate-200 text-slate-700">
-                  {tier}
+                <span className={`text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full ${tierTheme.badgeColor}`}>
+                  {tierLabel}
                 </span>
               </div>
             </div>
@@ -479,29 +561,149 @@ export default function CompetitivePlayerCard({
           </div>
         </div>
 
-        {/* 6. NEXT MILESTONES (MOTIVATIONAL GOALS) */}
-        {progression?.milestones && progression.milestones.length > 0 && (
-          <div className="relative z-10 mb-4 p-3 rounded-2xl bg-slate-900 text-white flex items-center justify-between gap-3 shadow-md">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-                <Target className="w-4 h-4 text-amber-400" />
-              </div>
-              <div className="text-left">
-                <p className="text-[11px] font-black uppercase tracking-wider text-amber-400">
-                  {progression.milestones[0].title}
-                </p>
-                <p className="text-[10px] text-slate-300 line-clamp-1">
-                  {progression.milestones[0].description}
-                </p>
-              </div>
+        {/* 6. RANK STARS PROGRESSION (AUTHENTIC MATERIAL THEMED) */}
+        <div className={`relative z-10 mb-4 p-4 rounded-2xl ${rankMaterial.boxBg} ${rankMaterial.boxBorder} transition-all duration-300`}>
+          {/* Centered Rank Title with Material Styled Frame */}
+          <div className="flex flex-col items-center justify-center text-center">
+            <div className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs uppercase tracking-wider ${rankMaterial.badgeStyle}`}>
+              <Sparkles className={`w-3.5 h-3.5 ${rankMaterial.badgeIcon}`} />
+              <span>HẠNG {starInfo.tierLabel.toUpperCase()}</span>
             </div>
-            <div className="shrink-0 text-right">
-              <span className="text-[11px] font-black text-white px-2 py-0.5 bg-white/10 rounded-lg">
-                {progression.milestones[0].progressPercent}%
-              </span>
+
+            {/* Requirement to Next Star */}
+            <div className={`text-[11px] font-bold ${rankMaterial.subtextColor} mt-1.5`}>
+              {starInfo.eloToNextStar > 0 ? (
+                <span>
+                  Cần <strong className={rankMaterial.highlightElo}>+{starInfo.eloToNextStar} ELO</strong> lên{" "}
+                  {starInfo.stars >= 5 ? "bậc tiếp theo" : `${starInfo.stars + 1}★`}
+                </span>
+              ) : (
+                <span className="text-emerald-600 font-bold">Đỉnh cao bậc xếp hạng</span>
+              )}
             </div>
           </div>
-        )}
+
+          {/* 5 Stars Visual Row */}
+          <div className={`flex items-center justify-center gap-3.5 py-2.5 mt-2.5 rounded-xl border ${rankMaterial.starRowBg} shadow-inner`}>
+            {[1, 2, 3, 4, 5].map((index) => {
+              const isFilled = index <= starInfo.stars;
+              return (
+                <div key={index} className="relative flex items-center justify-center transition-all duration-300">
+                  {isFilled ? (
+                    <Star
+                      className={`w-6 h-6 ${rankMaterial.starFilled}`}
+                    />
+                  ) : (
+                    <Star
+                      className={`w-6 h-6 ${rankMaterial.starEmpty}`}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 6.1. THƯỞNG THẮNG X2 & KHIÊN BẢO HỘ THUA (TÍCH HỢP TRỰC TIẾP TRONG THẺ NGƯỜI CHƠI) */}
+        <div className="relative z-10 mb-4 space-y-3 pt-1">
+          {/* 1. THƯỞNG THẮNG X2 ELO */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                <span className="font-bold text-slate-700">Thưởng Thắng x2 ELO</span>
+                {grindMatchesCount >= 5 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-black text-[9px] uppercase tracking-wider animate-pulse">
+                    ⚡ Sẵn Sàng x2
+                  </span>
+                )}
+              </div>
+              <span className="font-mono font-black text-amber-600 text-xs">
+                {grindMatchesCount}/5 trận
+              </span>
+            </div>
+
+            {/* 5-Segment Horizontal Bar */}
+            <div className="grid grid-cols-5 gap-1.5">
+              {[1, 2, 3, 4, 5].map((seg) => {
+                const isFilled = seg <= grindMatchesCount;
+                return (
+                  <div
+                    key={seg}
+                    className={`h-2 rounded-md transition-all duration-300 ${
+                      isFilled
+                        ? grindMatchesCount >= 5
+                          ? "bg-gradient-to-r from-amber-400 to-yellow-500 shadow-[0_0_8px_rgba(251,191,36,0.6)]"
+                          : "bg-amber-400"
+                        : "bg-slate-200/70"
+                    }`}
+                  />
+                );
+              })}
+            </div>
+
+            <p className="text-[10px] text-slate-500">
+              {grindMatchesCount >= 5 ? (
+                <span className="text-amber-700 font-bold">
+                  ⚡ Đã đủ 5 trận tích lũy! Trận thắng đầu tiên tiếp theo sẽ được <strong>nhân đôi (+x2) ELO</strong>!
+                </span>
+              ) : (
+                <span>
+                  Đấu thêm <strong className="text-slate-700">{5 - grindMatchesCount} trận</strong> để kích hoạt x2 ELO ở trận thắng tiếp theo.
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* 2. KHIÊN BẢO HỘ THUA */}
+          <div className="space-y-1.5 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="font-bold text-slate-700">Khiên Bảo Hộ Thua</span>
+                {grindLossCount >= 5 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-black text-[9px] uppercase tracking-wider animate-pulse">
+                    🛡️ Khiên Đã Sạc Đầy
+                  </span>
+                )}
+              </div>
+              <span className="font-mono font-black text-indigo-600 text-xs">
+                {grindLossCount}/5 trận thua
+              </span>
+            </div>
+
+            {/* 5-Segment Horizontal Bar */}
+            <div className="grid grid-cols-5 gap-1.5">
+              {[1, 2, 3, 4, 5].map((seg) => {
+                const isFilled = seg <= grindLossCount;
+                return (
+                  <div
+                    key={seg}
+                    className={`h-2 rounded-md transition-all duration-300 ${
+                      isFilled
+                        ? grindLossCount >= 5
+                          ? "bg-gradient-to-r from-indigo-500 to-purple-600 shadow-[0_0_8px_rgba(99,102,241,0.6)]"
+                          : "bg-indigo-500"
+                        : "bg-slate-200/70"
+                    }`}
+                  />
+                );
+              })}
+            </div>
+
+            <p className="text-[10px] text-slate-500">
+              {grindLossCount >= 5 ? (
+                <span className="text-indigo-700 font-bold">
+                  🛡️ Khiên đã sạc đầy! Trận thua tiếp theo sẽ được <strong>miễn trừ 0 ELO (không bị trừ điểm)</strong>!
+                </span>
+              ) : (
+                <span>
+                  Tích lũy 5 trận thua để sạc đầy khiên bảo hộ miễn trừ mất điểm ELO ({5 - grindLossCount} trận nữa).
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
 
         {/* 7. FEATURED BADGES SHOWCASE (TOP 3 REAL BADGES) */}
         {achievements.length > 0 && (
@@ -529,7 +731,7 @@ export default function CompetitivePlayerCard({
                     {ach.name}
                   </span>
                   <span className="text-[8px] text-slate-500 line-clamp-1 uppercase">
-                    {ach.category === "contribution" ? "Đóng góp" : "Thi đấu"}
+                    Thi đấu
                   </span>
                 </div>
               ))}
@@ -537,13 +739,13 @@ export default function CompetitivePlayerCard({
           </div>
         )}
 
-        {/* 8. REFINED META FOOTER (LEVEL, XP, COINS) - NO 0 SHIELDS */}
-        <div className="relative z-10 pt-3 border-t border-slate-200 mt-auto flex items-center justify-between text-xs text-slate-500">
+        {/* 8. REFINED META FOOTER (LEVEL, XP, REPUTATION, COINS) */}
+        <div className="relative z-10 pt-3 border-t border-slate-200 mt-auto flex items-center justify-between text-xs text-slate-500 gap-2">
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-slate-900 text-[11px]">
               CẤP {meta?.level ?? 1}
             </span>
-            <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div className="w-14 sm:w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-emerald-500 rounded-full" 
                 style={{ width: `${Math.min(100, ((meta?.xp || 0) % 100))}%` }} 
@@ -551,9 +753,23 @@ export default function CompetitivePlayerCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 text-[11px]">
-            <Coins className="w-3.5 h-3.5 text-amber-500" />
-            <span>{meta?.smashCoins ?? 0} xu</span>
+          <div className="flex items-center gap-2 shrink-0">
+            {reputationScore !== undefined && (
+              <button
+                type="button"
+                onClick={onOpenReputationModal}
+                className="flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200 text-[11px] transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Bấm để xem lịch sử điểm hoạt động & uy tín"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{reputationScore}đ Uy tín</span>
+              </button>
+            )}
+
+            <div className="flex items-center gap-1.5 font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 text-[11px]">
+              <Coins className="w-3.5 h-3.5 text-amber-500" />
+              <span>{meta?.smashCoins ?? 0} xu</span>
+            </div>
           </div>
         </div>
       </div>

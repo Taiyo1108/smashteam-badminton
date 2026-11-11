@@ -26,6 +26,9 @@ interface SessionReservationWidgetProps {
     checkout_open_at?: string;
     checkout_close_at?: string;
     available_slots?: number;
+    raw_available_slots?: number;
+    waitlist_count?: number;
+    offered_count?: number;
     active_reservations_count?: number;
     is_full?: boolean;
     // user specific
@@ -77,6 +80,33 @@ export default function SessionReservationWidget({
   const [lateCancelReason, setLateCancelReason] = useState("");
   const [isSubmittingLateCancel, setIsSubmittingLateCancel] = useState(false);
 
+  // Early Checkout Modal (Rời buổi tập sớm)
+  const [isEarlyCheckoutModalOpen, setIsEarlyCheckoutModalOpen] = useState(false);
+  const [isSubmittingEarlyCheckout, setIsSubmittingEarlyCheckout] = useState(false);
+
+  // Guest Commitment & Penalty Warning Modal
+  const [currentUserRole, setCurrentUserRole] = useState<string>("");
+  const [isGuestCommitmentModalOpen, setIsGuestCommitmentModalOpen] = useState(false);
+  const [hasAgreedGuestRule, setHasAgreedGuestRule] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"reserve" | "claim_offer" | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const role = localStorage.getItem("user_role");
+      if (role) {
+        setCurrentUserRole(role);
+      } else {
+        try {
+          const userStr = localStorage.getItem("user");
+          if (userStr) {
+            const u = JSON.parse(userStr);
+            if (u.role) setCurrentUserRole(u.role);
+          }
+        } catch {}
+      }
+    }
+  }, []);
+
   // Waitlist offer countdown timer
   const [offerTimeRemaining, setOfferTimeRemaining] = useState<string | null>(null);
 
@@ -100,6 +130,7 @@ export default function SessionReservationWidget({
 
   const capacity = session.capacity || 40;
   const activeCount = session.active_reservations_count ?? 0;
+  const rawAvailable = typeof session.raw_available_slots === "number" ? session.raw_available_slots : Math.max(0, capacity - activeCount);
   const availableSlots = typeof session.available_slots === "number" ? session.available_slots : Math.max(0, capacity - activeCount);
   const isSessionFull = session.is_full ?? (availableSlots <= 0);
 
@@ -148,6 +179,19 @@ export default function SessionReservationWidget({
       router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
+
+    // Nếu là thành viên vãng lai -> Bắt buộc mở modal cảnh báo quy định & cam kết tham gia
+    if (currentUserRole === "guest") {
+      setPendingAction("reserve");
+      setHasAgreedGuestRule(false);
+      setIsGuestCommitmentModalOpen(true);
+      return;
+    }
+
+    await executeReserve();
+  };
+
+  const executeReserve = async () => {
     setLoadingAction("reserve");
     try {
       const token = localStorage.getItem("admin_token");
@@ -292,6 +336,16 @@ export default function SessionReservationWidget({
 
   // Handler: Claim Waitlist Offer
   const handleClaimOffer = async () => {
+    if (currentUserRole === "guest") {
+      setPendingAction("claim_offer");
+      setHasAgreedGuestRule(false);
+      setIsGuestCommitmentModalOpen(true);
+      return;
+    }
+    await executeClaimOffer();
+  };
+
+  const executeClaimOffer = async () => {
     setLoadingAction("claim_offer");
     try {
       const token = localStorage.getItem("admin_token");
@@ -313,6 +367,34 @@ export default function SessionReservationWidget({
       showToast("Lỗi kết nối máy chủ.", "error");
     } finally {
       setLoadingAction(null);
+    }
+  };
+
+  // Handler: Early Checkout (Check-out rời sân sớm từ trang cá nhân)
+  const handleEarlyCheckout = async () => {
+    setIsSubmittingEarlyCheckout(true);
+    try {
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/sessions/${session.id}/checkout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || "Bạn đã check-out và rời buổi tập thành công!");
+        setIsEarlyCheckoutModalOpen(false);
+        if (onActionSuccess) onActionSuccess();
+      } else {
+        showToast(data.error || "Không thể thực hiện Check-out lúc này.", "error");
+      }
+    } catch (e) {
+      showToast("Lỗi kết nối máy chủ.", "error");
+    } finally {
+      setIsSubmittingEarlyCheckout(false);
     }
   };
 
@@ -346,6 +428,11 @@ export default function SessionReservationWidget({
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               Còn {availableSlots}/{capacity} slot
+            </span>
+          ) : rawAvailable > 0 ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              Ưu tiên Hàng chờ ({session.waitlist_count || session.offered_count ? `${(session.waitlist_count || 0) + (session.offered_count || 0)} người` : "Waitlist"})
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
@@ -490,12 +577,14 @@ export default function SessionReservationWidget({
               Check-in lúc {checkedInAt ? formatVietnamDate(checkedInAt, "time") : "hôm nay"}. Sẵn sàng ra sân ghép trận!
             </span>
             <div className="flex items-center gap-2 shrink-0">
-              <Link href={`/check-in?session_id=${session.id}&mode=checkout`}>
-                <button className="px-3.5 py-1.5 rounded-lg bg-emerald-400 text-slate-950 text-xs font-black hover:bg-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow">
-                  <LogOut className="w-3.5 h-3.5" />
-                  Quét QR Check-out
-                </button>
-              </Link>
+              <button
+                onClick={() => setIsEarlyCheckoutModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-lg bg-amber-400 text-slate-950 text-xs font-black hover:bg-amber-300 transition-all flex items-center gap-1.5 cursor-pointer shadow active:scale-95"
+                title="Bấm để rời buổi tập sớm và loại khỏi danh sách xếp trận"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Rời buổi tập sớm
+              </button>
               <Link href="/admin/matches">
                 <button className="px-3 py-1.5 rounded-lg bg-white/10 text-white text-xs font-bold hover:bg-white/20 transition-all">
                   Xem Bàn Đấu
@@ -508,7 +597,9 @@ export default function SessionReservationWidget({
             <div className="flex items-center gap-2.5">
               <CheckCircle2 className="w-5 h-5 text-teal-400 shrink-0" />
               <div>
-                <p className="font-bold text-white text-sm">Buổi tập hoàn thành (Đã Check-out)</p>
+                <p className="font-bold text-white text-sm">
+                  Buổi tập hoàn thành {checkoutStatus === "early" ? "(Rời sân sớm)" : "(Check-out đúng giờ)"}
+                </p>
                 <p className="text-[11px] text-teal-300/80 mt-0.5">
                   {checkedInAt ? `Vào: ${formatVietnamDate(checkedInAt, "time")}` : ""} 
                   {checkedOutAt ? ` • Ra: ${formatVietnamDate(checkedOutAt, "time")}` : ""} 
@@ -523,18 +614,18 @@ export default function SessionReservationWidget({
             </Link>
           </div>
         ) : isMissingCheckout ? (
-          <div className="w-full p-4 rounded-xl bg-amber-950/60 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="w-full p-4 rounded-xl bg-teal-950/60 border border-teal-500/30 text-teal-200 text-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-teal-400 shrink-0" />
               <div>
-                <p className="font-bold text-amber-300 text-sm">Đã kết thúc buổi tập (Quên Check-out)</p>
-                <p className="text-[11px] text-amber-200/80 mt-0.5">
-                  Hệ thống tự động ghi nhận hoàn thành buổi tập{typeof durationMinutes === "number" && durationMinutes > 0 ? ` (~${durationMinutes} phút)` : ""}.
+                <p className="font-bold text-white text-sm">Buổi tập hoàn thành (Check-out đúng giờ)</p>
+                <p className="text-[11px] text-teal-300/80 mt-0.5">
+                  Hệ thống tự động ghi nhận bạn hoàn thành buổi tập{typeof durationMinutes === "number" && durationMinutes > 0 ? ` (~${durationMinutes} phút)` : ""}.
                 </p>
               </div>
             </div>
             <Link href="/profile">
-              <button className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black transition-all cursor-pointer shadow">
+              <button className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow">
                 Xem Lịch Sử
               </button>
             </Link>
@@ -687,6 +778,199 @@ export default function SessionReservationWidget({
           </div>
         </div>
       )}
-    </div>
+
+      {/* EARLY CHECKOUT CONFIRMATION MODAL */}
+      {isEarlyCheckoutModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 text-white space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <LogOut className="w-4 h-4" />
+                </div>
+                <h3 className="font-black text-base text-white">Rời buổi tập sớm (Check-out)</h3>
+              </div>
+              <button
+                onClick={() => setIsEarlyCheckoutModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-300 leading-relaxed bg-slate-800/60 p-4 rounded-xl border border-slate-700/60">
+              <p className="font-semibold text-white">
+                Bạn đã chơi xong và muốn check-out về sớm?
+              </p>
+              <p>
+                • Hệ thống sẽ ghi nhận thời lượng tham gia buổi tập từ lúc bạn check-in đến thời điểm hiện tại.
+              </p>
+              <p className="text-amber-300 font-medium">
+                • Bạn sẽ được tự động loại khỏi danh sách xếp trận (Match Desk) để ban tổ chức không xếp bạn vào các lượt đấu tiếp theo.
+              </p>
+              <p className="text-slate-400 text-[11px] pt-1 border-t border-slate-700/50">
+                💡 Lưu ý: Nếu bạn ở lại chơi đến hết giờ buổi tập, hệ thống sẽ mặc định tự động hoàn tất check-out đúng giờ cho bạn mà không cần thao tác gì.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsEarlyCheckoutModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+              >
+                Ở lại chơi tiếp
+              </button>
+              <button
+                type="button"
+                onClick={handleEarlyCheckout}
+                disabled={isSubmittingEarlyCheckout}
+                className="px-5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-all shadow-md active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isSubmittingEarlyCheckout ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang xử lý...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Xác nhận Rời sân</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    
+      {/* GUEST COMMITMENT & PENALTY WARNING MODAL */}
+      {isGuestCommitmentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-slate-900 border border-amber-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl relative text-white space-y-4 sm:space-y-5">
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setIsGuestCommitmentModalOpen(false);
+                setPendingAction(null);
+              }}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-start gap-3 border-b border-slate-800 pb-3 sm:pb-4">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-[0_0_15px_rgba(245,158,11,0.25)]">
+                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
+              <div className="pr-6">
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Lưu ý dành cho Khách vãng lai
+                </span>
+                <h3 className="text-base sm:text-lg font-black text-white mt-1">
+                  Quy Định & Cam Kết Tham Gia Giữ Chỗ
+                </h3>
+              </div>
+            </div>
+
+            {/* Intro text */}
+            <p className="text-xs sm:text-[13px] text-slate-300 leading-relaxed">
+              Để tránh việc <strong className="text-white">đăng ký tranh slot của các thành viên rồi không đi</strong> làm lãng phí sân bãi của CLB, SmashTeam áp dụng quy chế nghiêm ngặt đối với thành viên vãng lai:
+            </p>
+
+            {/* Penalty Cards */}
+            <div className="space-y-2.5">
+              {/* Lần 1: Thẻ vàng */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-800/80 border border-amber-500/30 flex items-start gap-3">
+                <div className="w-6 h-8 rounded bg-gradient-to-br from-amber-400 to-yellow-500 border border-yellow-200 shadow-md shrink-0 flex items-center justify-center text-[10px] font-black text-slate-950 mt-0.5">
+                  1
+                </div>
+                <div className="text-xs space-y-0.5">
+                  <div className="font-extrabold text-amber-300">
+                    Vi phạm lần 1 (Đăng ký giữ chỗ mà không đi):
+                  </div>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    Phạt <strong className="text-amber-300">1 Thẻ vàng</strong> và <strong className="text-rose-400">trừ 50 điểm uy tín</strong>.
+                  </p>
+                </div>
+              </div>
+
+              {/* Lần 2: Thẻ đỏ */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/40 flex items-start gap-3">
+                <div className="w-6 h-8 rounded bg-gradient-to-br from-rose-500 to-red-600 border border-rose-300 shadow-md shrink-0 flex items-center justify-center text-[10px] font-black text-white mt-0.5">
+                  2
+                </div>
+                <div className="text-xs space-y-0.5">
+                  <div className="font-extrabold text-rose-300">
+                    Vi phạm lần 2 (Tái phạm không đến sân):
+                  </div>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    Phạt <strong className="text-rose-400">Thẻ đỏ</strong>, <strong className="text-rose-400">trừ hết điểm uy tín (về 0 điểm)</strong>, <strong className="text-white">khóa tài khoản vĩnh viễn</strong> và <strong className="text-rose-300">cấm vĩnh viễn Số điện thoại / Email</strong> này đăng ký tài khoản trên toàn hệ thống.
+                  </p>
+                </div>
+              </div>
+
+              {/* Gỡ thẻ */}
+              <div className="p-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-start gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-slate-300 leading-relaxed">
+                  <span className="font-bold text-emerald-300">Cơ chế xóa án phạt:</span> Thẻ phạt sẽ được tự động gỡ bỏ sau khi bạn <strong className="text-emerald-300">tham gia thành công 5 buổi tập tiếp theo</strong>.
+                </div>
+              </div>
+            </div>
+
+            {/* Checkbox */}
+            <label className="flex items-start gap-3 p-3 rounded-2xl bg-slate-800/90 border border-slate-700/80 cursor-pointer hover:border-amber-500/50 transition-colors select-none">
+              <input
+                type="checkbox"
+                checked={hasAgreedGuestRule}
+                onChange={(e) => setHasAgreedGuestRule(e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded text-amber-500 focus:ring-amber-400 cursor-pointer accent-amber-500 shrink-0"
+              />
+              <span className="text-xs font-semibold text-slate-200 leading-snug">
+                Tôi đã đọc, hiểu rõ và cam kết sẽ có mặt tham gia đúng giờ khi đã đăng ký giữ chỗ.
+              </span>
+            </label>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsGuestCommitmentModalOpen(false);
+                  setPendingAction(null);
+                }}
+                className="flex-1 py-3 rounded-2xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-bold transition-all cursor-pointer text-center"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={!hasAgreedGuestRule}
+                onClick={async () => {
+                  setIsGuestCommitmentModalOpen(false);
+                  if (pendingAction === "reserve") {
+                    await executeReserve();
+                  } else if (pendingAction === "claim_offer") {
+                    await executeClaimOffer();
+                  }
+                  setPendingAction(null);
+                }}
+                className={`flex-1 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer shadow-lg flex items-center justify-center gap-2 ${
+                  hasAgreedGuestRule
+                    ? "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-amber-500/25 active:scale-95"
+                    : "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60"
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Tôi Cam Kết & Xác Nhận</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+</div>
   );
 }

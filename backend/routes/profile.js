@@ -5,6 +5,9 @@ const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { addXpToUser, updateQuestProgress } = require('../utils/gamification');
 const { getPlayerProfileStats } = require('../services/playerStatsService');
+const { calculateReliabilityScore } = require('../services/memberManagementService');
+const { getGuestPenaltyStatus, checkAndRevokeGuestPenalty } = require('../services/guestDisciplineService');
+const { getUnacknowledgedInactivityWarning, acknowledgeInactivityWarning } = require('../services/monthlyInactivityDisciplineService');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const { cloudinary } = require('../utils/cloudinary');
@@ -71,6 +74,8 @@ router.get('/me', authenticateToken, async (req, res) => {
               selected_avatar_frame, selected_title,
               elo_singles, matches_singles, win_rate_singles, win_singles, loss_singles, streak_singles, max_streak_singles,
               elo_doubles, matches_doubles, win_rate_doubles, win_doubles, loss_doubles, streak_doubles, max_streak_doubles,
+              COALESCE(grind_matches_count, 0) as grind_matches_count,
+              COALESCE(grind_loss_count, 0) as grind_loss_count,
               created_at
        FROM users
        WHERE id = $1`,
@@ -83,62 +88,181 @@ router.get('/me', authenticateToken, async (req, res) => {
 
     const player = userRes.rows[0];
 
-    // 2. Fetch 5 trận gần nhất
+    // 2. Fetch danh sách trận đấu hợp lệ (chỉ approved, loại trừ voided)
     const matchesRes = await db.query(
-      `SELECT m.id, m.score_p1, m.score_p2, m.elo_exchanged, m.created_at,
+      `SELECT m.id, m.score_p1, m.score_p2, m.elo_exchanged, m.created_at, m.status,
               m.player1_id, m.player2_id, m.player1_partner_id, m.player2_partner_id, m.winner_id,
               m.p1_elo_before, m.p2_elo_before, m.p1_elo_after, m.p2_elo_after,
-              u1.full_name as player1_name, u2.full_name as player2_name, w.full_name as winner_name,
-              up1.full_name as player1_partner_name, up2.full_name as player2_partner_name
+              m.p1_partner_elo_before, m.p1_partner_elo_after,
+              m.p2_partner_elo_before, m.p2_partner_elo_after,
+              u1.full_name as player1_name, u1.nickname as player1_nickname, u1.avatar_url as player1_avatar,
+              u2.full_name as player2_name, u2.nickname as player2_nickname, u2.avatar_url as player2_avatar,
+              up1.full_name as player1_partner_name, up1.nickname as player1_partner_nickname, up1.avatar_url as player1_partner_avatar,
+              up2.full_name as player2_partner_name, up2.nickname as player2_partner_nickname, up2.avatar_url as player2_partner_avatar
        FROM matches m
        JOIN users u1 ON m.player1_id = u1.id
        JOIN users u2 ON m.player2_id = u2.id
        LEFT JOIN users up1 ON m.player1_partner_id = up1.id
        LEFT JOIN users up2 ON m.player2_partner_id = up2.id
-       JOIN users w ON m.winner_id = w.id
-       WHERE m.player1_id = $1 OR m.player2_id = $1 OR m.player1_partner_id = $1 OR m.player2_partner_id = $1
-       ORDER BY m.created_at DESC LIMIT 5`,
+       WHERE (m.player1_id = $1 OR m.player2_id = $1 OR m.player1_partner_id = $1 OR m.player2_partner_id = $1)
+         AND m.status = 'approved'
+       ORDER BY m.created_at DESC
+       LIMIT 100`,
       [userId]
     );
 
+    // Tính thống kê toàn bộ các trận approved của người chơi
+    const matchStatsRes = await db.query(
+      `SELECT
+         COUNT(*)::int as total_matches,
+         COUNT(CASE WHEN (m.player1_id = $1 OR m.player1_partner_id = $1) AND (m.winner_id = m.player1_id OR m.winner_id = m.player1_partner_id)
+                      OR (m.player2_id = $1 OR m.player2_partner_id = $1) AND (m.winner_id = m.player2_id OR m.winner_id = m.player2_partner_id)
+               THEN 1 END)::int as won_matches,
+         COUNT(CASE WHEN (m.player1_partner_id IS NOT NULL OR m.player2_partner_id IS NOT NULL) THEN 1 END)::int as doubles_matches,
+         COUNT(CASE WHEN (m.player1_partner_id IS NULL AND m.player2_partner_id IS NULL) THEN 1 END)::int as singles_matches
+       FROM matches m
+       WHERE (m.player1_id = $1 OR m.player2_id = $1 OR m.player1_partner_id = $1 OR m.player2_partner_id = $1)
+         AND m.status = 'approved'`,
+      [userId]
+    );
+    const dbStats = matchStatsRes.rows[0] || { total_matches: 0, won_matches: 0, doubles_matches: 0, singles_matches: 0 };
+    const totalApprovedMatches = dbStats.total_matches;
+    const wonApprovedMatches = dbStats.won_matches;
+    const lostApprovedMatches = totalApprovedMatches - wonApprovedMatches;
+    const lifetimeWinRate = totalApprovedMatches > 0 ? Math.round((wonApprovedMatches / totalApprovedMatches) * 100) : 0;
+    const lifetimeMatchStats = {
+      total: totalApprovedMatches,
+      won: wonApprovedMatches,
+      lost: lostApprovedMatches,
+      winRate: lifetimeWinRate,
+      doubles: dbStats.doubles_matches,
+      singles: dbStats.singles_matches
+    };
+
     const formattedMatches = matchesRes.rows.map(m => {
       const isTeam1 = (m.player1_id === userId || m.player1_partner_id === userId);
-      const isDoubles = (m.player1_partner_id !== null && m.player2_partner_id !== null);
+      const isDoubles = Boolean(m.player1_partner_id || m.player2_partner_id);
       
       const team1Won = (m.winner_id === m.player1_id || m.winner_id === m.player1_partner_id);
       const won = isTeam1 ? team1Won : !team1Won;
 
-      // Tính ELO biến động
+      // Tính ELO biến động & ELO trước/sau chính xác theo vị trí của user
       let eloChange = 0;
-      if (isTeam1) {
-        eloChange = m.p1_elo_after - m.p1_elo_before;
-      } else {
-        eloChange = m.p2_elo_after - m.p2_elo_before;
+      let eloBefore = 1000;
+      let eloAfter = 1000;
+
+      if (m.player1_id === userId) {
+        eloBefore = m.p1_elo_before != null ? Number(m.p1_elo_before) : 1000;
+        eloAfter = m.p1_elo_after != null ? Number(m.p1_elo_after) : eloBefore;
+        eloChange = eloAfter - eloBefore;
+      } else if (m.player1_partner_id === userId) {
+        eloBefore = m.p1_partner_elo_before != null ? Number(m.p1_partner_elo_before) : 1000;
+        eloAfter = m.p1_partner_elo_after != null ? Number(m.p1_partner_elo_after) : eloBefore;
+        eloChange = eloAfter - eloBefore;
+      } else if (m.player2_id === userId) {
+        eloBefore = m.p2_elo_before != null ? Number(m.p2_elo_before) : 1000;
+        eloAfter = m.p2_elo_after != null ? Number(m.p2_elo_after) : eloBefore;
+        eloChange = eloAfter - eloBefore;
+      } else if (m.player2_partner_id === userId) {
+        eloBefore = m.p2_partner_elo_before != null ? Number(m.p2_partner_elo_before) : 1000;
+        eloAfter = m.p2_partner_elo_after != null ? Number(m.p2_partner_elo_after) : eloBefore;
+        eloChange = eloAfter - eloBefore;
       }
 
-      // Xác định đối thủ
-      let opponent = '';
-      if (isTeam1) {
-        opponent = isDoubles 
-          ? `${m.player2_name} / ${m.player2_partner_name || ''}` 
-          : m.player2_name;
-      } else {
-        opponent = isDoubles 
-          ? `${m.player1_name} / ${m.player1_partner_name || ''}` 
-          : m.player1_name;
+      // Xác định đồng đội (teammate) nếu đánh đôi
+      let teammate = null;
+      if (isDoubles) {
+        if (m.player1_id === userId && m.player1_partner_id) {
+          teammate = {
+            id: m.player1_partner_id,
+            name: m.player1_partner_name,
+            nickname: m.player1_partner_nickname,
+            avatar: m.player1_partner_avatar
+          };
+        } else if (m.player1_partner_id === userId && m.player1_id) {
+          teammate = {
+            id: m.player1_id,
+            name: m.player1_name,
+            nickname: m.player1_nickname,
+            avatar: m.player1_avatar
+          };
+        } else if (m.player2_id === userId && m.player2_partner_id) {
+          teammate = {
+            id: m.player2_partner_id,
+            name: m.player2_partner_name,
+            nickname: m.player2_partner_nickname,
+            avatar: m.player2_partner_avatar
+          };
+        } else if (m.player2_partner_id === userId && m.player2_id) {
+          teammate = {
+            id: m.player2_id,
+            name: m.player2_name,
+            nickname: m.player2_nickname,
+            avatar: m.player2_avatar
+          };
+        }
       }
+
+      // Xác định đối thủ (opponents)
+      const opponents = [];
+      if (isTeam1) {
+        if (m.player2_id) {
+          opponents.push({
+            id: m.player2_id,
+            name: m.player2_name,
+            nickname: m.player2_nickname,
+            avatar: m.player2_avatar
+          });
+        }
+        if (isDoubles && m.player2_partner_id) {
+          opponents.push({
+            id: m.player2_partner_id,
+            name: m.player2_partner_name,
+            nickname: m.player2_partner_nickname,
+            avatar: m.player2_partner_avatar
+          });
+        }
+      } else {
+        if (m.player1_id) {
+          opponents.push({
+            id: m.player1_id,
+            name: m.player1_name,
+            nickname: m.player1_nickname,
+            avatar: m.player1_avatar
+          });
+        }
+        if (isDoubles && m.player1_partner_id) {
+          opponents.push({
+            id: m.player1_partner_id,
+            name: m.player1_partner_name,
+            nickname: m.player1_partner_nickname,
+            avatar: m.player1_partner_avatar
+          });
+        }
+      }
+
+      // Chuỗi đối thủ dự phòng (backward compatibility)
+      const opponentNames = opponents.map(o => o.name || o.nickname).filter(Boolean);
+      const opponent = opponentNames.join(' / ');
 
       // Điểm số theo góc nhìn người chơi
-      const playerScore = isTeam1 ? m.score_p1 : m.score_p2;
+      const myScore = isTeam1 ? m.score_p1 : m.score_p2;
       const opponentScore = isTeam1 ? m.score_p2 : m.score_p1;
 
       return {
         id: m.id,
         isDoubles,
+        mode: isDoubles ? 'doubles' : 'singles',
+        teammate,
+        opponents,
         opponent,
-        score: `${playerScore} - ${opponentScore}`,
+        myScore,
+        opponentScore,
+        score: `${myScore} - ${opponentScore}`,
         won,
         eloChange,
+        eloBefore,
+        eloAfter,
         created_at: m.created_at
       };
     });
@@ -194,7 +318,122 @@ router.get('/me', authenticateToken, async (req, res) => {
     );
     const attendanceHistory = attendanceHistoryRes.rows;
 
-    // 5. Fetch comprehensive competitive stats & achievements from playerStatsService
+    // 5. Tính điểm hoạt động tích cực / uy tín & lịch sử biến động điểm
+    // Tự động kiểm tra và gỡ thẻ phạt nếu đã hoàn thành đủ 5 buổi tập tiếp theo
+    if (player.role === 'guest') {
+      try {
+        await checkAndRevokeGuestPenalty(userId);
+      } catch (err) {
+        console.error('Error auto-revoking guest penalty on profile fetch:', err);
+      }
+    }
+
+    const guestPenalty = player.role === 'guest' ? await getGuestPenaltyStatus(userId) : null;
+    const reliability = await calculateReliabilityScore(userId);
+
+    // Truy vấn lịch sử kỷ luật
+    const disciplineHistoryRes = await db.query(
+      `SELECT id, type, reason, status, issued_at, revoked_at, revoked_reason, metadata
+       FROM member_discipline_records
+       WHERE user_id = $1::uuid
+       ORDER BY issued_at DESC`,
+      [userId]
+    );
+
+    const reputationEvents = [];
+
+    // Từ attendances
+    attendanceHistoryRes.rows.forEach(a => {
+      const sessionTitle = a.title || 'Buổi tập CLB';
+      const eventDate = a.checked_in_at || a.date_time || a.rsvp_date;
+
+      if (a.status === 'NO_SHOW') {
+        reputationEvents.push({
+          id: `att_noshow_${a.rsvp_date}`,
+          delta: -20,
+          type: 'NO_SHOW',
+          title: 'Vắng mặt không báo trước',
+          sessionTitle,
+          reason: 'Đặt chỗ nhưng không đến sân',
+          date: eventDate
+        });
+      } else if (a.is_late_cancellation || (a.status === 'CANCELLED' && a.is_late_cancellation)) {
+        reputationEvents.push({
+          id: `att_late_${a.rsvp_date}`,
+          delta: -10,
+          type: 'LATE_CANCEL',
+          title: 'Hủy lịch tập sát giờ',
+          sessionTitle,
+          reason: 'Hủy giữ chỗ quá hạn cho phép',
+          date: eventDate
+        });
+      } else if (a.status === 'MISSING_CHECKOUT') {
+        reputationEvents.push({
+          id: `att_missout_${a.rsvp_date}`,
+          delta: -5,
+          type: 'MISSING_CHECKOUT',
+          title: 'Quên check-out khi ra về',
+          sessionTitle,
+          reason: 'Không quét mã check-out kết thúc',
+          date: eventDate
+        });
+      } else if (['CHECKED_OUT', 'CHECKED_IN', 'going'].includes(a.status)) {
+        reputationEvents.push({
+          id: `att_ok_${a.rsvp_date}`,
+          delta: 2,
+          type: 'ATTENDANCE_SUCCESS',
+          title: 'Tham gia buổi tập đầy đủ',
+          sessionTitle,
+          reason: 'Có mặt tại sân và hoàn thành buổi tập',
+          date: eventDate
+        });
+      }
+    });
+
+    // Từ discipline
+    disciplineHistoryRes.rows.forEach(d => {
+      const isGuestNoShow = d.metadata && (d.metadata.reason_type === 'GUEST_NO_SHOW' || d.metadata.penalty_reputation === -50);
+      const isGuestPermanentRed = d.metadata && (d.metadata.reason_type === 'GUEST_NO_SHOW' || d.metadata.penalty_reputation === 'RESET_ZERO' || d.metadata.permanent_ban);
+
+      if (d.type === 'YELLOW') {
+        reputationEvents.push({
+          id: `disc_${d.id}`,
+          delta: isGuestNoShow ? -50 : -15,
+          type: 'YELLOW_CARD',
+          title: isGuestNoShow ? 'Thẻ vàng kỷ luật (Khách vãng lai)' : 'Thẻ vàng kỷ luật',
+          sessionTitle: null,
+          reason: d.reason || 'Vi phạm nội quy sân bãi',
+          date: d.issued_at
+        });
+      } else if (d.type === 'RED') {
+        reputationEvents.push({
+          id: `disc_${d.id}`,
+          delta: isGuestPermanentRed ? -100 : -40,
+          type: 'RED_CARD',
+          title: isGuestPermanentRed ? 'Thẻ đỏ & Khóa tài khoản vĩnh viễn (Khách vãng lai)' : 'Thẻ đỏ kỷ luật',
+          sessionTitle: null,
+          reason: d.reason || 'Vi phạm kỷ luật nghiêm trọng',
+          date: d.issued_at
+        });
+      }
+
+      if (d.status === 'REVOKED' && d.revoked_at) {
+        reputationEvents.push({
+          id: `disc_rev_${d.id}`,
+          delta: isGuestNoShow ? 50 : (d.type === 'YELLOW' ? 15 : 40),
+          type: 'REVOKED_CARD',
+          title: isGuestNoShow ? 'Gỡ bỏ Thẻ vàng (Hoàn thành 5 buổi tập)' : `Gỡ bỏ thẻ phạt ${d.type}`,
+          sessionTitle: null,
+          reason: d.revoked_reason || 'Ban Quản Trị đã xóa bỏ án kỷ luật',
+          date: d.revoked_at
+        });
+      }
+    });
+
+    // Sắp xếp sự kiện mới nhất lên trước
+    reputationEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // 6. Fetch comprehensive competitive stats & achievements from playerStatsService
     const stats = await getPlayerProfileStats(userId);
 
     res.json({
@@ -211,12 +450,39 @@ router.get('/me', authenticateToken, async (req, res) => {
       title: stats?.title || null,
       meta: stats?.meta || null,
       matches: formattedMatches,
+      matchStats: lifetimeMatchStats,
       upcomingSession,
-      attendanceHistory
+      attendanceHistory,
+      guest_penalty: guestPenalty,
+      inactivity_warning: (player?.role === 'member' || req.user?.role === 'member') ? await getUnacknowledgedInactivityWarning(userId) : null,
+      reputation: {
+        score: reliability.score,
+        label: reliability.label,
+        level: reliability.level,
+        color: reliability.color,
+        breakdown: reliability.breakdown,
+        history: reputationEvents
+      }
     });
   } catch (error) {
     console.error('Error fetching player profile:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/profile/acknowledge-inactivity-warning - Xác nhận đã đọc cảnh báo kỷ luật chuyên cần tháng (chỉ hiện 1 lần)
+router.post('/acknowledge-inactivity-warning', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { recordId } = req.body;
+    if (!recordId) {
+      return res.status(400).json({ error: 'Thiếu recordId.' });
+    }
+    const result = await acknowledgeInactivityWarning(userId, recordId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error acknowledging inactivity warning:', error);
+    res.status(500).json({ error: error.message || 'Lỗi khi xác nhận cảnh báo.' });
   }
 });
 
@@ -283,6 +549,13 @@ router.put('/update', authenticateToken, async (req, res) => {
 router.post('/upload-avatar', authenticateToken, uploadAvatar.single('avatar'), async (req, res) => {
   try {
     const userId = req.user.id;
+
+    if (req.user.role === 'guest') {
+      return res.status(403).json({
+        error: 'Tài khoản vãng lai chưa hỗ trợ tải ảnh từ thiết bị. Hãy chọn avatar từ bộ có sẵn hoặc nâng cấp lên thành viên chính thức.',
+        code: 'GUEST_UPLOAD_RESTRICTED'
+      });
+    }
 
     if (!req.file) {
       return res.status(400).json({ error: 'Không tìm thấy file ảnh tải lên.' });

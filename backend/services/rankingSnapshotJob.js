@@ -67,13 +67,14 @@ async function takeWeeklyRankingSnapshot(options = {}) {
     // 5. id ASC
     const membersRes = await db.query(
       `SELECT id, 
-              COALESCE(${eloCol}, 1000) as elo, 
+              COALESCE(${eloCol}, 950) as elo, 
               COALESCE(${matchesCol}, 0) as matches, 
               COALESCE(${winRateCol}, 0) as win_rate
        FROM users
-       WHERE role IN ('member', 'admin') 
+       WHERE role IN ('member', 'admin', 'guest') 
          AND full_name != 'Super Admin' 
-         AND phone_zalo != '0999999999'
+         AND (phone_zalo IS NULL OR phone_zalo != '0999999999')
+         AND (role != 'guest' OR COALESCE(${matchesCol}, 0) > 0)
        ORDER BY 
          ${eloCol} DESC,
          ${matchesCol} DESC,
@@ -83,10 +84,12 @@ async function takeWeeklyRankingSnapshot(options = {}) {
     );
 
     let insertedOrUpdated = 0;
+    let officialRankCounter = 1;
 
     for (let i = 0; i < membersRes.rows.length; i++) {
       const player = membersRes.rows[i];
-      const rank = i + 1;
+      const isEstablished = Number(player.matches) >= 3;
+      const rank = isEstablished ? officialRankCounter++ : null;
 
       await db.query(
         `INSERT INTO ranking_snapshots (

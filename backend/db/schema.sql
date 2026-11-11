@@ -9,11 +9,14 @@ CREATE TABLE users (
     academic_info VARCHAR(255),
     badminton_level VARCHAR(50) CHECK (badminton_level IN ('Mới chơi', 'Trung bình', 'Khá/Giỏi')),
     soft_skills JSONB,
-    role VARCHAR(50) DEFAULT 'candidate' CHECK (role IN ('candidate', 'member', 'admin')),
-    elo_score INTEGER DEFAULT 1000,
+    role VARCHAR(50) DEFAULT 'guest' CHECK (role IN ('candidate', 'member', 'admin', 'guest')),
+    elo_score INTEGER DEFAULT 950,
+    rating_points INTEGER DEFAULT 950,
     total_matches INTEGER DEFAULT 0,
+    matches_played INTEGER DEFAULT 0,
+    is_profile_completed BOOLEAN DEFAULT false,
     win_rate DECIMAL(5, 2) DEFAULT 0.0,
-    password_hash VARCHAR(255), -- For admin login
+    password_hash VARCHAR(255), -- For login
     gender VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

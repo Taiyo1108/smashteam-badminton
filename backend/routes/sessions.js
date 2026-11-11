@@ -190,12 +190,22 @@ router.post('/:id/waitlist/leave', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
+    const prevRes = await db.query(
+      `SELECT status FROM session_waitlist WHERE session_id = $1::uuid AND user_id = $2::uuid;`,
+      [id, userId]
+    );
+    const wasOffered = prevRes.rows[0]?.status === 'OFFERED';
+
     await db.query(
       `UPDATE session_waitlist 
        SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
        WHERE session_id = $1::uuid AND user_id = $2::uuid;`,
       [id, userId]
     );
+
+    // Luôn kích hoạt triggerWaitlistOffers để re-number lại vị trí chuẩn FIFO và cấp slot trống tiếp theo (nếu có)
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist upon leave:', e));
 
     res.json({ success: true, message: 'Bạn đã rời khỏi danh sách chờ.' });
   } catch (error) {
@@ -240,8 +250,17 @@ router.post('/:id/qr-check-in', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/sessions/:id/qr-check-out - Thành viên quét mã QR hoặc bấm check-out rời sân
+// POST /api/sessions/:id/checkout - Thành viên bấm Check-out rời buổi tập sớm từ trang cá nhân
+router.post('/:id/checkout', authenticateToken, async (req, res) => {
+  return handleSessionCheckout(req, res);
+});
+
+// POST /api/sessions/:id/qr-check-out - (Alias tương thích ngược)
 router.post('/:id/qr-check-out', authenticateToken, async (req, res) => {
+  return handleSessionCheckout(req, res);
+});
+
+async function handleSessionCheckout(req, res) {
   try {
     const sessionId = req.params.id;
     const userId = req.user.id;
@@ -257,10 +276,10 @@ router.post('/:id/qr-check-out', authenticateToken, async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error('Error in QR check-out:', error);
+    console.error('Error in check-out:', error);
     res.status(400).json({ error: error.message || 'Check-out thất bại.' });
   }
-});
+}
 
 // POST /api/sessions/code-check-in - Điểm danh bằng mã 5 ký tự thủ công
 router.post('/code-check-in', authenticateToken, async (req, res) => {

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { authenticateToken, isAdmin, requireOfficialMember } = require('../middleware/auth');
 const { upload, cloudinary } = require('../utils/cloudinary');
 
 // GET /api/shop/items - Lấy danh sách sản phẩm hoạt động
@@ -58,7 +58,7 @@ router.get('/items', async (req, res) => {
 });
 
 // POST /api/shop/buy - Mua sản phẩm (Chống spam, Row locking, Giới hạn mua, Cấp độ)
-router.post('/buy', authenticateToken, async (req, res) => {
+router.post('/buy', authenticateToken, requireOfficialMember, async (req, res) => {
   const userId = req.user.id;
   const { itemId } = req.body;
 
@@ -119,14 +119,56 @@ router.post('/buy', authenticateToken, async (req, res) => {
     }
 
     // 4. Kiểm tra giới hạn mua tối đa của mỗi người
-    const ownedRes = await client.query(
-      `SELECT COUNT(*)::int AS count FROM user_inventory 
-       WHERE user_id = $1 AND shop_item_id = $2 AND (expires_at IS NULL OR expires_at > NOW())`,
-      [userId, item.id]
-    );
-    const ownedCount = ownedRes.rows[0].count;
-    if (ownedCount >= item.max_per_user) {
-      return res.status(400).json({ error: `Bạn đã đạt giới hạn mua tối đa cho vật phẩm này (Tối đa: ${item.max_per_user} lần).` });
+    const isHopeStar = item.name && (item.name.toLowerCase().includes('ngôi sao hy vọng') || item.name.toLowerCase().includes('hope star'));
+    const isShield = !isHopeStar && (item.category === 'Bảo bối' || (item.name && item.name.toLowerCase().includes('khiên')));
+
+    if (isHopeStar) {
+      // Giới hạn kho đồ: tối đa 5 Ngôi Sao Hy Vọng còn hiệu lực trong tuần
+      const activeStarsRes = await client.query(
+        `SELECT COUNT(*)::int AS count FROM user_inventory 
+         WHERE user_id = $1 AND (item_type = 'hope_star' OR shop_item_id = $2)
+           AND status IN ('OWNED', 'ACTIVATED', 'unused')
+           AND (expires_at IS NULL OR expires_at > NOW())`,
+        [userId, item.id]
+      );
+      const activeCount = activeStarsRes.rows[0].count;
+      if (activeCount >= 5) {
+        return res.status(400).json({ error: 'Kho đồ của bạn đã chứa tối đa 5 Ngôi Sao Hy Vọng còn hiệu lực trong tuần. Hãy sử dụng trước khi mua thêm nhé!' });
+      }
+
+      // Giới hạn tháng: tối đa 20 sao mỗi tháng
+      const monthlyStarsRes = await client.query(
+        `SELECT COUNT(*)::int AS count FROM user_inventory 
+         WHERE user_id = $1 AND (item_type = 'hope_star' OR shop_item_id = $2)
+           AND purchased_at >= date_trunc('month', NOW())`,
+        [userId, item.id]
+      );
+      const monthlyCount = monthlyStarsRes.rows[0].count;
+      if (monthlyCount >= 20) {
+        return res.status(400).json({ error: 'Bạn đã đạt giới hạn mua tối đa 20 Ngôi Sao Hy Vọng trong tháng này. Hãy quay lại vào tháng sau nhé!' });
+      }
+    } else if (isShield) {
+      // Giới hạn mua tối đa 3 khiên trong 1 tháng
+      const monthlyShieldPurchasesRes = await client.query(
+        `SELECT COUNT(*)::int AS count FROM user_inventory 
+         WHERE user_id = $1 AND shop_item_id = $2 
+           AND purchased_at >= date_trunc('month', NOW())`,
+        [userId, item.id]
+      );
+      const monthlyCount = monthlyShieldPurchasesRes.rows[0].count;
+      if (monthlyCount >= (item.max_per_user || 3)) {
+        return res.status(400).json({ error: `Bạn đã đạt giới hạn mua tối đa ${item.max_per_user || 3} khiên trong tháng này. Hãy quay lại vào tháng sau nhé!` });
+      }
+    } else {
+      const ownedRes = await client.query(
+        `SELECT COUNT(*)::int AS count FROM user_inventory 
+         WHERE user_id = $1 AND shop_item_id = $2 AND (expires_at IS NULL OR expires_at > NOW())`,
+        [userId, item.id]
+      );
+      const ownedCount = ownedRes.rows[0].count;
+      if (ownedCount >= item.max_per_user) {
+        return res.status(400).json({ error: `Bạn đã đạt giới hạn mua tối đa cho vật phẩm này (Tối đa: ${item.max_per_user} lần).` });
+      }
     }
 
     // 5. Kiểm tra số dư xu
@@ -159,9 +201,20 @@ router.post('/buy', authenticateToken, async (req, res) => {
     let couponCode = null;
 
     if (item.item_type === 'virtual') {
-      if (item.name.toLowerCase().includes('danh hiệu') || item.name.toLowerCase().includes('title') || item.name.toLowerCase().includes('smash king')) {
+      if (isHopeStar) {
+        invItemType = 'hope_star';
+        invItemValue = 'elo_double_next_win';
+      } else if (item.name.toLowerCase().includes('danh hiệu') || item.name.toLowerCase().includes('title') || item.name.toLowerCase().includes('smash king')) {
         invItemType = 'title';
         invItemValue = item.name.replace(/danh hiệu\s*:?/i, '').trim() || 'Smash King';
+      } else if (isShield) {
+        invItemType = 'shield';
+        invItemValue = 'elo_streak_protection';
+        // Tăng streak_shields trên bảng users
+        await client.query(
+          `UPDATE users SET streak_shields = streak_shields + 1 WHERE id = $1`,
+          [userId]
+        );
       } else {
         invItemType = 'virtual';
         invItemValue = item.name;
@@ -202,10 +255,12 @@ router.post('/buy', authenticateToken, async (req, res) => {
       }
     }
 
-    // 10. Ghi nhận vào túi đồ
+    // 10. Ghi nhận vào túi đồ (Khiên và Ngôi Sao Hy Vọng có hạn sử dụng 7 ngày kể từ khi nhận)
+    const itemExpiresAt = (isShield || isHopeStar) ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null;
+    const invStatus = isHopeStar ? 'OWNED' : 'unused';
     await client.query(
       `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, shop_item_id, coupon_code, status, purchase_price, purchased_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NULL)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)`,
       [
         userId,
         invItemType,
@@ -213,8 +268,9 @@ router.post('/buy', authenticateToken, async (req, res) => {
         invItemValue,
         item.id,
         couponCode,
-        item.item_type === 'physical' ? 'unused' : 'unused',
-        item.coin_price
+        invStatus,
+        item.coin_price,
+        itemExpiresAt
       ]
     );
 
@@ -314,7 +370,7 @@ router.put('/redemptions/:id/deliver', authenticateToken, isAdmin, async (req, r
 });
 
 // POST /api/shop/mystery-box - Mở hộp quà bí ẩn hàng tuần (Weekly Box, Cooldown 168h = 7 ngày)
-router.post('/mystery-box', authenticateToken, async (req, res) => {
+router.post('/mystery-box', authenticateToken, requireOfficialMember, async (req, res) => {
   const userId = req.user.id;
 
   const client = await db.connect();
@@ -351,18 +407,30 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
       }
     }
 
-    // 2. Quay thưởng ngẫu nhiên (Đã loại bỏ vật phẩm khung)
-    // 75% -> Smash Coins (20-50 xu), 25% -> Streak Shield (1-2 khiên)
+    // 2. Quay thưởng ngẫu nhiên (85% Smash Coins, 15% Khiên Hộ Mệnh - tối đa 1 khiên, hạn dùng 7 ngày)
     const rand = Math.random() * 100;
     let rewardType = '';
     let rewardName = '';
     let rewardValue = '';
     let expiresAt = null;
 
-    if (rand < 75) {
-      // 75% -> Coins
+    if (rand < 85) {
+      // 85% -> Coins (5-50 xu): Tỉ lệ cao ra 5 xu (60%), hiếm hơn là 10 xu (25%), 20 xu (10%), cực thấp là 40 xu (3%) & 50 xu (2%)
       rewardType = 'coins';
-      const coinsAwarded = Math.floor(Math.random() * 31) + 20; // 20 to 50
+      const coinRoll = Math.random() * 100;
+      let coinsAwarded = 5;
+      if (coinRoll < 60) {
+        coinsAwarded = 5;       // 60% tỉ lệ cao
+      } else if (coinRoll < 85) {
+        coinsAwarded = 10;      // 25% hiếm hơn
+      } else if (coinRoll < 95) {
+        coinsAwarded = 20;      // 10% hiếm
+      } else if (coinRoll < 98) {
+        coinsAwarded = 40;      // 3% cực thấp
+      } else {
+        coinsAwarded = 50;      // 2% cực thấp (Jackpot)
+      }
+
       rewardName = `${coinsAwarded} Smash Coins`;
       rewardValue = coinsAwarded.toString();
       
@@ -371,15 +439,27 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
         [coinsAwarded, userId]
       );
     } else {
-      // 25% -> Streak Shield
+      // 15% -> Streak Shield (Khiên Hộ Mệnh - mỗi lần mở nhận tối đa 1 khiên, thời hạn sử dụng 1 tuần)
       rewardType = 'streak_shield';
-      const shieldsAwarded = Math.floor(Math.random() * 2) + 1; // 1 to 2
-      rewardName = `${shieldsAwarded} Khiên bảo vệ chuỗi`;
-      rewardValue = shieldsAwarded.toString();
+      const shieldsAwarded = 1; // Tối đa 1 khiên
+      rewardName = `1 Khiên Hộ Mệnh (Hạn dùng 7 ngày)`;
+      rewardValue = '1';
+      expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      // Lấy ảnh của Khiên Hộ Mệnh từ shop_items
+      const shieldItemRes = await client.query('SELECT image_url FROM shop_items WHERE id = 10 OR name ILIKE \'%Khiên Hộ Mệnh%\' LIMIT 1');
+      var shieldRewardImageUrl = shieldItemRes.rows[0]?.image_url || null;
 
       await client.query(
-        `UPDATE users SET streak_shields = streak_shields + $1 WHERE id = $2`,
-        [shieldsAwarded, userId]
+        `UPDATE users SET streak_shields = streak_shields + 1 WHERE id = $1`,
+        [userId]
+      );
+
+      // Thêm khiên vào túi đồ (user_inventory) với thời hạn 7 ngày
+      await client.query(
+        `INSERT INTO user_inventory (user_id, item_type, item_name, item_value, shop_item_id, status, purchase_price, purchased_at, expires_at)
+         VALUES ($1, 'shield', '🛡️ Khiên Hộ Mệnh', 'elo_streak_protection', 10, 'unused', 0, NOW(), NOW() + INTERVAL '7 days')`,
+        [userId]
       );
     }
 
@@ -398,7 +478,8 @@ router.post('/mystery-box', authenticateToken, async (req, res) => {
         type: rewardType,
         name: rewardName,
         value: rewardValue,
-        expiresAt
+        expiresAt,
+        imageUrl: rewardType === 'streak_shield' ? shieldRewardImageUrl : null
       }
     });
   } catch (error) {

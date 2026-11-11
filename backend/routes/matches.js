@@ -25,6 +25,7 @@ router.get('/', async (req, res) => {
        LEFT JOIN users up1 ON m.player1_partner_id = up1.id
        LEFT JOIN users up2 ON m.player2_partner_id = up2.id
        JOIN users w ON m.winner_id = w.id
+       WHERE m.status = 'approved'
        ORDER BY m.created_at DESC LIMIT 50`
     );
     res.json(result.rows);
@@ -37,42 +38,94 @@ router.get('/', async (req, res) => {
 // POST /api/matches - Nhập kết quả trận đấu (Đơn hoặc Đôi), tính Elo và cập nhật thống kê (tách biệt Đơn/Đôi)
 router.post('/', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { player1_id, player2_id, player1_partner_id, player2_partner_id, score_p1, score_p2, winner_id } = req.body;
+    const normalizeId = (id) => String(id || '').trim().toLowerCase();
+    const { player1_id, player2_id, player1_partner_id, player2_partner_id, score_p1, score_p2, winner_id, occupied_player_ids = [] } = req.body;
 
-    if (!player1_id || !player2_id || score_p1 === undefined || score_p2 === undefined || !winner_id) {
+    const p1_id = normalizeId(player1_id);
+    const p2_id = normalizeId(player2_id);
+    const p1_p_id = player1_partner_id ? normalizeId(player1_partner_id) : null;
+    const p2_p_id = player2_partner_id ? normalizeId(player2_partner_id) : null;
+    const w_id = normalizeId(winner_id);
+
+    if (!p1_id || !p2_id || score_p1 === undefined || score_p2 === undefined || !w_id) {
       return res.status(400).json({ error: 'Missing required match details' });
     }
 
-    const isDoubles = !!(player1_partner_id && player2_partner_id);
+    const isDoubles = !!(p1_p_id && p2_p_id);
 
     // Thu thập danh sách ID người chơi thực tế
-    const activePlayerIds = [player1_id, player2_id];
-    if (player1_partner_id) activePlayerIds.push(player1_partner_id);
-    if (player2_partner_id) activePlayerIds.push(player2_partner_id);
+    const activePlayerIds = [p1_id, p2_id];
+    if (p1_p_id) activePlayerIds.push(p1_p_id);
+    if (p2_p_id) activePlayerIds.push(p2_p_id);
 
-    // Xác nhận không trùng ID người chơi
+    // Xác nhận không trùng ID người chơi trong cùng trận
     const uniqueIds = new Set(activePlayerIds);
     if (uniqueIds.size !== activePlayerIds.length) {
       return res.status(400).json({ error: 'All player IDs in a match must be unique' });
     }
 
-    // Đội 1: player1_id & player1_partner_id
-    // Đội 2: player2_id & player2_partner_id
-    const team1Ids = [player1_id];
-    if (player1_partner_id) team1Ids.push(player1_partner_id);
+    // Kiểm tra VĐV có bị chiếm dụng ở sân khác được truyền từ Match Desk không
+    const cleanOccupied = (Array.isArray(occupied_player_ids) ? occupied_player_ids : [])
+      .map(normalizeId)
+      .filter(Boolean);
+    const occupiedSet = new Set(cleanOccupied);
+    for (const pId of activePlayerIds) {
+      if (occupiedSet.has(pId)) {
+        return res.status(409).json({ error: 'Xung đột: Tuyển thủ hiện đang tham gia trận đấu tại sân khác.' });
+      }
+    }
 
-    const team2Ids = [player2_id];
-    if (player2_partner_id) team2Ids.push(player2_partner_id);
+    // Đội 1: p1_id & p1_p_id
+    // Đội 2: p2_id & p2_p_id
+    const team1Ids = [p1_id];
+    if (p1_p_id) team1Ids.push(p1_p_id);
 
-    const team1Won = team1Ids.includes(winner_id);
-    const team2Won = team2Ids.includes(winner_id);
+    const team2Ids = [p2_id];
+    if (p2_p_id) team2Ids.push(p2_p_id);
+
+    const team1Won = team1Ids.includes(w_id);
+    const team2Won = team2Ids.includes(w_id);
 
     if (!team1Won && !team2Won) {
       return res.status(400).json({ error: 'Winner must be one of the active players' });
     }
 
+    // Chống Duplicate Submission (ấn đúp chuột hoặc trùng request trong 3 giây)
+    const dupCheckRes = await db.query(
+      `SELECT id FROM matches 
+       WHERE player1_id = $1::uuid 
+         AND player2_id = $2::uuid 
+         AND COALESCE(player1_partner_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE($3::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+         AND COALESCE(player2_partner_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE($4::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+         AND score_p1 = $5 AND score_p2 = $6 AND winner_id = $7::uuid
+         AND created_at >= NOW() - INTERVAL '3 seconds'
+       LIMIT 1`,
+      [p1_id, p2_id, p1_p_id || null, p2_p_id || null, score_p1, score_p2, w_id]
+    );
+    if (dupCheckRes.rows.length > 0) {
+      return res.status(400).json({ error: 'Trận đấu này vừa được gửi lên hệ thống. Vui lòng không nhấn liên tiếp để tránh trùng lặp!' });
+    }
+
     // Bắt đầu một transaction
     await db.query('BEGIN');
+
+    // Khóa Race Condition: Kiểm tra xem có tuyển thủ nào vừa tham gia trận khác trong 5 giây qua không
+    const raceCheckRes = await db.query(
+      `SELECT id FROM matches 
+       WHERE (
+         player1_id = ANY($1::uuid[]) OR 
+         player2_id = ANY($1::uuid[]) OR 
+         COALESCE(player1_partner_id, '00000000-0000-0000-0000-000000000000'::uuid) = ANY($1::uuid[]) OR 
+         COALESCE(player2_partner_id, '00000000-0000-0000-0000-000000000000'::uuid) = ANY($1::uuid[])
+       )
+       AND created_at >= NOW() - INTERVAL '5 seconds'
+       LIMIT 1`,
+      [activePlayerIds]
+    );
+    if (raceCheckRes.rows.length > 0) {
+      await db.query('ROLLBACK');
+      return res.status(409).json({ error: 'Xung đột: Một hoặc nhiều tuyển thủ vừa được ghi nhận kết quả ở một trận đấu khác.' });
+    }
 
     // Truy vấn khóa dòng (FOR UPDATE) cho tất cả người chơi hoạt động
     const playersData = {};
@@ -83,13 +136,20 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
                 win_singles, loss_singles,
                 win_doubles, loss_doubles,
                 streak_singles, max_streak_singles,
-                streak_doubles, max_streak_doubles
+                streak_doubles, max_streak_doubles,
+                COALESCE(grind_matches_count, 0) as grind_matches_count,
+                COALESCE(grind_loss_count, 0) as grind_loss_count,
+                status, is_blocked
          FROM users WHERE id = $1::uuid FOR UPDATE`, 
         [pId]
       );
       if (pRes.rows.length === 0) {
         await db.query('ROLLBACK');
         return res.status(404).json({ error: `Player with ID ${pId} not found` });
+      }
+      if (pRes.rows[0].status !== 'active' || pRes.rows[0].is_blocked) {
+        await db.query('ROLLBACK');
+        return res.status(400).json({ error: `Tuyển thủ ${pId} không ở trạng thái hoạt động hợp lệ.` });
       }
       playersData[pId] = pRes.rows[0];
     }
@@ -114,19 +174,51 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const streak1_p = isDoubles && p1_p ? p1_p.streak_doubles : 0;
     const streak2_p = isDoubles && p2_p ? p2_p.streak_doubles : 0;
 
-    // Tính Elo bằng helper calculateElo
-    const { elo1New, elo2New, elo1_partnerNew, elo2_partnerNew, eloExchanged } = calculateElo(
+    const grindInfo = {
+      p1: { matchesCount: p1.grind_matches_count, lossCount: p1.grind_loss_count },
+      p2: { matchesCount: p2.grind_matches_count, lossCount: p2.grind_loss_count },
+      p1p: p1_p ? { matchesCount: p1_p.grind_matches_count, lossCount: p1_p.grind_loss_count } : null,
+      p2p: p2_p ? { matchesCount: p2_p.grind_matches_count, lossCount: p2_p.grind_loss_count } : null,
+    };
+
+    // Kiểm tra và khóa các vật phẩm Ngôi Sao Hy Vọng đang kích hoạt của các tuyển thủ
+    const activeStarsRes = await db.query(
+      `SELECT * FROM user_inventory 
+       WHERE user_id = ANY($1::uuid[]) 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status = 'ACTIVATED' 
+         AND (expires_at IS NULL OR expires_at > NOW())
+       FOR UPDATE`,
+      [activePlayerIds]
+    );
+    const starMap = {};
+    activeStarsRes.rows.forEach(s => { starMap[s.user_id] = s; });
+
+    const itemEffects = {
+      p1: { hopeStar: !!starMap[player1_id] },
+      p2: { hopeStar: !!starMap[player2_id] },
+      p1p: player1_partner_id ? { hopeStar: !!starMap[player1_partner_id] } : null,
+      p2p: player2_partner_id ? { hopeStar: !!starMap[player2_partner_id] } : null
+    };
+
+    // Tính Elo bằng helper calculateElo (kèm cơ chế cày cuốc x2 Thắng, Khiên Thua và Ngôi Sao Hy Vọng)
+    const { 
+      elo1New, elo2New, elo1_partnerNew, elo2_partnerNew, eloExchanged,
+      p1Outcome, p2Outcome, p1pOutcome, p2pOutcome
+    } = calculateElo(
       elo1, elo2, player1_id, player2_id, winner_id,
       streak1, streak2, matches1, matches2,
       elo1_p, elo2_p,
       streak1_p, streak2_p,
       matches1_p, matches2_p,
       player1_partner_id,
-      player2_partner_id
+      player2_partner_id,
+      grindInfo,
+      itemEffects
     );
 
-    // Hàm cập nhật thống kê người chơi (tách biệt Đơn/Đôi)
-    const updateUserStats = async (id, currentStats, newElo, won) => {
+    // Hàm cập nhật thống kê người chơi (tách biệt Đơn/Đôi và lưu tiến trình cày cuốc)
+    const updateUserStats = async (id, currentStats, newElo, won, outcome) => {
       // Xác định tên cột dựa trên thể thức
       const matches_col = isDoubles ? 'matches_doubles' : 'matches_singles';
       const elo_col = isDoubles ? 'elo_doubles' : 'elo_singles';
@@ -156,18 +248,25 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       }
       const newMaxStreak = newStreak > 0 ? Math.max(prevMaxStreak, newStreak) : prevMaxStreak;
 
+      const nextMatchesCount = outcome?.nextMatchesCount !== undefined ? outcome.nextMatchesCount : 0;
+      const nextLossCount = outcome?.nextLossCount !== undefined ? outcome.nextLossCount : 0;
+
       await db.query(
         `UPDATE users 
          SET ${elo_col} = $1, 
-             ${peak_col} = GREATEST(COALESCE(${peak_col}, 1000), $1),
+             ${peak_col} = GREATEST(COALESCE(${peak_col}, 950), $1),
              ${matches_col} = $2,
              ${win_col} = $3,
              ${loss_col} = $4,
              ${win_rate_col} = $5,
              ${streak_col} = $6,
-             ${max_streak_col} = $7
+             ${max_streak_col} = $7,
+             rating_points = $1,
+             matches_played = COALESCE(matches_singles, 0) + COALESCE(matches_doubles, 0) + 1,
+             grind_matches_count = $9,
+             grind_loss_count = $10
          WHERE id = $8::uuid`,
-        [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id]
+        [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id, nextMatchesCount, nextLossCount]
       );
 
       // Award 15 XP for match and progress quest
@@ -179,14 +278,14 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     };
 
     // Thực hiện cập nhật cho các người chơi
-    await updateUserStats(player1_id, p1, elo1New, team1Won);
-    await updateUserStats(player2_id, p2, elo2New, team2Won);
+    await updateUserStats(player1_id, p1, elo1New, team1Won, p1Outcome);
+    await updateUserStats(player2_id, p2, elo2New, team2Won, p2Outcome);
 
     if (player1_partner_id && p1_p) {
-      await updateUserStats(player1_partner_id, p1_p, elo1_partnerNew, team1Won);
+      await updateUserStats(player1_partner_id, p1_p, elo1_partnerNew, team1Won, p1pOutcome);
     }
     if (player2_partner_id && p2_p) {
-      await updateUserStats(player2_partner_id, p2_p, elo2_partnerNew, team2Won);
+      await updateUserStats(player2_partner_id, p2_p, elo2_partnerNew, team2Won, p2pOutcome);
     }
 
     // Lưu trận đấu vào DB
@@ -199,12 +298,52 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
       ) 
        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
       [
-        player1_id, player2_id, player1_partner_id || null, player2_partner_id || null, winner_id,
+        p1_id, p2_id, p1_p_id || null, p2_p_id || null, w_id,
         score_p1, score_p2, elo1, elo2, elo1New, elo2New,
         elo1_p, elo2_p, elo1_partnerNew, elo2_partnerNew,
         eloExchanged
       ]
     );
+
+    const matchRecord = matchResult.rows[0];
+
+    // Ghi nhận ELO Ledger và tiêu hao vật phẩm Ngôi Sao Hy Vọng (CONSUMED)
+    const ledgerEntries = [
+      { id: player1_id, outcome: p1Outcome, won: team1Won, star: starMap[player1_id] },
+      { id: player2_id, outcome: p2Outcome, won: team2Won, star: starMap[player2_id] },
+      ...(player1_partner_id && p1_p ? [{ id: player1_partner_id, outcome: p1pOutcome, won: team1Won, star: starMap[player1_partner_id] }] : []),
+      ...(player2_partner_id && p2_p ? [{ id: player2_partner_id, outcome: p2pOutcome, won: team2Won, star: starMap[player2_partner_id] }] : [])
+    ];
+
+    for (const le of ledgerEntries) {
+      await db.query(
+        `INSERT INTO elo_ledger (
+           match_id, player_id, inventory_item_id, item_type,
+           base_elo_delta, item_elo_bonus, total_elo_delta,
+           is_win, activation_timestamp, status
+         ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, 'APPLIED')`,
+        [
+          matchRecord.id,
+          le.id,
+          le.star ? le.star.id : null,
+          le.star ? 'HOPE_STAR' : 'NONE',
+          le.won ? le.outcome.baseDelta : -le.outcome.baseDelta,
+          le.outcome.itemBonus || 0,
+          le.outcome.delta,
+          le.won,
+          le.star ? le.star.activated_at : null
+        ]
+      );
+
+      if (le.star) {
+        await db.query(
+          `UPDATE user_inventory 
+           SET status = 'CONSUMED', consumed_at = NOW(), consumed_match_id = $1::uuid 
+           WHERE id = $2`,
+          [matchRecord.id, le.star.id]
+        );
+      }
+    }
 
     await db.query('COMMIT');
     res.status(201).json(matchResult.rows[0]);
@@ -230,11 +369,22 @@ router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
           u.matches_singles, u.matches_doubles,
           u.win_rate_singles, u.win_rate_doubles,
           u.streak_singles, u.streak_doubles,
-          COALESCE(a.checked_in_at, a.created_at) AS checked_in_at
+          COALESCE(u.grind_matches_count, 0) as grind_matches_count,
+          COALESCE(u.grind_loss_count, 0) as grind_loss_count,
+          EXISTS (
+            SELECT 1 FROM user_inventory ui 
+            WHERE ui.user_id = u.id 
+              AND (ui.item_type = 'hope_star' OR ui.item_name ILIKE '%ngôi sao hy vọng%')
+              AND ui.status = 'ACTIVATED' 
+              AND (ui.expires_at IS NULL OR ui.expires_at > NOW())
+          ) as has_active_hope_star,
+          a.checked_in_at
          FROM attendances a
          JOIN users u ON a.user_id = u.id
-         WHERE a.session_id = $1 AND a.status IN ('going', 'CHECKED_IN') 
-           AND u.status = 'active' AND (u.is_blocked IS FALSE OR u.is_blocked IS NULL)
+         WHERE a.session_id = $1 
+           AND a.status = 'CHECKED_IN' 
+           AND u.status = 'active' 
+           AND (u.is_blocked IS FALSE OR u.is_blocked IS NULL)
          ORDER BY u.full_name ASC`,
         [session_id]
       );
@@ -249,6 +399,15 @@ router.get('/session-players', authenticateToken, isAdmin, async (req, res) => {
           matches_singles, matches_doubles,
           win_rate_singles, win_rate_doubles,
           streak_singles, streak_doubles,
+          COALESCE(grind_matches_count, 0) as grind_matches_count,
+          COALESCE(grind_loss_count, 0) as grind_loss_count,
+          EXISTS (
+            SELECT 1 FROM user_inventory ui 
+            WHERE ui.user_id = users.id 
+              AND (ui.item_type = 'hope_star' OR ui.item_name ILIKE '%ngôi sao hy vọng%')
+              AND ui.status = 'ACTIVATED' 
+              AND (ui.expires_at IS NULL OR ui.expires_at > NOW())
+          ) as has_active_hope_star,
           NULL AS checked_in_at
          FROM users
          WHERE status = 'active' AND (is_blocked IS FALSE OR is_blocked IS NULL)
@@ -285,7 +444,9 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
     }
 
     const pRes = await db.query(
-      `SELECT id, full_name, elo_singles, elo_doubles, matches_singles, matches_doubles, streak_singles, streak_doubles
+      `SELECT id, full_name, elo_singles, elo_doubles, matches_singles, matches_doubles, streak_singles, streak_doubles,
+              COALESCE(grind_matches_count, 0) as grind_matches_count,
+              COALESCE(grind_loss_count, 0) as grind_loss_count
        FROM users WHERE id = ANY($1::uuid[])`,
       [activeIds]
     );
@@ -318,6 +479,33 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
 
     const actualWinnerId = winner_id || player1_id;
 
+    const grindInfo = {
+      p1: { matchesCount: p1.grind_matches_count, lossCount: p1.grind_loss_count },
+      p2: { matchesCount: p2.grind_matches_count, lossCount: p2.grind_loss_count },
+      p1p: p1_p ? { matchesCount: p1_p.grind_matches_count, lossCount: p1_p.grind_loss_count } : null,
+      p2p: p2_p ? { matchesCount: p2_p.grind_matches_count, lossCount: p2_p.grind_loss_count } : null,
+    };
+
+    // Kiểm tra các tuyển thủ có kích hoạt Ngôi Sao Hy Vọng không
+    const starsRes = await db.query(
+      `SELECT user_id, id, item_name, activated_at, expires_at 
+       FROM user_inventory 
+       WHERE user_id = ANY($1::uuid[]) 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status = 'ACTIVATED' 
+         AND (expires_at IS NULL OR expires_at > NOW())`,
+      [activeIds]
+    );
+    const starMap = {};
+    starsRes.rows.forEach(s => { starMap[s.user_id] = s; });
+
+    const itemEffects = {
+      p1: { hopeStar: !!starMap[player1_id] },
+      p2: { hopeStar: !!starMap[player2_id] },
+      p1p: p1_p ? { hopeStar: !!starMap[player1_partner_id] } : null,
+      p2p: p2_p ? { hopeStar: !!starMap[player2_partner_id] } : null
+    };
+
     const eloResult = calculateElo(
       elo1, elo2, player1_id, player2_id, actualWinnerId,
       streak1, streak2, matches1, matches2,
@@ -325,7 +513,9 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
       streak1_p, streak2_p,
       matches1_p, matches2_p,
       player1_partner_id,
-      player2_partner_id
+      player2_partner_id,
+      grindInfo,
+      itemEffects
     );
 
     const team1Elo = elo1_p !== null ? Math.round((elo1 + elo1_p) / 2) : elo1;
@@ -344,11 +534,56 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
         elo: team2Elo,
         winProb: Math.round(exp2 * 100)
       },
-      p1: { before: elo1, after: eloResult.elo1New, diff: eloResult.elo1New - elo1 },
-      p1_partner: isDoubles ? { before: elo1_p, after: eloResult.elo1_partnerNew, diff: eloResult.elo1_partnerNew - elo1_p } : null,
-      p2: { before: elo2, after: eloResult.elo2New, diff: eloResult.elo2New - elo2 },
-      p2_partner: isDoubles ? { before: elo2_p, after: eloResult.elo2_partnerNew, diff: eloResult.elo2_partnerNew - elo2_p } : null,
-      eloExchanged: eloResult.eloExchanged
+      baseDelta: eloResult.baseDelta,
+      eloExchanged: eloResult.eloExchanged,
+      p1: { 
+        before: elo1, 
+        after: eloResult.elo1New, 
+        diff: eloResult.p1Outcome.delta,
+        baseDelta: eloResult.p1Outcome.baseDelta,
+        itemBonus: eloResult.p1Outcome.itemBonus || 0,
+        hasHopeStar: !!eloResult.p1Outcome.hasHopeStar,
+        isWinBoost: eloResult.p1Outcome.isWinBoost,
+        isLossShield: eloResult.p1Outcome.isLossShield,
+        grindMatches: p1.grind_matches_count,
+        grindLosses: p1.grind_loss_count
+      },
+      p1_partner: isDoubles && p1_p ? { 
+        before: elo1_p, 
+        after: eloResult.elo1_partnerNew, 
+        diff: eloResult.p1pOutcome?.delta ?? 0,
+        baseDelta: eloResult.p1pOutcome?.baseDelta ?? 0,
+        itemBonus: eloResult.p1pOutcome?.itemBonus ?? 0,
+        hasHopeStar: !!eloResult.p1pOutcome?.hasHopeStar,
+        isWinBoost: eloResult.p1pOutcome?.isWinBoost ?? false,
+        isLossShield: eloResult.p1pOutcome?.isLossShield ?? false,
+        grindMatches: p1_p.grind_matches_count,
+        grindLosses: p1_p.grind_loss_count
+      } : null,
+      p2: { 
+        before: elo2, 
+        after: eloResult.elo2New, 
+        diff: eloResult.p2Outcome.delta,
+        baseDelta: eloResult.p2Outcome.baseDelta,
+        itemBonus: eloResult.p2Outcome.itemBonus || 0,
+        hasHopeStar: !!eloResult.p2Outcome.hasHopeStar,
+        isWinBoost: eloResult.p2Outcome.isWinBoost,
+        isLossShield: eloResult.p2Outcome.isLossShield,
+        grindMatches: p2.grind_matches_count,
+        grindLosses: p2.grind_loss_count
+      },
+      p2_partner: isDoubles && p2_p ? { 
+        before: elo2_p, 
+        after: eloResult.elo2_partnerNew, 
+        diff: eloResult.p2pOutcome?.delta ?? 0,
+        baseDelta: eloResult.p2pOutcome?.baseDelta ?? 0,
+        itemBonus: eloResult.p2pOutcome?.itemBonus ?? 0,
+        hasHopeStar: !!eloResult.p2pOutcome?.hasHopeStar,
+        isWinBoost: eloResult.p2pOutcome?.isWinBoost ?? false,
+        isLossShield: eloResult.p2pOutcome?.isLossShield ?? false,
+        grindMatches: p2_p.grind_matches_count,
+        grindLosses: p2_p.grind_loss_count
+      } : null
     });
   } catch (error) {
     console.error('Error previewing match ELO:', error);
@@ -359,34 +594,44 @@ router.post('/preview', authenticateToken, isAdmin, async (req, res) => {
 // POST /api/matches/suggestions - Gợi ý đối thủ cân bằng ELO cho Match Desk
 router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { session_id, mode = 'doubles', team1_player_ids = [], excluded_player_ids = [] } = req.body;
+    const normalizeId = (id) => String(id || '').trim().toLowerCase();
+    const { session_id, mode = 'doubles', team1_player_ids = [], excluded_player_ids = [], use_all = false } = req.body;
 
-    if (!Array.isArray(team1_player_ids) || team1_player_ids.length === 0) {
+    const cleanTeam1Ids = (Array.isArray(team1_player_ids) ? team1_player_ids : [])
+      .map(normalizeId)
+      .filter(Boolean);
+
+    if (cleanTeam1Ids.length === 0) {
       return res.status(400).json({ error: 'Vui lòng chọn ít nhất 1 tuyển thủ ở Đội A để nhận gợi ý đối thủ.' });
     }
 
     const t1Res = await db.query(
       `SELECT id, full_name, nickname, avatar_url, elo_singles, elo_doubles, matches_singles, matches_doubles, win_rate_singles, win_rate_doubles, streak_singles, streak_doubles
        FROM users WHERE id = ANY($1::uuid[])`,
-      [team1_player_ids]
+      [cleanTeam1Ids]
     );
 
     if (t1Res.rows.length === 0) {
       return res.status(404).json({ error: 'Không tìm thấy tuyển thủ Đội A.' });
     }
 
-    const player1 = t1Res.rows.find(p => p.id === team1_player_ids[0]);
-    const partner1 = team1_player_ids[1] ? t1Res.rows.find(p => p.id === team1_player_ids[1]) : null;
+    const player1 = t1Res.rows.find(p => normalizeId(p.id) === cleanTeam1Ids[0]);
+    const partner1 = cleanTeam1Ids[1] ? t1Res.rows.find(p => normalizeId(p.id) === cleanTeam1Ids[1]) : null;
 
     let candidateRows = [];
-    if (session_id) {
+    const shouldUseAll = use_all === true || use_all === 'true' || !session_id;
+
+    if (!shouldUseAll && session_id) {
       const sessionAttRes = await db.query(
         `SELECT u.id, u.full_name, u.nickname, u.avatar_url, u.badminton_level,
                 u.elo_singles, u.elo_doubles, u.matches_singles, u.matches_doubles,
                 u.win_rate_singles, u.win_rate_doubles, u.streak_singles, u.streak_doubles
          FROM attendances a
          JOIN users u ON a.user_id = u.id
-         WHERE a.session_id = $1 AND a.status IN ('going', 'CHECKED_IN') AND u.status = 'active'
+         WHERE a.session_id = $1 
+           AND a.status = 'CHECKED_IN' 
+           AND u.status = 'active'
+           AND (u.is_blocked IS FALSE OR u.is_blocked IS NULL)
          ORDER BY u.full_name ASC`,
         [session_id]
       );
@@ -403,8 +648,13 @@ router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
       candidateRows = allActiveRes.rows;
     }
 
-    const allExcluded = new Set([...team1_player_ids, ...(excluded_player_ids || [])]);
-    const availablePool = candidateRows.filter(p => !allExcluded.has(p.id));
+    const cleanExcludedIds = (Array.isArray(excluded_player_ids) ? excluded_player_ids : [])
+      .map(normalizeId)
+      .filter(Boolean);
+
+    // Luôn loại trừ cả team 1 và các VĐV đã bị chiếm dụng kể cả khi bật use_all
+    const allExcluded = new Set([...cleanTeam1Ids, ...cleanExcludedIds]);
+    const availablePool = candidateRows.filter(p => !allExcluded.has(normalizeId(p.id)));
 
     const { suggestSinglesOpponents, suggestDoublesOpponents, suggestDoublesPartners } = require('../services/matchmakerService');
 
@@ -422,6 +672,8 @@ router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
     res.json({
       success: true,
       mode,
+      available_pool_size: availablePool.length,
+      excluded_count: allExcluded.size,
       team1: partner1 ? [player1, partner1] : [player1],
       suggestions
     });
@@ -433,6 +685,7 @@ router.post('/suggestions', authenticateToken, isAdmin, async (req, res) => {
 
 // POST /api/matches/batch - Ghi nhận đồng loạt nhiều trận đấu trong 1 Database Transaction nguyên tử (All-or-Nothing)
 router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
+  const normalizeId = (id) => String(id || '').trim().toLowerCase();
   const { session_id, matches } = req.body;
 
   if (!Array.isArray(matches) || matches.length === 0) {
@@ -449,7 +702,13 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
     const m = matches[idx];
     const courtLabel = m.court_id || `Sân ${idx + 1}`;
 
-    if (!m.player1_id || !m.player2_id || m.score_p1 === undefined || m.score_p2 === undefined || !m.winner_id) {
+    const p1_id = normalizeId(m.player1_id);
+    const p2_id = normalizeId(m.player2_id);
+    const p1_p_id = m.player1_partner_id ? normalizeId(m.player1_partner_id) : null;
+    const p2_p_id = m.player2_partner_id ? normalizeId(m.player2_partner_id) : null;
+    const w_id = normalizeId(m.winner_id);
+
+    if (!p1_id || !p2_id || m.score_p1 === undefined || m.score_p2 === undefined || !w_id) {
       return res.status(400).json({ 
         error: `Trận đấu tại ${courtLabel} bị thiếu thông tin người chơi, điểm số hoặc đội thắng.` 
       });
@@ -463,10 +722,9 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
       });
     }
 
-    const isDoubles = !!(m.player1_partner_id && m.player2_partner_id);
-    const matchPlayers = [m.player1_id, m.player2_id];
-    if (m.player1_partner_id) matchPlayers.push(m.player1_partner_id);
-    if (m.player2_partner_id) matchPlayers.push(m.player2_partner_id);
+    const matchPlayers = [p1_id, p2_id];
+    if (p1_p_id) matchPlayers.push(p1_p_id);
+    if (p2_p_id) matchPlayers.push(p2_p_id);
 
     // Không được self-match trong cùng 1 trận
     if (new Set(matchPlayers).size !== matchPlayers.length) {
@@ -476,7 +734,7 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
     }
 
     // Đảm bảo winner_id là một trong các player tham gia
-    if (!matchPlayers.includes(m.winner_id)) {
+    if (!matchPlayers.includes(w_id)) {
       return res.status(400).json({ 
         error: `Tại ${courtLabel}, đội thắng không thuộc danh sách tuyển thủ thi đấu.` 
       });
@@ -489,8 +747,8 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
   const seenPlayerIds = new Set();
   for (const pId of allBatchPlayerIds) {
     if (seenPlayerIds.has(pId)) {
-      return res.status(400).json({
-        error: `Vi phạm nguyên tắc Batch: Một tuyển thủ không được thi đấu ở nhiều sân trong cùng một lượt commit! Hãy commit từng trận hoặc tách người chơi.`
+      return res.status(409).json({
+        error: `Xung đột Batch: Một tuyển thủ không được thi đấu ở nhiều sân trong cùng một lượt commit! Hãy commit từng trận hoặc tách người chơi.`
       });
     }
     seenPlayerIds.add(pId);
@@ -508,7 +766,9 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
               win_singles, loss_singles,
               win_doubles, loss_doubles,
               streak_singles, max_streak_singles,
-              streak_doubles, max_streak_doubles
+              streak_doubles, max_streak_doubles,
+              COALESCE(grind_matches_count, 0) as grind_matches_count,
+              COALESCE(grind_loss_count, 0) as grind_loss_count
        FROM users WHERE id = ANY($1::uuid[]) FOR UPDATE`,
       [sortedUniqueIds]
     );
@@ -520,8 +780,21 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
     const playersMap = {};
     lockedUsersRes.rows.forEach(u => { playersMap[u.id] = u; });
 
+    // Khóa các vật phẩm Ngôi Sao Hy Vọng đang kích hoạt của các tuyển thủ trong batch
+    const batchActiveStarsRes = await client.query(
+      `SELECT * FROM user_inventory 
+       WHERE user_id = ANY($1::uuid[]) 
+         AND (item_type = 'hope_star' OR item_name ILIKE '%ngôi sao hy vọng%')
+         AND status = 'ACTIVATED' 
+         AND (expires_at IS NULL OR expires_at > NOW())
+       FOR UPDATE`,
+      [sortedUniqueIds]
+    );
+    const batchStarMap = {};
+    batchActiveStarsRes.rows.forEach(s => { batchStarMap[s.user_id] = s; });
+
     // Helper cập nhật thống kê người chơi (sử dụng PostgreSQL client trong transaction)
-    const updateUserStats = async (id, currentStats, newElo, won, isDoubles) => {
+    const updateUserStats = async (id, currentStats, newElo, won, isDoubles, outcome) => {
       const matches_col = isDoubles ? 'matches_doubles' : 'matches_singles';
       const elo_col = isDoubles ? 'elo_doubles' : 'elo_singles';
       const peak_col = isDoubles ? 'peak_elo_doubles' : 'peak_elo_singles';
@@ -550,19 +823,35 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
       }
       const newMaxStreak = newStreak > 0 ? Math.max(prevMaxStreak, newStreak) : prevMaxStreak;
 
+      const nextMatchesCount = outcome?.nextMatchesCount !== undefined ? outcome.nextMatchesCount : 0;
+      const nextLossCount = outcome?.nextLossCount !== undefined ? outcome.nextLossCount : 0;
+
       await client.query(
         `UPDATE users 
          SET ${elo_col} = $1, 
-             ${peak_col} = GREATEST(COALESCE(${peak_col}, 1000), $1),
+             ${peak_col} = GREATEST(COALESCE(${peak_col}, 950), $1),
              ${matches_col} = $2,
              ${win_col} = $3,
              ${loss_col} = $4,
              ${win_rate_col} = $5,
              ${streak_col} = $6,
-             ${max_streak_col} = $7
+             ${max_streak_col} = $7,
+             rating_points = $1,
+             matches_played = COALESCE(matches_singles, 0) + COALESCE(matches_doubles, 0) + 1,
+             grind_matches_count = $9,
+             grind_loss_count = $10
          WHERE id = $8::uuid`,
-        [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id]
+        [newElo, newTotal, newWin, newLoss, newWinRate, newStreak, newMaxStreak, id, nextMatchesCount, nextLossCount]
       );
+
+      // Cập nhật currentStats in-memory cho các trận tiếp theo nếu có trong batch
+      currentStats[elo_col] = newElo;
+      currentStats[matches_col] = newTotal;
+      currentStats[win_col] = newWin;
+      currentStats[loss_col] = newLoss;
+      currentStats[streak_col] = newStreak;
+      currentStats.grind_matches_count = nextMatchesCount;
+      currentStats.grind_loss_count = nextLossCount;
 
       // Thưởng XP và Quest đồng bộ trong transaction
       await addXpToUser(id, 15, client);
@@ -599,6 +888,20 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
       const streak1_p = isDoubles && p1_p ? p1_p.streak_doubles : 0;
       const streak2_p = isDoubles && p2_p ? p2_p.streak_doubles : 0;
 
+      const grindInfo = {
+        p1: { matchesCount: p1.grind_matches_count, lossCount: p1.grind_loss_count },
+        p2: { matchesCount: p2.grind_matches_count, lossCount: p2.grind_loss_count },
+        p1p: p1_p ? { matchesCount: p1_p.grind_matches_count, lossCount: p1_p.grind_loss_count } : null,
+        p2p: p2_p ? { matchesCount: p2_p.grind_matches_count, lossCount: p2_p.grind_loss_count } : null,
+      };
+
+      const itemEffects = {
+        p1: { hopeStar: !!batchStarMap[m.player1_id] },
+        p2: { hopeStar: !!batchStarMap[m.player2_id] },
+        p1p: m.player1_partner_id ? { hopeStar: !!batchStarMap[m.player1_partner_id] } : null,
+        p2p: m.player2_partner_id ? { hopeStar: !!batchStarMap[m.player2_partner_id] } : null
+      };
+
       const eloResult = calculateElo(
         elo1, elo2, m.player1_id, m.player2_id, m.winner_id,
         streak1, streak2, matches1, matches2,
@@ -606,27 +909,29 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
         streak1_p, streak2_p,
         matches1_p, matches2_p,
         m.player1_partner_id,
-        m.player2_partner_id
+        m.player2_partner_id,
+        grindInfo,
+        itemEffects
       );
 
       const team1Won = m.winner_id === m.player1_id || (m.player1_partner_id && m.winner_id === m.player1_partner_id);
       const team2Won = !team1Won;
 
-      await updateUserStats(m.player1_id, p1, eloResult.elo1New, team1Won, isDoubles);
-      await updateUserStats(m.player2_id, p2, eloResult.elo2New, team2Won, isDoubles);
+      await updateUserStats(m.player1_id, p1, eloResult.elo1New, team1Won, isDoubles, eloResult.p1Outcome);
+      await updateUserStats(m.player2_id, p2, eloResult.elo2New, team2Won, isDoubles, eloResult.p2Outcome);
 
       updatedPlayers.push(
-        { id: m.player1_id, eloBefore: elo1, eloAfter: eloResult.elo1New, diff: eloResult.elo1New - elo1 },
-        { id: m.player2_id, eloBefore: elo2, eloAfter: eloResult.elo2New, diff: eloResult.elo2New - elo2 }
+        { id: m.player1_id, eloBefore: elo1, eloAfter: eloResult.elo1New, diff: eloResult.p1Outcome.delta, isWinBoost: eloResult.p1Outcome.isWinBoost, isLossShield: eloResult.p1Outcome.isLossShield },
+        { id: m.player2_id, eloBefore: elo2, eloAfter: eloResult.elo2New, diff: eloResult.p2Outcome.delta, isWinBoost: eloResult.p2Outcome.isWinBoost, isLossShield: eloResult.p2Outcome.isLossShield }
       );
 
       if (isDoubles && m.player1_partner_id && p1_p) {
-        await updateUserStats(m.player1_partner_id, p1_p, eloResult.elo1_partnerNew, team1Won, isDoubles);
-        updatedPlayers.push({ id: m.player1_partner_id, eloBefore: elo1_p, eloAfter: eloResult.elo1_partnerNew, diff: eloResult.elo1_partnerNew - elo1_p });
+        await updateUserStats(m.player1_partner_id, p1_p, eloResult.elo1_partnerNew, team1Won, isDoubles, eloResult.p1pOutcome);
+        updatedPlayers.push({ id: m.player1_partner_id, eloBefore: elo1_p, eloAfter: eloResult.elo1_partnerNew, diff: eloResult.p1pOutcome?.delta ?? 0, isWinBoost: eloResult.p1pOutcome?.isWinBoost, isLossShield: eloResult.p1pOutcome?.isLossShield });
       }
       if (isDoubles && m.player2_partner_id && p2_p) {
-        await updateUserStats(m.player2_partner_id, p2_p, eloResult.elo2_partnerNew, team2Won, isDoubles);
-        updatedPlayers.push({ id: m.player2_partner_id, eloBefore: elo2_p, eloAfter: eloResult.elo2_partnerNew, diff: eloResult.elo2_partnerNew - elo2_p });
+        await updateUserStats(m.player2_partner_id, p2_p, eloResult.elo2_partnerNew, team2Won, isDoubles, eloResult.p2pOutcome);
+        updatedPlayers.push({ id: m.player2_partner_id, eloBefore: elo2_p, eloAfter: eloResult.elo2_partnerNew, diff: eloResult.p2pOutcome?.delta ?? 0, isWinBoost: eloResult.p2pOutcome?.isWinBoost, isLossShield: eloResult.p2pOutcome?.isLossShield });
       }
 
       // INSERT vào matches
@@ -645,6 +950,47 @@ router.post('/batch', authenticateToken, isAdmin, async (req, res) => {
           eloResult.eloExchanged
         ]
       );
+
+      const matchRecord = insertMatchRes.rows[0];
+
+      // Ghi nhận ELO Ledger và tiêu hao vật phẩm (CONSUMED) cho từng người chơi
+      const ledgerEntries = [
+        { id: m.player1_id, outcome: eloResult.p1Outcome, won: team1Won, star: batchStarMap[m.player1_id] },
+        { id: m.player2_id, outcome: eloResult.p2Outcome, won: team2Won, star: batchStarMap[m.player2_id] },
+        ...(isDoubles && m.player1_partner_id && p1_p ? [{ id: m.player1_partner_id, outcome: eloResult.p1pOutcome, won: team1Won, star: batchStarMap[m.player1_partner_id] }] : []),
+        ...(isDoubles && m.player2_partner_id && p2_p ? [{ id: m.player2_partner_id, outcome: eloResult.p2pOutcome, won: team2Won, star: batchStarMap[m.player2_partner_id] }] : [])
+      ];
+
+      for (const le of ledgerEntries) {
+        await client.query(
+          `INSERT INTO elo_ledger (
+             match_id, player_id, inventory_item_id, item_type,
+             base_elo_delta, item_elo_bonus, total_elo_delta,
+             is_win, activation_timestamp, status
+           ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, 'APPLIED')`,
+          [
+            matchRecord.id,
+            le.id,
+            le.star ? le.star.id : null,
+            le.star ? 'HOPE_STAR' : 'NONE',
+            le.won ? le.outcome.baseDelta : -le.outcome.baseDelta,
+            le.outcome.itemBonus || 0,
+            le.outcome.delta,
+            le.won,
+            le.star ? le.star.activated_at : null
+          ]
+        );
+
+        if (le.star) {
+          await client.query(
+            `UPDATE user_inventory 
+             SET status = 'CONSUMED', consumed_at = NOW(), consumed_match_id = $1::uuid 
+             WHERE id = $2`,
+            [matchRecord.id, le.star.id]
+          );
+          delete batchStarMap[le.id];
+        }
+      }
 
       committedMatches.push({
         court_id: m.court_id || `Sân ${idx + 1}`,
@@ -950,6 +1296,74 @@ router.get('/:id/audit-logs', authenticateToken, isAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error fetching audit logs:', error);
     res.status(500).json({ error: 'Lỗi tải nhật ký chỉnh sửa.' });
+  }
+});
+
+// GET /api/matches/monitoring/hope-star - Thống kê giám sát lạm phát ELO và tỷ lệ sử dụng Ngôi Sao Hy Vọng
+router.get('/monitoring/hope-star', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    // 1. Thống kê tổng quan mọi thời đại
+    const overallRes = await db.query(`
+      SELECT 
+        COUNT(*)::int as total_uses,
+        COUNT(CASE WHEN is_win = true THEN 1 END)::int as total_wins,
+        COUNT(CASE WHEN is_win = false THEN 1 END)::int as total_losses,
+        COALESCE(SUM(item_elo_bonus), 0)::int as total_bonus_generated,
+        COALESCE(ROUND(AVG(item_elo_bonus) FILTER (WHERE is_win = true), 1), 0)::numeric as avg_win_bonus,
+        COUNT(DISTINCT player_id)::int as unique_players_count
+      FROM elo_ledger
+      WHERE item_type = 'HOPE_STAR' AND status = 'APPLIED'
+    `);
+
+    // 2. Thống kê theo tuần trong 8 tuần gần nhất
+    const weeklyRes = await db.query(`
+      SELECT 
+        TO_CHAR(created_at, 'IYYY-IW') as iso_week,
+        COUNT(*)::int as uses,
+        COUNT(CASE WHEN is_win = true THEN 1 END)::int as wins,
+        COALESCE(SUM(item_elo_bonus), 0)::int as bonus_elo,
+        COALESCE(SUM(total_elo_delta), 0)::int as net_elo
+      FROM elo_ledger
+      WHERE item_type = 'HOPE_STAR' AND status = 'APPLIED'
+      GROUP BY TO_CHAR(created_at, 'IYYY-IW')
+      ORDER BY iso_week DESC
+      LIMIT 8
+    `);
+
+    // 3. Tỷ trọng bonus so với tổng ELO tăng toàn CLB trong 30 ngày qua
+    const ratioRes = await db.query(`
+      SELECT 
+        COALESCE(SUM(item_elo_bonus), 0)::int as hope_star_bonus,
+        COALESCE(SUM(CASE WHEN total_elo_delta > 0 THEN total_elo_delta ELSE 0 END), 0)::int as total_positive_elo
+      FROM elo_ledger
+      WHERE created_at >= NOW() - INTERVAL '30 days' AND status = 'APPLIED'
+    `);
+
+    const rData = ratioRes.rows[0] || {};
+    const totalPositive = rData.total_positive_elo || 0;
+    const starBonus = rData.hope_star_bonus || 0;
+    const bonusRatio = totalPositive > 0 
+      ? Number(((starBonus / totalPositive) * 100).toFixed(2))
+      : 0;
+
+    res.json({
+      overall: {
+        ...overallRes.rows[0],
+        win_rate: overallRes.rows[0]?.total_uses > 0 
+          ? Number(((overallRes.rows[0].total_wins / overallRes.rows[0].total_uses) * 100).toFixed(1))
+          : 0
+      },
+      weekly: weeklyRes.rows,
+      last30Days: {
+        hope_star_bonus: starBonus,
+        total_positive_elo: totalPositive,
+        bonus_ratio_percent: bonusRatio,
+        is_safe: bonusRatio <= 10.0
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching hope star monitoring:', error);
+    res.status(500).json({ error: 'Lỗi tải thống kê giám sát Ngôi Sao Hy Vọng.' });
   }
 });
 

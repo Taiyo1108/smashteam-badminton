@@ -4,16 +4,20 @@ import { useState, useEffect, useDeferredValue, useRef } from "react";
 import { 
   Search, CheckCircle2, Loader2, MoreHorizontal, X, ShieldAlert, Award, Ban, Unlock, 
   Phone, Clock, Star, Copy, Check, Plus, Calendar, MapPin, Edit, Trash2, Power,
-  PowerOff, Save, Download, QrCode, Upload, ExternalLink, AlertCircle
+  PowerOff, Save, Download, QrCode, Upload, ExternalLink, AlertCircle, AlertTriangle,
+  Tag, Coins, Flame, UserCheck, Eye, Shield, Activity, Sparkles, Filter,
+  Users, Crown, Mail
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { formatVietnamDate, toVietnamDatetimeInput, vietnamInputToIso } from "@/app/utils/date";
-import { getRankName, getRankBadgeClass } from "@/app/utils/rank";
+import { getRankName, getRankBadgeClass, getRankLabel } from "@/app/utils/rank";
 import RecruitmentKPIs from "@/app/components/recruitment/RecruitmentKPIs";
 import ApplicantTable from "@/app/components/recruitment/ApplicantTable";
 import ApplicantDetailDrawer from "@/app/components/recruitment/ApplicantDetailDrawer";
 import CustomQuestionsEditor from "@/app/components/recruitment/CustomQuestionsEditor";
 import { parseQuestions, type CustomQuestion } from "@/app/components/recruitment/customQuestions";
+import Member360Modal from "@/app/components/admin/Member360Modal";
+import MonthlyInactivityModal from "./MonthlyInactivityModal";
 
 const softSkillsList = [
   "Chụp ảnh",
@@ -22,8 +26,27 @@ const softSkillsList = [
   "Hỗ trợ chạy giải"
 ];
 
+const functionalTagsList = [
+  "Vận động viên",
+  "Ban truyền thông",
+  "Designer",
+  "MC & Hoạt náo",
+  "Ban tổ chức giải",
+  "Thành viên nòng cốt",
+  "Thành viên mới"
+];
+
 export default function PersonnelPage() {
-  const [activeTab, setActiveTab] = useState<'candidates' | 'members' | 'campaigns'>('candidates');
+  const [activeTab, setActiveTab] = useState<'candidates' | 'members' | 'guests' | 'campaigns'>('candidates');
+  const [isInactivityModalOpen, setIsInactivityModalOpen] = useState(false);
+
+  // States cho Guests (Tài khoản vãng lai)
+  const [gSearch, setGSearch] = useState("");
+  const [gStatus, setGStatus] = useState<"all" | "active" | "blocked">("all");
+  const [gCompleted, setGCompleted] = useState<"all" | "completed" | "pending">("all");
+  const [gRank, setGRank] = useState("all");
+  const [isPromotingGuestId, setIsPromotingGuestId] = useState<string | null>(null);
+  const [isDeletingGuestId, setIsDeletingGuestId] = useState<string | null>(null);
   
   // States cho Candidates
   const [candidates, setCandidates] = useState<any[]>([]);
@@ -50,6 +73,12 @@ export default function PersonnelPage() {
   const [mStatus, setMStatus] = useState("all");
   const [mSkill, setMSkill] = useState("all");
   const [mActivated, setMActivated] = useState<"all" | "activated" | "pending">("all");
+  const [mAttentionFilter, setMAttentionFilter] = useState<string>("all");
+  const [mTagFilter, setMTagFilter] = useState<string>("all");
+
+  // States cho Member 360 Hub Modal
+  const [member360Id, setMember360Id] = useState<string | null>(null);
+  const [isMember360Open, setIsMember360Open] = useState(false);
 
   // Modal Thao tác nhanh (Quick Actions)
   const [showActionsModal, setShowActionsModal] = useState(false);
@@ -394,7 +423,7 @@ export default function PersonnelPage() {
       fetchCandidates();
       fetchMembers(cCampaign);
       fetchCampaigns();
-    } else if (activeTab === 'members') {
+    } else if (activeTab === 'members' || activeTab === 'guests') {
       fetchMembers();
     } else if (activeTab === 'campaigns') {
       fetchCampaigns();
@@ -685,6 +714,76 @@ export default function PersonnelPage() {
     setShowActionsModal(true);
   };
 
+  const handlePromoteGuest = async (guest: any) => {
+    if (!confirm(`Bạn có chắc chắn muốn nâng cấp tài khoản "${guest.full_name}" thành Thành viên chính thức (Member) của CLB?`)) return;
+    setIsPromotingGuestId(guest.id);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/users/${guest.id}/role`, {
+        method: 'PUT',
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ role: 'member' })
+      });
+      if (res.ok) {
+        alert(`Chúc mừng! Tài khoản ${guest.full_name} đã được nâng cấp thành Thành viên chính thức.`);
+        fetchMembers();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Nâng cấp tài khoản thất bại.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    } finally {
+      setIsPromotingGuestId(null);
+    }
+  };
+
+  const handleDeleteGuest = async (guest: any) => {
+    const reason = prompt(
+      `Nhập lý do xóa hoặc lưu trữ tài khoản vãng lai "${guest.full_name}":`,
+      "Quản trị viên xóa tài khoản vãng lai từ trang Quản lý Nhân sự"
+    );
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("Bắt buộc phải nhập lý do khi xóa hoặc lưu trữ tài khoản!");
+      return;
+    }
+
+    setIsDeletingGuestId(guest.id);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/users/${guest.id}`, {
+        method: 'DELETE',
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ reason: reason.trim() })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || `Đã xóa/lưu trữ tài khoản vãng lai "${guest.full_name}" thành công.`);
+        fetchMembers();
+      } else {
+        alert(data.error || "Không thể xóa tài khoản.");
+      }
+    } catch (e) {
+      alert("Lỗi kết nối.");
+    } finally {
+      setIsDeletingGuestId(null);
+    }
+  };
+
+  const handleToggleBlockGuest = async (guest: any) => {
+    const isBlocking = !guest.is_blocked;
+    const actionText = isBlocking ? "khóa" : "mở khóa";
+    if (!confirm(`Bạn có chắc chắn muốn ${actionText} tài khoản "${guest.full_name}"?`)) return;
+    await handleUpdateStatusBlock(guest.id, isBlocking ? 'inactive' : 'active', isBlocking);
+  };
+
   // Dữ liệu dashboard độc lập theo từng đợt:
   // Backend đã lọc sẵn theo ?campaign_id= (candidates + members),
   // client chỉ lọc dự phòng khi slots của đợt đã load xong để chống lẫn đợt.
@@ -711,14 +810,56 @@ export default function PersonnelPage() {
     Number(selectedCampaignObj?.target_capacity) ||
     20;
 
-  // Client-side filtering for Members
-  const filteredMembers = members.filter(m => {
+  // Tách biệt Thành viên chính thức và Tài khoản vãng lai
+  const officialMembers = members.filter(m => m.role !== 'guest');
+  const guests = members.filter(m => m.role === 'guest');
+
+  // Derived Attention Center counts (áp dụng cho thành viên chính thức)
+  const redCardMembers = officialMembers.filter(m => (m.active_red_cards || 0) > 0);
+  const yellowCardMembers = officialMembers.filter(m => (m.active_yellow_cards || 0) > 0);
+  const lowAttendanceMembers = officialMembers.filter(m => (m.total_reservations || 0) > 0 && (m.attendance_rate || 0) < 50);
+  const noShowMembers = officialMembers.filter(m => (m.no_show_count || 0) >= 1);
+  const inactive30dMembers = officialMembers.filter(m => {
+    if (!m.last_active) return true;
+    const diffDays = (Date.now() - new Date(m.last_active).getTime()) / (1000 * 3600 * 24);
+    return diffDays > 30;
+  });
+  const pendingActivationMembers = officialMembers.filter(m => !m.is_activated);
+
+  // Client-side filtering cho Thành viên chính thức
+  const filteredMembers = officialMembers.filter(m => {
     if (mSearch) {
       const s = mSearch.toLowerCase();
       const matchName = m.full_name?.toLowerCase().includes(s);
       const matchPhone = m.phone_zalo?.includes(s);
-      if (!matchName && !matchPhone) return false;
+      const matchNick = m.nickname?.toLowerCase().includes(s);
+      if (!matchName && !matchPhone && !matchNick) return false;
     }
+
+    // Attention Center Filters
+    if (mAttentionFilter === "red_cards") {
+      if ((m.active_red_cards || 0) <= 0) return false;
+    } else if (mAttentionFilter === "yellow_cards") {
+      if ((m.active_yellow_cards || 0) <= 0) return false;
+    } else if (mAttentionFilter === "low_attendance") {
+      if ((m.total_reservations || 0) === 0 || (m.attendance_rate || 0) >= 50) return false;
+    } else if (mAttentionFilter === "no_show") {
+      if ((m.no_show_count || 0) < 1) return false;
+    } else if (mAttentionFilter === "inactive_30d") {
+      if (m.last_active) {
+        const diffDays = (Date.now() - new Date(m.last_active).getTime()) / (1000 * 3600 * 24);
+        if (diffDays <= 30) return false;
+      }
+    } else if (mAttentionFilter === "pending_activation") {
+      if (m.is_activated) return false;
+    }
+
+    // Functional Tag Filter
+    if (mTagFilter !== "all") {
+      const tags = Array.isArray(m.tags) ? m.tags : [];
+      if (!tags.includes(mTagFilter)) return false;
+    }
+
     if (mLevel !== "all") {
       if (m.badminton_level !== mLevel) return false;
     }
@@ -748,12 +889,47 @@ export default function PersonnelPage() {
     return true;
   });
 
+  // Guest KPI statistics
+  const totalGuests = guests.length;
+  const activeGuests = guests.filter(g => !g.is_blocked && g.status !== 'inactive').length;
+  const completedGuests = guests.filter(g => Boolean(g.is_profile_completed)).length;
+  const pendingGuests = guests.filter(g => !g.is_profile_completed).length;
+  const blockedGuests = guests.filter(g => Boolean(g.is_blocked) || g.status === 'inactive').length;
+
+  // Filtered Guests list
+  const filteredGuests = guests.filter(g => {
+    if (gSearch) {
+      const s = gSearch.toLowerCase();
+      const matchName = g.full_name?.toLowerCase().includes(s);
+      const matchPhone = g.phone_zalo?.includes(s);
+      const matchEmail = g.email?.toLowerCase().includes(s);
+      const matchNick = g.nickname?.toLowerCase().includes(s);
+      if (!matchName && !matchPhone && !matchEmail && !matchNick) return false;
+    }
+    if (gStatus === "active") {
+      if (g.is_blocked || g.status === "inactive") return false;
+    } else if (gStatus === "blocked") {
+      if (!g.is_blocked && g.status !== "inactive") return false;
+    }
+    if (gCompleted === "completed") {
+      if (!g.is_profile_completed) return false;
+    } else if (gCompleted === "pending") {
+      if (g.is_profile_completed) return false;
+    }
+    if (gRank !== "all") {
+      const highestElo = Math.max(g.elo_singles ?? 950, g.elo_doubles ?? 950);
+      const rankName = getRankName(highestElo);
+      if (rankName !== gRank) return false;
+    }
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-secondary mb-2">Quản lý Nhân sự</h1>
-          <p className="text-slate-500">Duyệt ứng viên mới, quản lý danh sách thành viên CLB và các đợt tuyển thành viên.</p>
+          <p className="text-slate-500">Duyệt ứng viên mới, quản lý thành viên chính thức, tài khoản vãng lai và các đợt tuyển.</p>
         </div>
         {activeTab === 'campaigns' && (
           <button 
@@ -766,22 +942,34 @@ export default function PersonnelPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-4 border-b border-slate-200">
+      <div className="flex gap-4 border-b border-slate-200 overflow-x-auto">
         <button 
           onClick={() => setActiveTab('candidates')}
-          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'candidates' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 whitespace-nowrap ${activeTab === 'candidates' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
           Ứng viên Casting
         </button>
         <button 
           onClick={() => setActiveTab('members')}
-          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'members' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 whitespace-nowrap flex items-center gap-2 ${activeTab === 'members' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
-          Thành viên chính thức
+          <span>Thành viên chính thức</span>
+          <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700 font-bold">
+            {officialMembers.length}
+          </span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('guests')}
+          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 whitespace-nowrap flex items-center gap-2 ${activeTab === 'guests' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+        >
+          <span>Tài khoản vãng lai</span>
+          <span className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-800 font-bold">
+            {guests.length}
+          </span>
         </button>
         <button 
           onClick={() => setActiveTab('campaigns')}
-          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === 'campaigns' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 whitespace-nowrap ${activeTab === 'campaigns' ? 'border-black text-black' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
           Đợt tuyển thành viên
         </button>
@@ -862,96 +1050,283 @@ export default function PersonnelPage() {
 
       {/* MEMBERS TAB */}
       {activeTab === 'members' && (
-        <div className="space-y-4">
-          {/* Members Activation & Overview KPI Strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng thành viên</p>
-                <p className="text-2xl font-black text-secondary mt-0.5">{members.length}</p>
+        <div className="space-y-5">
+          {/* ========================================================= */}
+          {/* ATTENTION CENTER (TRUNG TÂM CẢNH BÁO NHÂN SỰ) */}
+          {/* ========================================================= */}
+          <div>
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-purple-600" />
+                <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                  Trung tâm Cảnh báo Nhân sự (Attention Center)
+                </h3>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-purple-50 text-primary flex items-center justify-center font-bold">
-                <Award className="w-5 h-5" />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsInactivityModalOpen(true)}
+                  className="text-xs font-black text-amber-900 hover:text-amber-950 flex items-center gap-1.5 bg-gradient-to-r from-amber-200 via-yellow-200 to-amber-200 hover:from-amber-300 hover:to-yellow-300 px-3 py-1.5 rounded-xl border border-amber-300 shadow-xs transition-all cursor-pointer"
+                >
+                  <span>🟨</span>
+                  <span>Kỷ luật chuyên cần tháng (&lt; 2 buổi)</span>
+                </button>
+              {mAttentionFilter !== "all" && (
+                <button
+                  onClick={() => setMAttentionFilter("all")}
+                  className="text-xs font-bold text-purple-600 hover:text-purple-800 flex items-center gap-1 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Xóa bộ lọc cảnh báo
+                </button>
+              )}
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-emerald-100 bg-emerald-50/20 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Đã Kích Hoạt Thẻ
-                </p>
-                <p className="text-2xl font-black text-emerald-600 mt-0.5">
-                  {members.filter(m => m.is_activated).length}
-                  <span className="text-xs font-semibold text-slate-400 ml-1.5 font-normal">
-                    ({members.length ? Math.round((members.filter(m => m.is_activated).length / members.length) * 100) : 0}%)
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+              {/* 1. Tất cả thành viên */}
+              <button
+                type="button"
+                onClick={() => setMAttentionFilter("all")}
+                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                  mAttentionFilter === "all"
+                    ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-900/30"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${mAttentionFilter === "all" ? "text-slate-400" : "text-slate-500"}`}>
+                    Tất cả CLB
                   </span>
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                <Check className="w-5 h-5" />
-              </div>
-            </div>
+                  <Award className={`w-3.5 h-3.5 ${mAttentionFilter === "all" ? "text-purple-300" : "text-slate-400"}`} />
+                </div>
+                <p className="text-xl font-black mt-1 font-mono">{officialMembers.length}</p>
+                <span className={`text-[10px] mt-0.5 block ${mAttentionFilter === "all" ? "text-slate-300" : "text-slate-400"}`}>
+                  Thành viên chính thức
+                </span>
+              </button>
 
-            <div className="bg-white p-4 rounded-2xl border border-amber-100 bg-amber-50/20 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" /> Chờ Kích Hoạt
-                </p>
-                <p className="text-2xl font-black text-amber-600 mt-0.5">
-                  {members.filter(m => !m.is_activated).length}
-                  <span className="text-xs font-semibold text-slate-400 ml-1.5 font-normal">chưa tạo mật khẩu</span>
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
-                <Clock className="w-5 h-5" />
-              </div>
+              {/* 2. Thẻ đỏ đang phạt */}
+              <button
+                type="button"
+                onClick={() => setMAttentionFilter(mAttentionFilter === "red_cards" ? "all" : "red_cards")}
+                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                  mAttentionFilter === "red_cards"
+                    ? "bg-rose-600 text-white border-rose-600 shadow-md ring-2 ring-rose-600/30"
+                    : redCardMembers.length > 0
+                    ? "bg-rose-50/80 text-rose-900 border-rose-200 hover:bg-rose-100 shadow-xs"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs opacity-80"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${mAttentionFilter === "red_cards" ? "text-rose-100" : "text-rose-600"}`}>
+                    Thẻ đỏ
+                  </span>
+                  <ShieldAlert className={`w-3.5 h-3.5 ${mAttentionFilter === "red_cards" ? "text-white" : "text-rose-600"}`} />
+                </div>
+                <p className="text-xl font-black mt-1 font-mono">{redCardMembers.length}</p>
+                <span className={`text-[10px] mt-0.5 block ${mAttentionFilter === "red_cards" ? "text-rose-100" : "text-slate-500"}`}>
+                  Đang đình chỉ
+                </span>
+              </button>
+
+              {/* 3. Thẻ vàng còn hiệu lực */}
+              <button
+                type="button"
+                onClick={() => setMAttentionFilter(mAttentionFilter === "yellow_cards" ? "all" : "yellow_cards")}
+                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                  mAttentionFilter === "yellow_cards"
+                    ? "bg-amber-500 text-white border-amber-500 shadow-md ring-2 ring-amber-500/30"
+                    : yellowCardMembers.length > 0
+                    ? "bg-amber-50/80 text-amber-900 border-amber-200 hover:bg-amber-100 shadow-xs"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs opacity-80"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${mAttentionFilter === "yellow_cards" ? "text-amber-100" : "text-amber-700"}`}>
+                    Thẻ vàng
+                  </span>
+                  <AlertTriangle className={`w-3.5 h-3.5 ${mAttentionFilter === "yellow_cards" ? "text-white" : "text-amber-600"}`} />
+                </div>
+                <p className="text-xl font-black mt-1 font-mono">{yellowCardMembers.length}</p>
+                <span className={`text-[10px] mt-0.5 block ${mAttentionFilter === "yellow_cards" ? "text-amber-100" : "text-slate-500"}`}>
+                  Còn hiệu lực
+                </span>
+              </button>
+
+              {/* 4. Chuyên cần <50% */}
+              <button
+                type="button"
+                onClick={() => setMAttentionFilter(mAttentionFilter === "low_attendance" ? "all" : "low_attendance")}
+                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                  mAttentionFilter === "low_attendance"
+                    ? "bg-orange-600 text-white border-orange-600 shadow-md ring-2 ring-orange-600/30"
+                    : lowAttendanceMembers.length > 0
+                    ? "bg-orange-50/80 text-orange-900 border-orange-200 hover:bg-orange-100 shadow-xs"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs opacity-80"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${mAttentionFilter === "low_attendance" ? "text-orange-100" : "text-orange-700"}`}>
+                    Chuyên cần &lt;50%
+                  </span>
+                  <Clock className={`w-3.5 h-3.5 ${mAttentionFilter === "low_attendance" ? "text-white" : "text-orange-600"}`} />
+                </div>
+                <p className="text-xl font-black mt-1 font-mono">{lowAttendanceMembers.length}</p>
+                <span className={`text-[10px] mt-0.5 block ${mAttentionFilter === "low_attendance" ? "text-orange-100" : "text-slate-500"}`}>
+                  Cần theo dõi
+                </span>
+              </button>
+
+              {/* 5. Từng No-show */}
+              <button
+                type="button"
+                onClick={() => setMAttentionFilter(mAttentionFilter === "no_show" ? "all" : "no_show")}
+                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                  mAttentionFilter === "no_show"
+                    ? "bg-purple-700 text-white border-purple-700 shadow-md ring-2 ring-purple-700/30"
+                    : noShowMembers.length > 0
+                    ? "bg-purple-50/80 text-purple-900 border-purple-200 hover:bg-purple-100 shadow-xs"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs opacity-80"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${mAttentionFilter === "no_show" ? "text-purple-100" : "text-purple-700"}`}>
+                    Từng No-Show
+                  </span>
+                  <Ban className={`w-3.5 h-3.5 ${mAttentionFilter === "no_show" ? "text-white" : "text-purple-600"}`} />
+                </div>
+                <p className="text-xl font-black mt-1 font-mono">{noShowMembers.length}</p>
+                <span className={`text-[10px] mt-0.5 block ${mAttentionFilter === "no_show" ? "text-purple-100" : "text-slate-500"}`}>
+                  Bỏ buổi không báo
+                </span>
+              </button>
+
+              {/* 6. Vắng >30 ngày */}
+              <button
+                type="button"
+                onClick={() => setMAttentionFilter(mAttentionFilter === "inactive_30d" ? "all" : "inactive_30d")}
+                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                  mAttentionFilter === "inactive_30d"
+                    ? "bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-600/30"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${mAttentionFilter === "inactive_30d" ? "text-blue-100" : "text-blue-700"}`}>
+                    Vắng &gt;30 ngày
+                  </span>
+                  <Calendar className={`w-3.5 h-3.5 ${mAttentionFilter === "inactive_30d" ? "text-white" : "text-blue-600"}`} />
+                </div>
+                <p className="text-xl font-black mt-1 font-mono">{inactive30dMembers.length}</p>
+                <span className={`text-[10px] mt-0.5 block ${mAttentionFilter === "inactive_30d" ? "text-blue-100" : "text-slate-500"}`}>
+                  Chưa đi tập lại
+                </span>
+              </button>
+
+              {/* 7. Chờ kích hoạt */}
+              <button
+                type="button"
+                onClick={() => setMAttentionFilter(mAttentionFilter === "pending_activation" ? "all" : "pending_activation")}
+                className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                  mAttentionFilter === "pending_activation"
+                    ? "bg-slate-800 text-white border-slate-800 shadow-md ring-2 ring-slate-800/30"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-xs"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${mAttentionFilter === "pending_activation" ? "text-slate-300" : "text-slate-600"}`}>
+                    Chờ kích hoạt
+                  </span>
+                  <CheckCircle2 className={`w-3.5 h-3.5 ${mAttentionFilter === "pending_activation" ? "text-white" : "text-slate-500"}`} />
+                </div>
+                <p className="text-xl font-black mt-1 font-mono">{pendingActivationMembers.length}</p>
+                <span className={`text-[10px] mt-0.5 block ${mAttentionFilter === "pending_activation" ? "text-slate-300" : "text-slate-500"}`}>
+                  Chưa đặt mật khẩu
+                </span>
+              </button>
             </div>
           </div>
 
-          {/* Smart Filter Bar */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-wrap gap-4 items-center shadow-sm">
+          {/* ========================================================= */}
+          {/* SMART FILTER BAR */}
+          {/* ========================================================= */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-wrap gap-3 items-center shadow-xs">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
-                type="text" placeholder="Tìm tên, SĐT thành viên..." 
-                value={mSearch} onChange={e => setMSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none"
+                type="text" 
+                placeholder="Tìm theo tên, nickname, SĐT..." 
+                value={mSearch} 
+                onChange={e => setMSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:ring-2 focus:ring-purple-600 outline-none"
               />
             </div>
+
+            {/* Filter by Functional Tag */}
+            <select 
+              value={mTagFilter} 
+              onChange={e => setMTagFilter(e.target.value)} 
+              className="p-2 text-xs border rounded-xl focus:ring-2 focus:ring-purple-600 outline-none bg-white font-medium min-w-[150px]"
+            >
+              <option value="all">Mọi Functional Tag</option>
+              {functionalTagsList.map(tag => (
+                <option key={tag} value={tag}>{tag}</option>
+              ))}
+            </select>
 
             {/* Filter by Activation Status */}
             <select 
               value={mActivated} 
               onChange={e => setMActivated(e.target.value as any)} 
-              className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[160px] font-medium"
+              className="p-2 text-xs border rounded-xl focus:ring-2 focus:ring-purple-600 outline-none bg-white font-medium min-w-[150px]"
             >
-              <option value="all">Mọi trạng thái kích hoạt</option>
+              <option value="all">Mọi trạng thái thẻ</option>
               <option value="activated">🟢 Đã kích hoạt ({members.filter(m => m.is_activated).length})</option>
               <option value="pending">🟡 Chờ kích hoạt ({members.filter(m => !m.is_activated).length})</option>
             </select>
 
-            <select value={mLevel} onChange={e => setMLevel(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none min-w-[140px]">
+            <select 
+              value={mLevel} 
+              onChange={e => setMLevel(e.target.value)} 
+              className="p-2 text-xs border rounded-xl focus:ring-2 focus:ring-purple-600 outline-none bg-white min-w-[130px]"
+            >
               <option value="all">Mọi trình độ</option>
               <option value="Mới chơi">Mới chơi</option>
               <option value="Trung bình">Trung bình</option>
               <option value="Khá/Giỏi">Khá/Giỏi</option>
             </select>
-            <select value={mRank} onChange={e => setMRank(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[150px]">
+
+            <select 
+              value={mRank} 
+              onChange={e => setMRank(e.target.value)} 
+              className="p-2 text-xs border rounded-xl focus:ring-2 focus:ring-purple-600 outline-none bg-white min-w-[140px]"
+            >
               <option value="all">Mọi phân cấp Rank</option>
-              <option value="Challenger">Challenger (1800+)</option>
-              <option value="Diamond">Diamond (1600+)</option>
-              <option value="Platinum">Platinum (1400+)</option>
-              <option value="Gold">Gold (1200+)</option>
-              <option value="Silver">Silver (1100+)</option>
-              <option value="Bronze">Bronze (&lt; 1100)</option>
+              <option value="Challenger">Thách Đấu (1800+)</option>
+              <option value="Diamond">Kim Cương (1600+)</option>
+              <option value="Platinum">Bạch Kim (1400+)</option>
+              <option value="Gold">Vàng (1200+)</option>
+              <option value="Silver">Bạc (1000+)</option>
+              <option value="Bronze">Đồng (&lt; 1000)</option>
             </select>
-            <select value={mStatus} onChange={e => setMStatus(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-primary outline-none min-w-[140px]">
-              <option value="all">Mọi trạng thái</option>
+
+            <select 
+              value={mStatus} 
+              onChange={e => setMStatus(e.target.value)} 
+              className="p-2 text-xs border rounded-xl focus:ring-2 focus:ring-purple-600 outline-none bg-white min-w-[130px]"
+            >
+              <option value="all">Mọi trạng thái CLB</option>
               <option value="active">Hoạt động (Active)</option>
               <option value="inactive">Tạm nghỉ (Inactive)</option>
               <option value="left">Đã rời CLB (Left)</option>
             </select>
-            <select value={mSkill} onChange={e => setMSkill(e.target.value)} className="p-2 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none min-w-[180px]">
+
+            <select 
+              value={mSkill} 
+              onChange={e => setMSkill(e.target.value)} 
+              className="p-2 text-xs border rounded-xl focus:ring-2 focus:ring-purple-600 outline-none bg-white min-w-[150px]"
+            >
               <option value="all">Mọi kỹ năng mềm</option>
               {softSkillsList.map(skill => (
                 <option key={skill} value={skill}>{skill}</option>
@@ -959,132 +1334,638 @@ export default function PersonnelPage() {
             </select>
           </div>
 
-          {/* Smart Table members */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden min-h-[300px] relative">
+          {/* ========================================================= */}
+          {/* MEMBERS TABLE */}
+          {/* ========================================================= */}
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-xs overflow-hidden min-h-[300px] relative">
             {isLoadingM ? (
-              <div className="absolute inset-0 flex items-center justify-center text-black"><Loader2 className="animate-spin" /></div>
+              <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-2xs z-10 text-slate-600 gap-2">
+                <Loader2 className="animate-spin w-6 h-6 text-purple-600" />
+                <span className="text-sm font-semibold">Đang cập nhật danh sách thành viên...</span>
+              </div>
             ) : filteredMembers.length === 0 ? (
-              <div className="p-10 text-center text-slate-500">Không tìm thấy thành viên nào khớp điều kiện.</div>
+              <div className="p-16 text-center text-slate-500">
+                <p className="font-bold text-base">Không tìm thấy thành viên nào khớp điều kiện lọc.</p>
+                <p className="text-xs text-slate-400 mt-1">Hãy thử xóa bộ lọc hoặc tìm kiếm bằng từ khóa khác.</p>
+              </div>
             ) : (
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Thành viên</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Trình độ & Lối chơi</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Phân cấp & Elo</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">Kích hoạt & Trạng thái</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase text-center">Thống kê</th>
-                    <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Hành động</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredMembers.map(m => {
-                    const isBlocked = m.is_blocked;
-                    const status = m.status || "active";
-                    const isCurrentAdmin = m.role === "admin";
-                    const rankSingles = getRankName(m.elo_singles ?? 1000);
-                    const rankDoubles = getRankName(m.elo_doubles ?? 1000);
-                    
-                    return (
-                      <tr key={m.id} className="hover:bg-slate-50">
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
-                            <div>
-                              <p className="font-bold text-secondary flex items-center gap-1.5">
-                                {m.full_name}
-                                {isCurrentAdmin && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">Admin</span>}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th className="p-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Thành viên & Vai trò</th>
+                      <th className="p-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Trình độ & Lối chơi</th>
+                      <th className="p-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Phân cấp & ELO</th>
+                      <th className="p-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Uy tín & Kỷ luật</th>
+                      <th className="p-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Cấp độ & Xu</th>
+                      <th className="p-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Kích hoạt & Trạng thái</th>
+                      <th className="p-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredMembers.map(m => {
+                      const isBlocked = m.is_blocked;
+                      const status = m.status || "active";
+                      const isCurrentAdmin = m.role === "admin";
+                      const rankSingles = getRankName(m.elo_singles ?? 1000);
+                      const rankDoubles = getRankName(m.elo_doubles ?? 1000);
+
+                      // Reliability score color pill
+                      const relLevel = m.reliability_level || "fair";
+                      const relBadgeClass = 
+                        relLevel === "excellent" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                        relLevel === "good" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                        relLevel === "fair" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                        "bg-rose-50 text-rose-700 border-rose-200";
+
+                      return (
+                        <tr key={m.id} className="hover:bg-slate-50/70 transition-colors">
+                          {/* 1. Member Profile & Tags */}
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-2xs overflow-hidden shrink-0">
+                                {m.avatar_url ? (
+                                  <img src={m.avatar_url} alt={m.full_name} className="w-full h-full object-cover" />
+                                ) : (
+                                  m.full_name?.charAt(0) || "U"
+                                )}
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                                  {m.full_name}
+                                  {m.nickname && (
+                                    <span className="text-slate-400 font-normal text-[11px]">({m.nickname})</span>
+                                  )}
+                                  {isCurrentAdmin && (
+                                    <span className="text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold">
+                                      Admin
+                                    </span>
+                                  )}
+                                  {m.role === "guest" && (
+                                    <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold">
+                                      Vãng lai
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-[11px] text-slate-400 flex items-center gap-1 font-mono mt-0.5">
+                                  <Phone className="w-3 h-3 text-slate-400" /> {m.phone_zalo}
+                                </p>
+
+                                {/* Tags Badges */}
+                                {m.tags && m.tags.length > 0 && (
+                                  <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                                    {m.tags.slice(0, 3).map((tag: string) => (
+                                      <span
+                                        key={tag}
+                                        className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200"
+                                      >
+                                        {tag}
+                                      </span>
+                                    ))}
+                                    {m.tags.length > 3 && (
+                                      <span className="text-[9px] text-slate-400 font-bold">
+                                        +{m.tags.length - 3}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 2. Badminton Level & Playstyle */}
+                          <td className="p-3.5">
+                            <p className="font-bold text-slate-800">{m.badminton_level}</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              {m.play_style || "Công thủ toàn diện"}
+                            </p>
+                            {m.hand_preference && (
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                ({m.hand_preference === "left" ? "Tay trái" : "Tay phải"})
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 3. Rank & ELO */}
+                          <td className="p-3.5">
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankSingles)}`}>
+                                  {getRankLabel(rankSingles)}
+                                </span>
+                                <span className="font-bold text-slate-700 font-mono text-[11px]">
+                                  Đơn: {m.elo_singles ?? 1000}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankDoubles)}`}>
+                                  {getRankLabel(rankDoubles)}
+                                </span>
+                                <span className="font-bold text-slate-700 font-mono text-[11px]">
+                                  Đôi: {m.elo_doubles ?? 1000}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 4. Reliability Score & Discipline */}
+                          <td className="p-3.5">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${relBadgeClass}`}>
+                                  {m.reliability_score ?? 100}đ &bull; {m.reliability_label || "Xuất sắc"}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500">
+                                Chuyên cần: <strong className="text-slate-800">{m.attendance_rate ?? 100}%</strong>{" "}
+                                <span className="text-slate-400">({m.attended_count || 0}b)</span>
                               </p>
-                              <p className="text-xs text-slate-400 flex items-center gap-1">
-                                <Phone className="w-3 h-3 text-slate-400" /> {m.phone_zalo}
+
+                              {/* Discipline Cards Badges */}
+                              {((m.active_yellow_cards || 0) > 0 || (m.active_red_cards || 0) > 0) && (
+                                <div className="flex items-center gap-1 pt-0.5">
+                                  {(m.active_red_cards || 0) > 0 && (
+                                    <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-0.5">
+                                      🔴 {m.active_red_cards} Thẻ đỏ
+                                    </span>
+                                  )}
+                                  {(m.active_yellow_cards || 0) > 0 && (
+                                    <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-0.5">
+                                      🟡 {m.active_yellow_cards} Thẻ vàng
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 5. Level & Smash Coins */}
+                          <td className="p-3.5">
+                            <p className="font-bold text-slate-800">Level {m.level || 1}</p>
+                            <p className="text-[11px] text-slate-400 font-medium">{m.xp || 0} XP</p>
+                            <div className="flex items-center gap-1 font-mono font-bold text-amber-600 text-xs mt-1">
+                              <Coins className="w-3.5 h-3.5" />
+                              {(m.smash_coins || 0).toLocaleString()}
+                            </div>
+                          </td>
+
+                          {/* 6. Activation & Status */}
+                          <td className="p-3.5">
+                            <div className="flex flex-col gap-1 items-start">
+                              {m.is_activated ? (
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Đã kích hoạt
+                                </span>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-amber-600" /> Chờ kích hoạt
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyClaimLink(m)}
+                                    title="Sao chép link kích hoạt"
+                                    className="p-1 text-slate-400 hover:text-purple-700 hover:bg-purple-50 rounded transition-all"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                    status === "active"
+                                      ? "bg-slate-100 text-slate-600"
+                                      : status === "inactive"
+                                      ? "bg-amber-100 text-amber-800"
+                                      : "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  {status === "active" ? "Hoạt động" : status === "inactive" ? "Tạm nghỉ" : "Đã rời"}
+                                </span>
+                                {isBlocked && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded flex items-center gap-0.5">
+                                    <Ban className="w-2.5 h-2.5" /> Khóa
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 7. Action Buttons */}
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setMember360Id(m.id);
+                                  setIsMember360Open(true);
+                                }}
+                                className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl border border-purple-200 transition-colors flex items-center gap-1"
+                              >
+                                <UserCheck className="w-3.5 h-3.5" />
+                                Hồ sơ 360°
+                              </button>
+
+                              <button 
+                                onClick={() => openActionsModal(m)} 
+                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+                                title="Thao tác nhanh"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* GUESTS TAB (QUẢN LÝ TÀI KHOẢN VÃNG LAI) */}
+      {/* ========================================================= */}
+      {activeTab === 'guests' && (
+        <div className="space-y-6">
+          {/* Header & KPI Summary Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total Guests */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Tổng tài khoản vãng lai
+                </span>
+                <Users className="w-4 h-4 text-amber-600" />
+              </div>
+              <p className="text-2xl font-black mt-2 font-mono text-slate-900">{totalGuests}</p>
+              <span className="text-[11px] text-slate-400 mt-0.5 block">
+                Đăng ký qua Web / Google
+              </span>
+            </div>
+
+            {/* Active Guests */}
+            <div className="bg-white p-4 rounded-2xl border border-emerald-100 bg-emerald-50/20 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                  Đang hoạt động
+                </span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              </div>
+              <p className="text-2xl font-black mt-2 font-mono text-emerald-900">{activeGuests}</p>
+              <span className="text-[11px] text-emerald-600/80 mt-0.5 block">
+                Tài khoản bình thường
+              </span>
+            </div>
+
+            {/* Onboarding Completed */}
+            <div className="bg-white p-4 rounded-2xl border border-blue-100 bg-blue-50/20 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
+                  Đã hoàn tất hồ sơ
+                </span>
+                <Sparkles className="w-4 h-4 text-blue-600" />
+              </div>
+              <p className="text-2xl font-black mt-2 font-mono text-blue-900">{completedGuests}</p>
+              <span className="text-[11px] text-blue-600/80 mt-0.5 block">
+                {pendingGuests} tài khoản đang chờ hoàn tất
+              </span>
+            </div>
+
+            {/* Blocked / Inactive */}
+            <div className="bg-white p-4 rounded-2xl border border-rose-100 bg-rose-50/20 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-rose-700">
+                  Đang bị khóa
+                </span>
+                <Ban className="w-4 h-4 text-rose-600" />
+              </div>
+              <p className="text-2xl font-black mt-2 font-mono text-rose-900">{blockedGuests}</p>
+              <span className="text-[11px] text-rose-600/80 mt-0.5 block">
+                Bị chặn đăng nhập CLB
+              </span>
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm theo Họ tên, SĐT Zalo, Email, Biệt danh..."
+                value={gSearch}
+                onChange={e => setGSearch(e.target.value)}
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:border-black transition-colors"
+              />
+              {gSearch && (
+                <button
+                  type="button"
+                  onClick={() => setGSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Filter Onboarding Status */}
+              <select
+                value={gCompleted}
+                onChange={e => setGCompleted(e.target.value as any)}
+                className="py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-black cursor-pointer"
+              >
+                <option value="all">Tất cả hồ sơ Onboarding</option>
+                <option value="completed">✓ Đã hoàn tất hồ sơ</option>
+                <option value="pending">⏳ Chưa hoàn tất hồ sơ</option>
+              </select>
+
+              {/* Filter Account Status */}
+              <select
+                value={gStatus}
+                onChange={e => setGStatus(e.target.value as any)}
+                className="py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-black cursor-pointer"
+              >
+                <option value="all">Tất cả trạng thái TK</option>
+                <option value="active">Đang hoạt động</option>
+                <option value="blocked">Đang bị khóa</option>
+              </select>
+
+              {/* Filter Rank */}
+              <select
+                value={gRank}
+                onChange={e => setGRank(e.target.value)}
+                className="py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-black cursor-pointer"
+              >
+                <option value="all">Tất cả Hạng Elo</option>
+                <option value="Đồng">Đồng</option>
+                <option value="Bạc">Bạc</option>
+                <option value="Vàng">Vàng</option>
+                <option value="Bạch kim">Bạch kim</option>
+                <option value="Kim cương">Kim cương</option>
+                <option value="Cao thủ">Cao thủ</option>
+                <option value="Thách đấu">Thách đấu</option>
+              </select>
+
+              {(gSearch || gStatus !== "all" || gCompleted !== "all" || gRank !== "all") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGSearch("");
+                    setGStatus("all");
+                    setGCompleted("all");
+                    setGRank("all");
+                  }}
+                  className="py-2.5 px-3 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" /> Xóa lọc
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Guest Accounts List / Table */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            {isLoadingM ? (
+              <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-black" />
+                <p className="text-xs font-bold">Đang tải danh sách tài khoản vãng lai...</p>
+              </div>
+            ) : filteredGuests.length === 0 ? (
+              <div className="py-20 text-center text-slate-400 flex flex-col items-center gap-3">
+                <Users className="w-12 h-12 text-slate-300 stroke-1" />
+                <p className="font-bold text-slate-600 text-sm">Không tìm thấy tài khoản vãng lai nào</p>
+                <p className="text-xs text-slate-400 max-w-sm">
+                  {gSearch || gStatus !== "all" || gCompleted !== "all" || gRank !== "all"
+                    ? "Hãy thử thay đổi hoặc xóa các tiêu chí tìm kiếm/bộ lọc để hiển thị kết quả."
+                    : "Chưa có người dùng vãng lai nào đăng ký trên hệ thống."}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-extrabold uppercase tracking-wider text-[11px]">
+                      <th className="p-4">Người chơi</th>
+                      <th className="p-4">Liên hệ</th>
+                      <th className="p-4">Hồ sơ Onboarding</th>
+                      <th className="p-4">Elo & Trận đấu</th>
+                      <th className="p-4">Trạng thái TK</th>
+                      <th className="p-4">Ngày đăng ký</th>
+                      <th className="p-4 text-right">Thao tác quản trị</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredGuests.map((g: any) => {
+                      const eloSingles = g.elo_singles ?? 950;
+                      const eloDoubles = g.elo_doubles ?? 950;
+                      const rankSingles = getRankName(eloSingles);
+                      const rankDoubles = getRankName(eloDoubles);
+
+                      return (
+                        <tr key={g.id} className="hover:bg-slate-50/60 transition-colors">
+                          {/* 1. Người chơi */}
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              {g.avatar_url ? (
+                                <img
+                                  src={g.avatar_url}
+                                  alt=""
+                                  className="w-10 h-10 rounded-full object-cover border border-slate-200 shadow-2xs"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-sm">
+                                  {g.full_name?.charAt(0) || "G"}
+                                </div>
+                              )}
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-extrabold text-slate-800 text-sm">
+                                    {g.full_name}
+                                  </span>
+                                  {g.gender && (
+                                    <span className="text-[10px] text-slate-400 font-medium">
+                                      ({g.gender})
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  {g.nickname ? (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold">
+                                      Alias: {g.nickname}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 italic">
+                                      Chưa đặt biệt danh
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] bg-amber-100 text-amber-800 font-extrabold px-1.5 py-0.5 rounded">
+                                    Guest
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 2. Liên hệ */}
+                          <td className="p-4">
+                            <div className="space-y-1">
+                              <p className="font-mono text-slate-700 font-bold flex items-center gap-1.5 text-xs">
+                                <Phone className="w-3.5 h-3.5 text-slate-400" />
+                                {g.phone_zalo || <span className="text-slate-400 italic font-normal">Chưa có SĐT</span>}
                               </p>
+                              {g.email && (
+                                <p className="text-slate-500 flex items-center gap-1.5 text-[11px]">
+                                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                                  <span className="truncate max-w-[180px]" title={g.email}>{g.email}</span>
+                                </p>
+                              )}
                             </div>
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <p className="text-sm font-semibold text-slate-700">{m.badminton_level}</p>
-                        </td>
-                        <td className="p-4">
-                          <div className="flex flex-col gap-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankSingles)}`}>
-                                {rankSingles}
-                              </span>
-                              <span className="text-xs font-bold text-slate-700 font-mono">
-                                Đơn: {m.elo_singles ?? 1000}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankDoubles)}`}>
-                                {rankDoubles}
-                              </span>
-                              <span className="text-xs font-bold text-slate-700 font-mono">
-                                Đôi: {m.elo_doubles ?? 1000}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <div className="flex flex-col gap-1.5 items-start">
-                            {/* Activation Status Badge */}
-                            {m.is_activated ? (
-                              <span className="text-[11px] font-extrabold px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Đã kích hoạt
+                          </td>
+
+                          {/* 3. Hồ sơ Onboarding */}
+                          <td className="p-4">
+                            {g.is_profile_completed ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                Đã hoàn tất hồ sơ
                               </span>
                             ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                Chưa xong Onboarding
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 4. Elo & Trận đấu */}
+                          <td className="p-4">
+                            <div className="space-y-1">
                               <div className="flex items-center gap-1.5">
-                                <span className="text-[11px] font-extrabold px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full flex items-center gap-1" title="Thành viên chưa đặt mật khẩu tại /claim-account">
-                                  <Clock className="w-3 h-3 text-amber-600" /> Chờ kích hoạt
+                                <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankDoubles)}`}>
+                                  {getRankLabel(rankDoubles)}
                                 </span>
+                                <span className="font-mono text-slate-800 font-bold text-xs">
+                                  {eloDoubles} Elo Đôi
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  ({g.matches_doubles || 0} trận)
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded ${getRankBadgeClass(rankSingles)}`}>
+                                  {getRankLabel(rankSingles)}
+                                </span>
+                                <span className="font-mono text-slate-700 text-xs">
+                                  {eloSingles} Elo Đơn
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  ({g.matches_singles || 0} trận)
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 5. Trạng thái TK */}
+                          <td className="p-4">
+                            {g.is_blocked || g.status === "inactive" ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                <Ban className="w-3 h-3 text-rose-600" /> Bị khóa
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Hoạt động
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 6. Ngày đăng ký */}
+                          <td className="p-4 text-slate-500 font-mono text-[11px]">
+                            {g.created_at ? formatVietnamDate(g.created_at, "full") : "--"}
+                          </td>
+
+                          {/* 7. Thao tác */}
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Nút Thăng cấp Thành viên chính thức */}
+                              <button
+                                type="button"
+                                onClick={() => handlePromoteGuest(g)}
+                                disabled={isPromotingGuestId === g.id}
+                                className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-xs active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                title="Thăng cấp tài khoản vãng lai thành Thành viên chính thức"
+                              >
+                                <Crown className="w-3.5 h-3.5 text-white" />
+                                <span>Thăng cấp</span>
+                              </button>
+
+                              {/* Xem hồ sơ 360 */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMember360Id(g.id);
+                                  setIsMember360Open(true);
+                                }}
+                                className="p-2 text-indigo-600 hover:bg-indigo-50 border border-indigo-200 rounded-xl transition-colors cursor-pointer"
+                                title="Xem hồ sơ Member 360°"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+
+                              {/* Thao tác nhanh (Quick actions modal) */}
+                              <button
+                                type="button"
+                                onClick={() => openActionsModal(g)}
+                                className="p-2 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                                title="Tùy chỉnh vai trò, ELO & trạng thái"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+
+                              {/* Khóa / Mở khóa nhanh */}
+                              {g.is_blocked ? (
                                 <button
                                   type="button"
-                                  onClick={() => handleCopyClaimLink(m)}
-                                  title="Sao chép hướng dẫn kích hoạt gửi qua Zalo"
-                                  className="p-1 text-slate-400 hover:text-primary hover:bg-purple-50 rounded-lg transition-all cursor-pointer border border-slate-200"
+                                  onClick={() => handleToggleBlockGuest(g)}
+                                  className="p-2 text-emerald-600 hover:bg-emerald-50 border border-emerald-200 rounded-xl transition-colors cursor-pointer"
+                                  title="Mở khóa tài khoản"
                                 >
-                                  <Copy className="w-3 h-3" />
+                                  <Unlock className="w-4 h-4" />
                                 </button>
-                              </div>
-                            )}
-
-                            {/* Membership Status Badge */}
-                            <div className="flex items-center gap-1">
-                              {status === "active" ? (
-                                <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">Hoạt động</span>
-                              ) : status === "inactive" ? (
-                                <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md">Tạm nghỉ</span>
                               ) : (
-                                <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">Đã rời CLB</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleBlockGuest(g)}
+                                  className="p-2 text-amber-600 hover:bg-amber-50 border border-amber-200 rounded-xl transition-colors cursor-pointer"
+                                  title="Khóa tài khoản"
+                                >
+                                  <Ban className="w-4 h-4" />
+                                </button>
                               )}
-                              
-                              {isBlocked && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-600 rounded-md flex items-center gap-0.5">
-                                  <Ban className="w-2.5 h-2.5" /> Khóa
-                                </span>
-                              )}
+
+                              {/* Xóa / Lưu trữ */}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteGuest(g)}
+                                disabled={isDeletingGuestId === g.id}
+                                className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                                title="Xóa hoặc lưu trữ tài khoản"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
-                          </div>
-                        </td>
-                        <td className="p-4 text-center">
-                          <button 
-                            onClick={() => openAttendanceModal(m)}
-                            className="text-xs font-bold px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors"
-                          >
-                            Chuyên cần
-                          </button>
-                        </td>
-                        <td className="p-4 text-right">
-                          <button 
-                            onClick={() => openActionsModal(m)} 
-                            className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
-                          >
-                            <MoreHorizontal className="w-5 h-5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>
@@ -1122,6 +2003,7 @@ export default function PersonnelPage() {
                     onChange={e => setQuickRole(e.target.value)} 
                     className="p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-black outline-none flex-1"
                   >
+                    <option value="guest">Tài khoản Vãng lai (Guest)</option>
                     <option value="member">Thành viên chính thức (Member)</option>
                     <option value="admin">Quản trị viên (Admin)</option>
                     <option value="candidate">Ứng viên Casting (Candidate)</option>
@@ -1250,29 +2132,41 @@ export default function PersonnelPage() {
                   </p>
                   <button
                     onClick={async () => {
-                      if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn xóa tài khoản của thành viên ${selectedMember.full_name} vĩnh viễn? Tất cả dữ liệu liên quan sẽ bị xóa sạch.`)) {
-                        try {
-                          const token = localStorage.getItem("admin_token");
-                          const res = await fetch(`${API_URL}/api/users/${selectedMember.id}`, {
-                            method: 'DELETE',
-                            headers: { "Authorization": `Bearer ${token}` }
-                          });
-                          if (res.ok) {
-                            alert("Đã xóa tài khoản thành viên vĩnh viễn.");
-                            setShowActionsModal(false);
-                            fetchMembers();
-                          } else {
-                            const data = await res.json();
-                            alert(data.error || "Không thể xóa tài khoản.");
-                          }
-                        } catch (e) {
-                          alert("Lỗi kết nối.");
+                      const reason = prompt(
+                        `Vui lòng nhập lý do xóa hoặc lưu trữ tài khoản của thành viên ${selectedMember.full_name}:`,
+                        "Quản trị viên yêu cầu xóa/lưu trữ"
+                      );
+                      if (reason === null) return;
+                      if (!reason.trim()) {
+                        alert("Bắt buộc phải nhập lý do khi xóa hoặc lưu trữ tài khoản!");
+                        return;
+                      }
+
+                      try {
+                        const token = localStorage.getItem("admin_token");
+                        const res = await fetch(`${API_URL}/api/users/${selectedMember.id}`, {
+                          method: 'DELETE',
+                          headers: { 
+                            "Authorization": `Bearer ${token}`,
+                            "Content-Type": "application/json"
+                          },
+                          body: JSON.stringify({ reason: reason.trim() })
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                          alert(data.message || "Thao tác thành công.");
+                          setShowActionsModal(false);
+                          fetchMembers();
+                        } else {
+                          alert(data.error || "Không thể thực hiện.");
                         }
+                      } catch (e) {
+                        alert("Lỗi kết nối.");
                       }
                     }}
                     className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer active:scale-95"
                   >
-                    Xóa tài khoản vĩnh viễn
+                    Xóa hoặc Lưu trữ tài khoản an toàn
                   </button>
                 </div>
               </div>
@@ -1837,6 +2731,25 @@ export default function PersonnelPage() {
           </div>
         </div>
       )}
+
+      {/* MODAL MEMBER 360° HUB */}
+      <MonthlyInactivityModal
+        isOpen={isInactivityModalOpen}
+        onClose={() => setIsInactivityModalOpen(false)}
+        onRefresh={fetchMembers}
+      />
+
+      <Member360Modal
+        memberId={member360Id}
+        isOpen={isMember360Open}
+        onClose={() => {
+          setIsMember360Open(false);
+          setMember360Id(null);
+        }}
+        onMemberUpdated={() => {
+          fetchMembers();
+        }}
+      />
 
     </div>
   );

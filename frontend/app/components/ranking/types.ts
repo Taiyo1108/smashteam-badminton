@@ -11,7 +11,7 @@ export interface RankedUser {
 }
 
 export interface RankedPlayer {
-  rank: number;
+  rank: number | null;
   movement: 'UP' | 'DOWN' | 'SAME' | 'NEW';
   rankChange: number;
   previousRank: number | null;
@@ -31,12 +31,24 @@ export interface RankedPlayer {
   maxStreak: number;
   isProvisional: boolean;
   provisionalThreshold: number;
+  matchesNeeded?: number;
   isTopOne: boolean;
   gapToNext: number;
+  weeklyEloChange?: number;
+  nextTier?: {
+    hasNextTier: boolean;
+    nextTierName: string | null;
+    nextTierLabel: string | null;
+    nextTierMinElo: number;
+    eloNeeded: number;
+    progressPercent: number;
+    formattedCopy?: string;
+    fullStatusCopy?: string;
+  } | null;
   targetPlayer: {
     id: string;
     name: string;
-    rank: number;
+    rank: number | null;
     elo: number;
   } | null;
   gapCopy: string;

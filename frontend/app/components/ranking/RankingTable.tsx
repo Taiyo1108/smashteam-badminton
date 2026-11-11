@@ -35,6 +35,13 @@ export default function RankingTable({
   });
 
   const renderMovementBadge = (p: RankedPlayer) => {
+    if (p.isProvisional || !p.rank) {
+      return (
+        <span className="inline-flex items-center text-[9px] font-bold text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200 shrink-0">
+          Vô hạng
+        </span>
+      );
+    }
     if (p.movement === 'UP') {
       return (
         <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
@@ -63,10 +70,11 @@ export default function RankingTable({
     );
   };
 
-  const getRankBadge = (rank: number) => {
-    if (rank === 1) return "bg-amber-400 text-amber-950 font-black shadow-amber-400/30";
-    if (rank === 2) return "bg-slate-300 text-slate-800 font-black";
-    if (rank === 3) return "bg-amber-800/30 text-amber-900 font-black border border-amber-800/40";
+  const getRankBadge = (rank: number | null) => {
+    if (!rank) return "bg-slate-100 text-slate-400 font-bold border border-slate-200";
+    if (rank === 1) return "bg-gradient-to-tr from-amber-500 to-yellow-300 text-amber-950 font-black shadow-md shadow-amber-500/30 border border-amber-300";
+    if (rank === 2) return "bg-gradient-to-tr from-slate-300 via-slate-100 to-slate-300 text-slate-800 font-black shadow-md shadow-slate-300/30 border border-slate-300";
+    if (rank === 3) return "bg-gradient-to-tr from-amber-700 to-amber-600 text-white font-black shadow-md shadow-amber-700/30 border border-amber-500";
     return "bg-slate-100 text-slate-600 font-bold";
   };
 
@@ -110,7 +118,7 @@ export default function RankingTable({
                 {/* Rank Number & Movement Stack */}
                 <div className="flex flex-col items-center justify-center shrink-0 w-10">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs tabular-nums shadow-xs ${getRankBadge(p.rank)}`}>
-                    #{p.rank}
+                    {p.rank ? `#${p.rank}` : "—"}
                   </div>
                   <div className="mt-1">
                     {renderMovementBadge(p)}
@@ -138,12 +146,12 @@ export default function RankingTable({
                         (@{p.user.nickname})
                       </span>
                     )}
-                    <span className={`text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded shadow-xs shrink-0 ${p.badgeClass}`}>
-                      {p.tier}
+                    <span className={`text-[10px] uppercase tracking-wider font-black px-2.5 py-0.5 rounded-full shrink-0 shadow-xs ${p.badgeClass}`}>
+                      {p.tierLabel || p.tier}
                     </span>
                     {p.isProvisional && (
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
-                        Tạm thời ({p.matches}/3)
+                        Vô hạng ({p.matches}/3)
                       </span>
                     )}
                   </div>
@@ -168,11 +176,13 @@ export default function RankingTable({
                     )}
                   </div>
 
-                  {/* Gap Copy Tag */}
-                  <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
-                    <Target className="w-3 h-3 text-primary/70 shrink-0" />
-                    <span className="font-bold text-slate-600 truncate">{p.gapCopy}</span>
-                  </div>
+                  {/* Gap Copy Tag: Only shown for oneself */}
+                  {myPosition && myPosition.user.id === p.user.id && (
+                    <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                      <Target className="w-3 h-3 text-primary/70 shrink-0" />
+                      <span className="font-bold text-slate-600 truncate">{p.gapCopy}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -223,8 +233,10 @@ export default function RankingTable({
             {/* Left: Rank + Avatar + Identity */}
             <div className="flex items-center gap-2.5 sm:gap-4 min-w-0 flex-1 mr-2 sm:mr-4">
               <div className="flex flex-col items-center justify-center shrink-0 w-10">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black tabular-nums bg-gradient-to-tr from-amber-400 to-yellow-300 text-amber-950 shadow-sm">
-                  #{myPosition.rank}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black tabular-nums shadow-sm ${
+                  myPosition.rank ? "bg-gradient-to-tr from-amber-400 to-yellow-300 text-amber-950" : "bg-slate-700 text-slate-300 border border-slate-600"
+                }`}>
+                  {myPosition.rank ? `#${myPosition.rank}` : "—"}
                 </div>
                 <div className="mt-1">
                   {renderMovementBadge(myPosition)}
@@ -248,12 +260,12 @@ export default function RankingTable({
                   <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-400 text-amber-950 shrink-0">
                     BẠN
                   </span>
-                  <span className={`text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded shadow-xs shrink-0 ${myPosition.badgeClass}`}>
-                    {myPosition.tier}
+                  <span className={`text-[10px] uppercase tracking-wider font-black px-2.5 py-0.5 rounded-full shrink-0 shadow-xs ${myPosition.badgeClass}`}>
+                    {myPosition.tierLabel || myPosition.tier}
                   </span>
                   {myPosition.isProvisional && (
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-300 border border-amber-400/30 shrink-0">
-                      Tạm thời ({myPosition.matches}/3)
+                      Vô hạng ({myPosition.matches}/3)
                     </span>
                   )}
                 </div>

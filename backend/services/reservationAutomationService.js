@@ -62,6 +62,7 @@ async function processWaitlistExpirations() {
     );
 
     let expiredCount = 0;
+    const affectedSessionIds = new Set();
 
     for (const item of expiredRes.rows) {
       await client.query('BEGIN');
@@ -72,39 +73,21 @@ async function processWaitlistExpirations() {
         [item.id]
       );
 
-      // Tìm người tiếp theo để offer
-      const now = new Date();
-      const sessionEnd = new Date(item.session_end);
-
-      if (now.getTime() + 10 * 60000 < sessionEnd.getTime()) {
-        const nextUserRes = await client.query(
-          `SELECT id, position FROM session_waitlist
-           WHERE session_id = $1::uuid AND status = 'WAITING'
-           ORDER BY position ASC
-           LIMIT 1
-           FOR UPDATE;`,
-          [item.session_id]
-        );
-
-        if (nextUserRes.rows.length > 0) {
-          const nextUser = nextUserRes.rows[0];
-          const offerMinutes = item.waitlist_offer_duration_minutes || 10;
-          const offerExpiresAt = new Date(Date.now() + offerMinutes * 60000);
-
-          await client.query(
-            `UPDATE session_waitlist
-             SET status = 'OFFERED',
-                 offered_at = CURRENT_TIMESTAMP,
-                 offer_expires_at = $1,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2::uuid;`,
-            [offerExpiresAt, nextUser.id]
-          );
-        }
-      }
-
       await client.query('COMMIT');
       expiredCount++;
+      affectedSessionIds.add(item.session_id);
+    }
+
+    // 2. Với mỗi session có người hết hạn, tự động cấp quyền và gửi email cho người tiếp theo trong Waitlist FIFO
+    if (affectedSessionIds.size > 0) {
+      const { triggerWaitlistOffers } = require('./sessionReservationService');
+      for (const sessId of affectedSessionIds) {
+        try {
+          await triggerWaitlistOffers(sessId);
+        } catch (err) {
+          console.error(`[Automation] Error triggering waitlist offer for session ${sessId}:`, err);
+        }
+      }
     }
 
     return expiredCount;
@@ -135,6 +118,14 @@ async function processNoShows() {
     for (const session of endedSessions.rows) {
       await client.query('BEGIN');
 
+      // Tìm danh sách user bị No-show
+      const noShowUsersRes = await client.query(
+        `SELECT DISTINCT user_id FROM attendances
+         WHERE session_id = $1::uuid 
+           AND status IN ('RESERVED', 'CONFIRMED', 'going');`,
+        [session.id]
+      );
+
       const updateRes = await client.query(
         `UPDATE attendances
          SET status = 'NO_SHOW',
@@ -143,6 +134,20 @@ async function processNoShows() {
            AND status IN ('RESERVED', 'CONFIRMED', 'going');`,
         [session.id]
       );
+
+      // Tự động xử lý kỷ luật đối với khách vãng lai (Lần 1: Thẻ vàng -50 điểm; Lần 2: Thẻ đỏ khóa vĩnh viễn)
+      const { processGuestNoShowPenalty } = require('./guestDisciplineService');
+      for (const row of noShowUsersRes.rows) {
+        try {
+          await processGuestNoShowPenalty({
+            userId: row.user_id,
+            sessionId: session.id,
+            client
+          });
+        } catch (penErr) {
+          console.error(`[Automation] Error applying guest no-show penalty for user ${row.user_id}:`, penErr);
+        }
+      }
 
       await client.query(
         `UPDATE sessions SET no_show_processed = TRUE WHERE id = $1::uuid;`,
@@ -163,7 +168,8 @@ async function processNoShows() {
 }
 
 /**
- * Tự động chuyển các attendance CHECKED_IN thành MISSING_CHECKOUT sau khi buổi tập kết thúc
+ * Tự động Check-out đúng giờ cho các thành viên còn lại trên sân khi buổi tập kết thúc
+ * (Đối với các thành viên check-out đúng giờ thì mặc định rời sân đúng giờ luôn không cần check out)
  */
 async function processMissingCheckouts() {
   const client = await db.connect();
@@ -175,22 +181,24 @@ async function processMissingCheckouts() {
          AND (missing_checkout_processed IS FALSE OR missing_checkout_processed IS NULL);`
     );
 
-    let missingCount = 0;
+    let completedCount = 0;
 
     for (const session of endedSessions.rows) {
       await client.query('BEGIN');
 
       const sEnd = session.session_end ? new Date(session.session_end) : new Date();
 
+      // Thành viên ở lại đến hết buổi tập được mặc định rời sân đúng giờ (CHECKED_OUT, completed)
       const updateRes = await client.query(
         `UPDATE attendances
-         SET status = 'MISSING_CHECKOUT',
-             checkout_status = 'missing',
-             checkout_method = 'auto',
+         SET status = 'CHECKED_OUT',
+             checked_out_at = $1,
+             checkout_status = 'completed',
+             checkout_method = 'auto_ontime',
              duration_minutes = GREATEST(1, ROUND(EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(checked_in_at, created_at))) / 60)),
              updated_at = CURRENT_TIMESTAMP
          WHERE session_id = $2::uuid 
-           AND status = 'CHECKED_IN';`,
+           AND status IN ('CHECKED_IN', 'going');`,
         [sEnd, session.id]
       );
 
@@ -200,12 +208,57 @@ async function processMissingCheckouts() {
       );
 
       await client.query('COMMIT');
-      missingCount += updateRes.rowCount;
+      completedCount += updateRes.rowCount;
     }
 
-    return missingCount;
+    return completedCount;
   } catch (error) {
-    console.error('[Automation] Error processing missing checkouts:', error);
+    console.error('[Automation] Error processing on-time checkouts:', error);
+    return 0;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Tự động quét và kích hoạt Waitlist Offer cho các session sắp tới còn slot trống
+ * Chạy định kỳ (mỗi 30s) để đảm bảo không bao giờ bị bỏ sót slot trống dù slot được giải phóng bằng bất kỳ hình thức nào.
+ */
+async function processAvailableWaitlistSlots() {
+  const client = await db.connect();
+  try {
+    // Tìm các session chưa kết thúc, chưa đóng, và đang có người trong session_waitlist với status = 'WAITING'
+    const waitingSessionsRes = await client.query(
+      `SELECT DISTINCT s.id, s.title
+       FROM sessions s
+       JOIN session_waitlist w ON s.id = w.session_id
+       WHERE w.status = 'WAITING'
+         AND (s.is_closed IS FALSE OR s.is_closed IS NULL)
+         AND (s.session_end > CURRENT_TIMESTAMP OR (s.session_end IS NULL AND s.date_time > CURRENT_TIMESTAMP - INTERVAL '3 hours'));`
+    );
+
+    if (waitingSessionsRes.rows.length === 0) {
+      return 0;
+    }
+
+    const { triggerWaitlistOffers } = require('./sessionReservationService');
+    let totalOffered = 0;
+
+    for (const session of waitingSessionsRes.rows) {
+      try {
+        const offers = await triggerWaitlistOffers(session.id);
+        if (offers && offers.length > 0) {
+          totalOffered += offers.length;
+          console.log(`[Automation] Auto-offered ${offers.length} waitlist slot(s) for session "${session.title}" (${session.id})`);
+        }
+      } catch (err) {
+        console.error(`[Automation] Error processing available waitlist slots for session ${session.id}:`, err);
+      }
+    }
+
+    return totalOffered;
+  } catch (error) {
+    console.error('[Automation] Error in processAvailableWaitlistSlots:', error);
     return 0;
   } finally {
     client.release();
@@ -219,8 +272,11 @@ async function runAllAutomationJobs() {
   try {
     await processAutoConfirmations();
     await processWaitlistExpirations();
+    await processAvailableWaitlistSlots();
     await processNoShows();
     await processMissingCheckouts();
+    const { checkAndRunMonthlyInactivityCron } = require('./monthlyInactivityDisciplineService');
+    await checkAndRunMonthlyInactivityCron();
   } catch (err) {
     console.error('[Automation Worker Error]:', err);
   }
@@ -239,6 +295,7 @@ function startAutomationWorker(intervalMs = 30000) {
 module.exports = {
   processAutoConfirmations,
   processWaitlistExpirations,
+  processAvailableWaitlistSlots,
   processNoShows,
   processMissingCheckouts,
   runAllAutomationJobs,

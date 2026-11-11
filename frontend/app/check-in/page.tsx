@@ -10,6 +10,7 @@ import { API_URL } from "@/app/config";
 import { formatVietnamDate } from "@/app/utils/date";
 import confetti from "canvas-confetti";
 import { Html5Qrcode } from "html5-qrcode";
+import { isTokenExpired, redirectToLogin, clearAuthSession, getAuthToken } from "@/app/utils/auth";
 
 function CheckInContent() {
   const searchParams = useSearchParams();
@@ -17,10 +18,16 @@ function CheckInContent() {
   const sessionId = searchParams.get("session_id");
   const urlCode = searchParams.get("code") || searchParams.get("token");
   const urlMode = searchParams.get("mode");
-  const isCheckoutMode = urlMode === "checkout" || (urlCode ? urlCode.startsWith("SEC_OUT_") : false);
 
-  // Mode: "auto" (khi có params), "manual" (nhập code 5 ký tự), "camera" (quét QR)
-  const [activeTab, setActiveTab] = useState<"code" | "camera">("code");
+  // Nếu người dùng truy cập link checkout cũ, tự động chuyển về trang cá nhân
+  useEffect(() => {
+    if (urlMode === "checkout" || (urlCode && urlCode.startsWith("SEC_OUT_"))) {
+      router.replace("/profile");
+    }
+  }, [urlMode, urlCode, router]);
+
+  // Mode: "camera" (mặc định: quét QR bằng camera), "code" (dự phòng: nhập code 5 ký tự)
+  const [activeTab, setActiveTab] = useState<"code" | "camera">("camera");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -64,9 +71,10 @@ function CheckInContent() {
 
   // Khởi tạo kiểm tra Auth
   useEffect(() => {
-    const token = localStorage.getItem("admin_token");
-    if (!token) {
+    const token = getAuthToken();
+    if (!token || isTokenExpired(token)) {
       setHasToken(false);
+      clearAuthSession();
     } else {
       setHasToken(true);
       try {
@@ -82,49 +90,36 @@ function CheckInContent() {
 
   // Tự động check-in nếu URL có tham số hợp lệ
   useEffect(() => {
-    if (!urlCode) {
-      // Nếu không có mã code/token trên URL -> hiển thị form nhập mã & quét camera
+    if (!urlCode || urlMode === "checkout" || urlCode.startsWith("SEC_OUT_")) {
       return;
     }
 
-    const token = localStorage.getItem("admin_token");
-    if (!token) {
-      const currentUrl = window.location.pathname + window.location.search;
-      router.push(`/login?redirect=${encodeURIComponent(currentUrl)}`);
+    const token = getAuthToken();
+    const currentUrl = window.location.pathname + window.location.search;
+    if (!token || isTokenExpired(token)) {
+      redirectToLogin(currentUrl, Boolean(token));
       return;
     }
 
-    // Tiến hành tự động điểm danh / check-out
-    handleAutoCheckIn(token, sessionId, urlCode, urlMode);
+    // Tiến hành tự động điểm danh
+    handleAutoCheckIn(token, sessionId, urlCode);
   }, [sessionId, urlCode, urlMode]);
 
-  const handleAutoCheckIn = async (token: string, sId: string | null, code: string | null, targetMode?: string | null) => {
-    const isCheckout = (targetMode === "checkout" || urlMode === "checkout" || (code ? code.startsWith("SEC_OUT_") : false));
+  const handleAutoCheckIn = async (token: string, sId: string | null, code: string | null) => {
     setStatus("loading");
-    setStatusMessage(isCheckout ? "Đang tiến hành xác thực Check-out / rời sân..." : "Đang tiến hành xác thực điểm danh...");
+    setStatusMessage("Đang tiến hành xác thực điểm danh...");
 
     try {
       let res: Response;
       if (sId) {
-        if (isCheckout) {
-          res = await fetch(`${API_URL}/api/sessions/${sId}/qr-check-out`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({ code: code || "", token: code || "" })
-          });
-        } else {
-          res = await fetch(`${API_URL}/api/sessions/${sId}/qr-check-in`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({ code: code || "", token: code || "" })
-          });
-        }
+        res = await fetch(`${API_URL}/api/sessions/${sId}/qr-check-in`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ code: code || "", token: code || "" })
+        });
       } else {
         // Chỉ có code -> gọi code-check-in
         res = await fetch(`${API_URL}/api/sessions/code-check-in`, {
@@ -139,10 +134,16 @@ function CheckInContent() {
 
       const data = await res.json();
 
+      if (res.status === 401 || (data && (data.code === "TOKEN_EXPIRED" || data.code === "INVALID_TOKEN"))) {
+        const currentUrl = window.location.pathname + window.location.search;
+        redirectToLogin(currentUrl, true);
+        return;
+      }
+
       if (res.ok) {
         setStatus("success");
         setSuccessData(data);
-        setStatusMessage(data.message || (isCheckout ? "Check-out buổi tập thành công!" : "Điểm danh buổi tập thành công!"));
+        setStatusMessage(data.message || "Điểm danh buổi tập thành công!");
         playSuccessSound();
         confetti({
           particleCount: 160,
@@ -151,10 +152,10 @@ function CheckInContent() {
         });
       } else {
         setStatus("error");
-        setErrorMessage(data.error || (isCheckout ? "Check-out thất bại. Vui lòng liên hệ ban quản lý sân." : "Điểm danh thất bại. Vui lòng liên hệ ban quản trị sân."));
+        setErrorMessage(data.error || "Điểm danh thất bại. Vui lòng liên hệ ban quản trị sân.");
       }
     } catch (err) {
-      console.error("Auto Check-in/out error:", err);
+      console.error("Auto Check-in error:", err);
       setStatus("error");
       setErrorMessage("Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại mạng.");
     }
@@ -170,9 +171,9 @@ function CheckInContent() {
       return;
     }
 
-    const token = localStorage.getItem("admin_token");
-    if (!token) {
-      router.push(`/login?redirect=${encodeURIComponent("/check-in")}`);
+    const token = getAuthToken();
+    if (!token || isTokenExpired(token)) {
+      redirectToLogin("/check-in", Boolean(token));
       return;
     }
 
@@ -181,8 +182,8 @@ function CheckInContent() {
 
     try {
       let res: Response;
-      if (isCheckoutMode && sessionId) {
-        res = await fetch(`${API_URL}/api/sessions/${sessionId}/qr-check-out`, {
+      if (sessionId) {
+        res = await fetch(`${API_URL}/api/sessions/${sessionId}/qr-check-in`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -203,10 +204,15 @@ function CheckInContent() {
 
       const data = await res.json();
 
+      if (res.status === 401 || (data && (data.code === "TOKEN_EXPIRED" || data.code === "INVALID_TOKEN"))) {
+        redirectToLogin("/check-in", true);
+        return;
+      }
+
       if (res.ok) {
         setStatus("success");
         setSuccessData(data);
-        setStatusMessage(data.message || (isCheckoutMode ? "Check-out thành công!" : "Điểm danh thành công!"));
+        setStatusMessage(data.message || "Điểm danh thành công!");
         playSuccessSound();
         confetti({
           particleCount: 160,
@@ -214,7 +220,7 @@ function CheckInContent() {
           origin: { y: 0.6 }
         });
       } else {
-        setErrorMessage(data.error || (isCheckoutMode ? "Mã check-out không hợp lệ hoặc chưa đến giờ." : "Mã điểm danh không hợp lệ hoặc buổi tập chưa mở."));
+        setErrorMessage(data.error || "Mã điểm danh không hợp lệ hoặc buổi tập chưa mở.");
       }
     } catch (err) {
       console.error("Manual check error:", err);
@@ -226,12 +232,31 @@ function CheckInContent() {
 
   // Quản lý Camera Scanner
   const startCameraScanner = async () => {
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      return;
+    }
     setCameraError(null);
     setIsCameraActive(true);
 
     // Chờ DOM mount thẻ #qr-checkin-camera
     setTimeout(async () => {
       try {
+        const elem = document.getElementById("qr-checkin-camera");
+        if (!elem) {
+          return;
+        }
+        if (scannerRef.current && scannerRef.current.isScanning) {
+          return;
+        }
+        if (scannerRef.current) {
+          try {
+            await scannerRef.current.clear();
+          } catch {
+            // ignore
+          }
+          scannerRef.current = null;
+        }
+
         const scanner = new Html5Qrcode("qr-checkin-camera");
         scannerRef.current = scanner;
 
@@ -245,23 +270,37 @@ function CheckInContent() {
         );
       } catch (err: any) {
         console.error("Lỗi khởi tạo camera:", err);
-        setCameraError("Không thể mở camera. Vui lòng cấp quyền truy cập camera trên trình duyệt hoặc sử dụng mã 5 ký tự.");
+        setCameraError("Không thể mở camera. Vui lòng cấp quyền truy cập camera trên trình duyệt hoặc sử dụng tab 'Nhập mã 5 ký tự'.");
         setIsCameraActive(false);
       }
     }, 250);
   };
 
   const stopCameraScanner = async () => {
-    if (scannerRef.current && scannerRef.current.isScanning) {
+    if (scannerRef.current) {
       try {
-        await scannerRef.current.stop();
-        scannerRef.current = null;
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+        await scannerRef.current.clear();
       } catch (e) {
         // ignore
+      } finally {
+        scannerRef.current = null;
       }
     }
     setIsCameraActive(false);
   };
+
+  // Tự động khởi động camera quét QR khi ở tab camera và trạng thái chờ quét
+  useEffect(() => {
+    if (activeTab === "camera" && status === "idle" && !urlCode) {
+      startCameraScanner();
+    }
+    return () => {
+      stopCameraScanner();
+    };
+  }, [activeTab, status, urlCode]);
 
   // Khi camera quét được chuỗi
   const handleQrScanned = async (decodedText: string) => {
@@ -270,7 +309,6 @@ function CheckInContent() {
     // Phân tích nếu decodedText là URL hoặc chuỗi code thuần
     let sId: string | null = null;
     let code: string = decodedText.trim();
-    let targetMode: string | null = urlMode;
 
     try {
       if (decodedText.includes("http://") || decodedText.includes("https://") || decodedText.includes("/check-in")) {
@@ -279,19 +317,27 @@ function CheckInContent() {
         const c = urlObj.searchParams.get("code") || urlObj.searchParams.get("token");
         if (c) code = c;
         const m = urlObj.searchParams.get("mode");
-        if (m) targetMode = m;
+        if (m === "checkout" || code.startsWith("SEC_OUT_")) {
+          router.replace("/profile");
+          return;
+        }
       }
     } catch (e) {
       // parse text
     }
 
-    const token = localStorage.getItem("admin_token");
-    if (!token) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+    if (code.startsWith("SEC_OUT_")) {
+      router.replace("/profile");
       return;
     }
 
-    handleAutoCheckIn(token, sId, code, targetMode);
+    const token = getAuthToken();
+    if (!token || isTokenExpired(token)) {
+      redirectToLogin(window.location.pathname, Boolean(token));
+      return;
+    }
+
+    handleAutoCheckIn(token, sId, code);
   };
 
   // Dọn dẹp camera khi unmount
@@ -328,7 +374,7 @@ function CheckInContent() {
             </div>
             <div>
               <h1 className="text-lg sm:text-xl font-black text-white tracking-tight">
-                {isCheckoutMode ? "Cổng Check-out CLB" : "Cổng Điểm Danh CLB"}
+                Cổng Điểm Danh CLB
               </h1>
               <p className="text-xs text-slate-400">CLB Cầu Lông SmashTeam UIT</p>
             </div>
@@ -347,7 +393,7 @@ function CheckInContent() {
             <Loader2 className="w-12 h-12 text-smash-violet animate-spin mx-auto" aria-hidden="true" />
             <h2 className="text-xl font-bold text-white tracking-wide">{statusMessage}</h2>
             <p className="text-xs text-slate-400">
-              {isCheckoutMode ? "Đang đồng bộ thời gian rời sân và hoàn tất buổi tập..." : "Đang đồng bộ dữ liệu và trao thưởng XP..."}
+              Đang đồng bộ dữ liệu và trao thưởng XP...
             </p>
           </div>
         )}
@@ -355,79 +401,40 @@ function CheckInContent() {
         {/* SUCCESS CARD */}
         {status === "success" && (
           <div className="space-y-6 text-center animate-fade-in py-2">
-            <div className={`w-20 h-20 rounded-full border flex items-center justify-center mx-auto ${
-              successData?.attendance?.checked_out_at || successData?.status === "CHECKED_OUT" || isCheckoutMode
-                ? "bg-teal-500/15 text-teal-400 border-teal-500/30 shadow-[0_0_30px_rgba(20,184,166,0.35)]"
-                : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.35)]"
-            }`}>
+            <div className="w-20 h-20 rounded-full border flex items-center justify-center mx-auto bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.35)]">
               <CheckCircle2 className="w-12 h-12" aria-hidden="true" />
             </div>
 
             <div className="space-y-2">
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                {successData?.attendance?.checked_out_at || successData?.status === "CHECKED_OUT" || isCheckoutMode
-                  ? "Check-out Thành Công!"
-                  : "Điểm Danh Thành Công!"}
+                Điểm Danh Thành Công!
               </h2>
               <p className="text-sm text-slate-200 leading-relaxed font-medium">
                 {statusMessage}
               </p>
             </div>
 
-            {/* Chi tiết Check-out vs Check-in */}
-            {successData?.attendance?.checked_out_at || successData?.status === "CHECKED_OUT" || isCheckoutMode ? (
-              <div className="bg-gradient-to-br from-white/5 to-white/10 border border-teal-500/30 rounded-2xl p-4 text-left space-y-3">
-                <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-teal-400" /> Chi tiết tham gia
-                  </span>
-                  <span className="text-xs font-extrabold text-teal-400 bg-teal-500/10 px-2.5 py-0.5 rounded-full border border-teal-500/20">
-                    Hoàn tất buổi tập
-                  </span>
+            {/* Chi tiết phần thưởng điểm danh */}
+            <div className="bg-gradient-to-br from-white/5 to-white/10 border border-emerald-500/30 rounded-2xl p-4 text-left space-y-3">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Phần thưởng nhận được
+                </span>
+                <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                  +1 Buổi tham gia
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-center">
+                  <div className="text-xs text-slate-400 font-semibold mb-0.5">Kinh nghiệm</div>
+                  <div className="text-lg font-black text-emerald-400">+25 XP</div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 pt-1 text-center">
-                  <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
-                    <div className="text-[10px] text-slate-400 font-semibold mb-0.5">Check-in</div>
-                    <div className="text-sm font-black text-white">
-                      {successData?.attendance?.checked_in_at ? formatVietnamDate(successData.attendance.checked_in_at, "time") : "Đã vào"}
-                    </div>
-                  </div>
-                  <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
-                    <div className="text-[10px] text-slate-400 font-semibold mb-0.5">Check-out</div>
-                    <div className="text-sm font-black text-teal-300">
-                      {successData?.attendance?.checked_out_at ? formatVietnamDate(successData.attendance.checked_out_at, "time") : "Vừa xong"}
-                    </div>
-                  </div>
-                  <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
-                    <div className="text-[10px] text-slate-400 font-semibold mb-0.5">Thời lượng</div>
-                    <div className="text-sm font-black text-amber-400">
-                      {typeof successData?.attendance?.duration_minutes === "number" ? `${successData.attendance.duration_minutes}p` : "N/A"}
-                    </div>
-                  </div>
+                <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-center">
+                  <div className="text-xs text-slate-400 font-semibold mb-0.5">Smash Coins</div>
+                  <div className="text-lg font-black text-amber-400">+10 Coins</div>
                 </div>
               </div>
-            ) : (
-              <div className="bg-gradient-to-br from-white/5 to-white/10 border border-emerald-500/30 rounded-2xl p-4 text-left space-y-3">
-                <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Phần thưởng nhận được
-                  </span>
-                  <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                    +1 Buổi tham gia
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-center">
-                    <div className="text-xs text-slate-400 font-semibold mb-0.5">Kinh nghiệm</div>
-                    <div className="text-lg font-black text-emerald-400">+25 XP</div>
-                  </div>
-                  <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-center">
-                    <div className="text-xs text-slate-400 font-semibold mb-0.5">Smash Coins</div>
-                    <div className="text-lg font-black text-amber-400">+10 Coins</div>
-                  </div>
-                </div>
-              </div>
-            )}
+            </div>
 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
@@ -471,7 +478,7 @@ function CheckInContent() {
                 className="min-h-[46px] w-full py-3 px-5 bg-primary hover:bg-primary-hover text-white font-bold text-sm rounded-2xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4" />
-                <span>Nhập mã 5 ký tự khác</span>
+                <span>Thử lại hoặc Quét lại QR</span>
               </button>
               <button
                 onClick={() => router.push("/")}
@@ -507,23 +514,8 @@ function CheckInContent() {
               </div>
             )}
 
-            {/* Tab Selection */}
+            {/* Tab Selection: Quét mã QR là mặc định */}
             <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("code");
-                  stopCameraScanner();
-                }}
-                className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  activeTab === "code"
-                    ? "bg-primary text-white shadow-lg shadow-primary/30"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>Nhập mã 5 ký tự</span>
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -539,25 +531,106 @@ function CheckInContent() {
                 <Camera className="w-4 h-4" />
                 <span>Quét mã QR</span>
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("code");
+                  stopCameraScanner();
+                }}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  activeTab === "code"
+                    ? "bg-primary text-white shadow-lg shadow-primary/30"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>Nhập mã 5 ký tự</span>
+              </button>
             </div>
 
-            {/* TAB 1: NHẬP MÃ 5 KÝ TỰ (DÀNH CHO THIẾT BỊ KHÔNG CÓ CAMERA) */}
+            {/* TAB 1: QUÉT MÃ QR BẰNG CAMERA (MẶC ĐỊNH) */}
+            {activeTab === "camera" && (
+              <div className="space-y-4">
+                <div className="text-center space-y-1">
+                  <h2 className="text-lg sm:text-xl font-bold text-white">Quét Mã QR Điểm Danh</h2>
+                  <p className="text-xs text-slate-400">
+                    Hướng camera về phía mã QR của buổi tập trên màn hình Ban chủ nhiệm.
+                  </p>
+                </div>
+
+                {cameraError ? (
+                  <div className="p-5 bg-rose-500/15 border border-rose-500/30 rounded-2xl text-center space-y-3 animate-fade-in">
+                    <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
+                    <p className="text-xs text-rose-300 leading-relaxed">{cameraError}</p>
+                    <div className="flex flex-col sm:flex-row gap-2 justify-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => startCameraScanner()}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Thử bật lại Camera
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("code");
+                          stopCameraScanner();
+                        }}
+                        className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow"
+                      >
+                        Chuyển sang nhập mã 5 ký tự
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="relative rounded-2xl overflow-hidden border-2 border-primary/50 shadow-inner bg-black flex items-center justify-center min-h-[260px]">
+                      <div id="qr-checkin-camera" className="w-full h-full" />
+                      {!isCameraActive && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-secondary/80 backdrop-blur-sm space-y-3">
+                          <Camera className="w-12 h-12 text-slate-400 animate-pulse" />
+                          <p className="text-xs text-slate-300">Đang khởi động camera...</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                      <span>Mẹo: Giữ camera cách mã QR khoảng 15-30cm</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          stopCameraScanner();
+                          setTimeout(() => startCameraScanner(), 300);
+                        }}
+                        className="text-primary hover:text-smash-violet underline cursor-pointer"
+                      >
+                        Tải lại Camera
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-center text-slate-400">
+                      Nếu camera không mở được hoặc máy tính không có webcam, bạn hãy chọn tab <strong>"Nhập mã 5 ký tự"</strong> ở trên nhé!
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: NHẬP MÃ 5 KÝ TỰ (DỰ PHÒNG CHO THIẾT BỊ KHÔNG CÓ CAMERA) */}
             {activeTab === "code" && (
               <form onSubmit={handleManualSubmit} className="space-y-5">
                 <div className="text-center space-y-1.5">
                   <h2 className="text-lg sm:text-xl font-bold text-white">
-                    {isCheckoutMode ? "Xác Nhận Check-out Tại Sân" : "Nhập Mã Buổi Tập Tại Sân"}
+                    Nhập Mã Buổi Tập Tại Sân
                   </h2>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-                    {isCheckoutMode
-                      ? "Nhập mã xác nhận rời sân hoặc quét QR Checkout để hệ thống ghi nhận thời lượng tham gia."
-                      : "Dành cho thành viên không có camera hoặc quét QR không được. Mã code 5 ký tự được hiển thị trên bảng điều khiển của Ban chủ nhiệm."}
+                    Dành cho thành viên không có camera hoặc quét QR không được. Mã code 5 ký tự được hiển thị trên bảng điều khiển của Ban chủ nhiệm.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <label htmlFor="checkin-code-input" className="block text-xs font-bold text-slate-300 text-center uppercase tracking-wider">
-                    {isCheckoutMode ? "Mã check-out" : "Mã điểm danh (5 ký tự)"}
+                    Mã điểm danh (5 ký tự)
                   </label>
                   <div className="relative">
                     <input
@@ -569,7 +642,7 @@ function CheckInContent() {
                         setManualCode(e.target.value.toUpperCase());
                         setErrorMessage("");
                       }}
-                      placeholder={isCheckoutMode ? "MÃ CHECK-OUT" : "VD: FNAQ8"}
+                      placeholder="VD: FNAQ8"
                       className="w-full bg-white/5 border-2 border-primary/40 focus:border-primary focus:outline-none rounded-2xl py-3.5 px-4 text-center font-mono text-2xl sm:text-3xl font-black tracking-[0.25em] text-white placeholder:text-slate-600 uppercase shadow-inner transition-all"
                       autoFocus
                       autoComplete="off"
@@ -600,11 +673,11 @@ function CheckInContent() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>{isCheckoutMode ? "Đang xác thực check-out..." : "Đang xác thực mã..."}</span>
+                      <span>Đang xác thực mã...</span>
                     </>
                   ) : (
                     <>
-                      <span>{isCheckoutMode ? "Xác nhận Check-out" : "Xác nhận điểm danh"}</span>
+                      <span>Xác nhận điểm danh</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -615,48 +688,6 @@ function CheckInContent() {
                   <span>Cộng ngay <strong className="text-emerald-400 font-bold">+25 XP</strong> và <strong className="text-amber-400 font-bold">+10 Coins</strong> khi xác nhận thành công.</span>
                 </div>
               </form>
-            )}
-
-            {/* TAB 2: QUÉT MÃ QR BẰNG CAMERA */}
-            {activeTab === "camera" && (
-              <div className="space-y-4">
-                <div className="text-center space-y-1">
-                  <h2 className="text-lg font-bold text-white">Quét Mã QR Bằng Camera</h2>
-                  <p className="text-xs text-slate-400">
-                    Hướng camera điện thoại hoặc laptop về phía mã QR trên màn hình sân tập.
-                  </p>
-                </div>
-
-                {cameraError ? (
-                  <div className="p-5 bg-rose-500/15 border border-rose-500/30 rounded-2xl text-center space-y-3 animate-fade-in">
-                    <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
-                    <p className="text-xs text-rose-300 leading-relaxed">{cameraError}</p>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("code")}
-                      className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow"
-                    >
-                      Chuyển sang nhập mã 5 ký tự
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="relative rounded-2xl overflow-hidden border-2 border-primary/50 shadow-inner bg-black flex items-center justify-center min-h-[260px]">
-                      <div id="qr-checkin-camera" className="w-full h-full" />
-                      {!isCameraActive && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-secondary/80 backdrop-blur-sm space-y-3">
-                          <Camera className="w-12 h-12 text-slate-400 animate-pulse" />
-                          <p className="text-xs text-slate-300">Đang khởi động camera...</p>
-                        </div>
-                      )}
-                    </div>
-
-                    <p className="text-[11px] text-center text-slate-400">
-                      Nếu camera không mở được hoặc máy không có webcam, bạn hãy chọn tab <strong>"Nhập mã 5 ký tự"</strong> ở trên nhé!
-                    </p>
-                  </div>
-                )}
-              </div>
             )}
           </div>
         )}

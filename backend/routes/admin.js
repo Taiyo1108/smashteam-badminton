@@ -10,6 +10,26 @@ const {
   adminRejectLateCancel,
   processQrCheckIn
 } = require('../services/sessionReservationService');
+const { getSessionCapacity, SLOT_OCCUPYING_STATUSES } = require('../services/sessionCapacityService');
+const {
+  parseExcelBuffer,
+  previewSubscriptions,
+  commitSubscriptions,
+  syncMonthSessions,
+  autoEnrollSubscribersForSession,
+  getMonthlySubscriptionStats,
+  resetMonthSubscriptions,
+  updateSingleSubscription,
+  deleteSingleSubscription
+} = require('../services/monthlySubscriptionService');
+const { getSessionSlotCode, getSlotLabel } = require('../utils/slotHelper');
+const { getClubSlotsForMonth, saveClubSlotsForMonth, resetClubSlotsForMonth } = require('../services/clubSlotService');
+
+const multer = require('multer');
+const uploadExcel = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }
+});
 
 // Protect all admin routes
 router.use(authenticateToken);
@@ -106,7 +126,7 @@ router.put('/users/:id/role', async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
 
-    if (!['candidate', 'member', 'admin'].includes(role)) {
+    if (!['candidate', 'member', 'admin', 'guest'].includes(role)) {
       return res.status(400).json({ error: 'Quyền hạn không hợp lệ.' });
     }
 
@@ -228,24 +248,43 @@ router.post('/sessions', async (req, res) => {
     const secretToken = `SEC_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     const checkoutSecretToken = `SEC_OUT_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
+    // Xác định chính xác slot_code của buổi tập (ví dụ THU_17_19, THU_18_20, WED_18_20)
+    const sessionSlotCode = getSessionSlotCode({
+      date_time: sessionDateTime,
+      session_start: tStart,
+      session_end: tEnd
+    });
+
     const result = await db.query(
       `INSERT INTO sessions (
         title, date_time, location, qr_code, qr_created_at, checkin_code,
         session_start, session_end, reservation_open_at, reservation_deadline,
         checkin_open_at, checkin_close_at, checkout_open_at, checkout_close_at,
         capacity, qr_secret_token, qr_checkout_secret_token,
-        waitlist_offer_duration_minutes
+        waitlist_offer_duration_minutes, slot_code
       ) 
-      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) 
       RETURNING *`,
       [
         title, toVietnamIso(sessionDateTime), location, newQrCode, newCheckinCode,
         tStart, tEnd, resOpen, resDeadline, checkinOpen, checkinClose, checkoutOpen, checkoutClose,
-        parseInt(capacity, 10) || 40, secretToken, checkoutSecretToken, parseInt(waitlist_offer_duration_minutes, 10) || 10
+        parseInt(capacity, 10) || 40, secretToken, checkoutSecretToken, parseInt(waitlist_offer_duration_minutes, 10) || 10,
+        sessionSlotCode
       ]
     );
 
-    res.status(201).json({ success: true, session: result.rows[0] });
+    const newSession = result.rows[0];
+
+    // Tự động phân bổ thành viên cố định của tháng vào session mới (idempotent)
+    let autoEnrolledCount = 0;
+    try {
+      const autoEnrollRes = await autoEnrollSubscribersForSession(newSession.id);
+      autoEnrolledCount = autoEnrollRes.enrolledCount || 0;
+    } catch (enrollErr) {
+      console.error('Lỗi tự động phân bổ thành viên cố định cho session mới:', enrollErr);
+    }
+
+    res.status(201).json({ success: true, session: newSession, autoEnrolledCount });
   } catch (error) {
     console.error('Error creating session:', error);
     res.status(500).json({ error: error.message || 'Không thể tạo buổi tập.' });
@@ -336,7 +375,23 @@ router.put('/sessions/:id', async (req, res) => {
       ]
     );
 
-    res.json({ success: true, session: result.rows[0] });
+    const updatedSession = result.rows[0];
+
+    // Nếu session được đóng (is_closed = true), tự động kích hoạt phạt Thẻ vàng No-show cho người không điểm danh
+    if (updatedSession && updatedSession.is_closed) {
+      try {
+        const { processNoShowDisciplineForClosedSession } = require('../services/memberManagementService');
+        await processNoShowDisciplineForClosedSession(id, req.user.id);
+      } catch (discErr) {
+        console.error('Error processing no-show discipline for closed session:', discErr);
+      }
+    } else if (updatedSession) {
+      // Nếu session mở hoặc mở rộng capacity, kích hoạt kiểm tra waitlist để cấp slot nếu có
+      const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+      triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist on session update:', e));
+    }
+
+    res.json({ success: true, session: updatedSession });
   } catch (error) {
     console.error('Error updating session:', error);
     res.status(500).json({ error: error.message || 'Lỗi cập nhật buổi tập.' });
@@ -375,6 +430,11 @@ router.get('/sessions/:id/dashboard', async (req, res) => {
   try {
     const { id } = req.params;
     const data = await getAdminSessionDashboard(id);
+    if (data && data.session) {
+      const derivedCode = getSessionSlotCode(data.session);
+      data.session.slot_code = data.session.slot_code || derivedCode;
+      data.session.slot_label = getSlotLabel(data.session.slot_code);
+    }
     res.json(data);
   } catch (error) {
     console.error('Error fetching session dashboard:', error);
@@ -472,10 +532,442 @@ router.post('/sessions/:id/participants/manual-add', async (req, res) => {
       [id, req.user.id, user_id, status, reason]
     );
 
+    // Tự động loại thành viên khỏi hàng chờ nếu họ đang ở trạng thái WAITING hoặc OFFERED
+    await db.query(
+      `UPDATE session_waitlist
+       SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND user_id = $2::uuid AND status IN ('WAITING', 'OFFERED');`,
+      [id, user_id]
+    );
+
+    // Tự động kích hoạt kiểm tra hàng chờ Waitlist nếu còn slot trống khác
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist after manual add:', e));
+
     res.json({ success: true, message: 'Đã thêm thành viên vào buổi tập thành công.', attendance: upsertRes.rows[0] });
   } catch (error) {
     console.error('Error manually adding participant:', error);
     res.status(400).json({ error: error.message || 'Lỗi thêm thành viên.' });
+  }
+});
+
+// POST /api/admin/sessions/:id/bulk-add-attendees - Admin thêm hàng loạt thành viên vào buổi tập có kiểm tra Capacity
+router.post('/sessions/:id/bulk-add-attendees', async (req, res) => {
+  const client = await db.connect();
+  try {
+    const { 
+      id } = req.params;
+    const { 
+      user_ids = [], 
+      status = 'CONFIRMED', 
+      registration_type = 'ADMIN_ADDED', 
+      reason = 'Admin thêm hàng loạt vào buổi tập',
+      allow_exceed_capacity = false 
+    } = req.body;
+
+    if (!Array.isArray(user_ids) || user_ids.length === 0) {
+      return res.status(400).json({ error: 'Danh sách thành viên không được rỗng.' });
+    }
+
+    // 1. Kiểm tra session và capacity hiện tại
+    const capInfo = await getSessionCapacity(id, client);
+    const availableSlots = capInfo.availableSlots;
+
+    // 2. Tìm xem trong danh sách user_ids, ai đã chiếm slot rồi (để không tính 2 lần)
+    const existingOccupyingRes = await client.query(
+      `SELECT user_id, status FROM attendances 
+       WHERE session_id = $1::uuid AND user_id = ANY($2::uuid[]) AND status = ANY($3::varchar[])`,
+      [id, user_ids, SLOT_OCCUPYING_STATUSES]
+    );
+    const existingOccupyingSet = new Set(existingOccupyingRes.rows.map(r => r.user_id));
+    const newlyOccupyingUsers = user_ids.filter(uid => !existingOccupyingSet.has(uid));
+
+    // 3. Nếu số lượng người mới vượt quá slot trống và không bật cờ cho phép vượt
+    if (!allow_exceed_capacity && newlyOccupyingUsers.length > availableSlots) {
+      return res.status(400).json({
+        error: 'CAPACITY_EXCEEDED',
+        message: `Buổi tập chỉ còn ${availableSlots} chỗ trống, nhưng bạn đang chọn thêm ${newlyOccupyingUsers.length} người mới.`,
+        availableSlots,
+        requiredSlots: newlyOccupyingUsers.length,
+        canOverride: true
+      });
+    }
+
+    await client.query('BEGIN');
+
+    const addedRows = [];
+    for (const uid of user_ids) {
+      const upsertRes = await client.query(
+        `INSERT INTO attendances (
+          session_id, user_id, status, registration_type, confirmed_at, reserved_at, updated_at
+        )
+        VALUES ($1::uuid, $2::uuid, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (session_id, user_id)
+        DO UPDATE SET
+          status = EXCLUDED.status,
+          registration_type = EXCLUDED.registration_type,
+          confirmed_at = CURRENT_TIMESTAMP,
+          cancelled_at = NULL,
+          cancellation_reason = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *;`,
+        [id, uid, status, registration_type]
+      );
+      addedRows.push(upsertRes.rows[0]);
+
+      // Ghi audit log
+      await client.query(
+        `INSERT INTO session_audit_logs (
+          session_id, admin_user_id, target_user_id, action, before_status, after_status, reason
+        ) VALUES ($1::uuid, $2::uuid, $3::uuid, 'ADMIN_BULK_ADD_PARTICIPANT', 'NONE', $4, $5);`,
+        [id, req.user.id, uid, status, reason]
+      );
+    }
+
+    // 4. Tự động loại bỏ các thành viên đã thêm khỏi hàng chờ (session_waitlist)
+    await client.query(
+      `UPDATE session_waitlist
+       SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND user_id = ANY($2::uuid[]) AND status IN ('WAITING', 'OFFERED');`,
+      [id, user_ids]
+    );
+
+    await client.query('COMMIT');
+
+    const updatedCap = await getSessionCapacity(id);
+
+    // Tự động kiểm tra cấp offer cho những slot còn trống nếu có
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist after bulk add:', e));
+
+    res.json({
+      success: true,
+      message: `Đã thêm thành công ${addedRows.length} thành viên vào buổi tập.`,
+      addedCount: addedRows.length,
+      newlyOccupyingCount: newlyOccupyingUsers.length,
+      capacity: updatedCap
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Error in bulk-add-attendees:', error);
+    res.status(400).json({ error: error.message || 'Lỗi thêm hàng loạt thành viên.' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/admin/sessions/:id/waitlist/remove - Admin xóa thành viên khỏi hàng chờ Waitlist
+router.post('/sessions/:id/waitlist/remove', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id, reason = 'Admin xóa khỏi danh sách chờ' } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'Thiếu user_id.' });
+
+    const prevRes = await db.query(
+      `SELECT status FROM session_waitlist WHERE session_id = $1::uuid AND user_id = $2::uuid;`,
+      [id, user_id]
+    );
+    const wasOffered = prevRes.rows[0]?.status === 'OFFERED';
+
+    await db.query(
+      `UPDATE session_waitlist
+       SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND user_id = $2::uuid;`,
+      [id, user_id]
+    );
+
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    // Luôn kích hoạt triggerWaitlistOffers để re-number lại hàng chờ và cấp slot nếu có
+    const offeredList = await triggerWaitlistOffers(id);
+
+    res.json({ success: true, message: 'Đã xóa khỏi hàng chờ thành công.', offeredList });
+  } catch (error) {
+    console.error('Error removing from waitlist:', error);
+    res.status(400).json({ error: error.message || 'Lỗi xóa khỏi hàng chờ.' });
+  }
+});
+
+// POST /api/admin/sessions/:id/waitlist/trigger-offers - Admin chủ động kích hoạt cấp slot và gửi email ngay cho hàng chờ
+router.post('/sessions/:id/waitlist/trigger-offers', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    const offeredList = await triggerWaitlistOffers(id);
+
+    res.json({
+      success: true,
+      message: offeredList.length > 0 
+        ? `Đã kích hoạt cấp slot và gửi email thành công cho ${offeredList.length} thành viên trong hàng chờ!`
+        : `Đã kiểm tra hàng chờ: Hiện không có slot trống khả dụng hoặc không còn ai đang chờ.`,
+      offeredList
+    });
+  } catch (error) {
+    console.error('Error triggering waitlist offers manually:', error);
+    res.status(500).json({ error: error.message || 'Lỗi khi kích hoạt cấp slot cho hàng chờ.' });
+  }
+});
+
+// ==========================================
+// MONTHLY SUBSCRIPTION & IMPORT APIS
+// ==========================================
+
+// POST /api/admin/subscriptions/preview-import - Preview file Excel hoặc dữ liệu đăng ký tháng
+router.post('/subscriptions/preview-import', uploadExcel.single('file'), async (req, res) => {
+  try {
+    let rows = [];
+    let monthYear = req.body.monthYear || req.query.monthYear;
+
+    if (req.file) {
+      rows = parseExcelBuffer(req.file.buffer);
+    } else if (req.body.rows && Array.isArray(req.body.rows)) {
+      rows = req.body.rows;
+    } else {
+      return res.status(400).json({ error: 'Vui lòng tải lên file Excel hoặc gửi mảng rows dữ liệu.' });
+    }
+
+    if (!monthYear) {
+      // Mặc định tháng hiện tại theo giờ VN (YYYY-MM)
+      const now = new Date();
+      const vnYear = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric' });
+      const vnMonth = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', month: '2-digit' });
+      monthYear = `${vnYear}-${vnMonth}`;
+    }
+
+    const previewResult = await previewSubscriptions(rows, monthYear);
+    res.json({ success: true, preview: previewResult });
+  } catch (error) {
+    console.error('Error previewing subscription import:', error);
+    res.status(400).json({ error: error.message || 'Lỗi xem trước dữ liệu import.' });
+  }
+});
+
+// POST /api/admin/subscriptions/commit-import - Xác nhận lưu đăng ký tháng và đồng bộ vào các buổi tập
+router.post('/subscriptions/commit-import', async (req, res) => {
+  try {
+    const { monthYear, subscriptions, syncSessions = true } = req.body;
+    if (!monthYear || !Array.isArray(subscriptions)) {
+      return res.status(400).json({ error: 'Thiếu thông tin monthYear hoặc danh sách subscriptions.' });
+    }
+
+    const commitResult = await commitSubscriptions({
+      monthYear,
+      subscriptions,
+      syncSessions,
+      adminUserId: req.user.id
+    });
+
+    res.json(commitResult);
+  } catch (error) {
+    console.error('Error committing subscriptions:', error);
+    res.status(400).json({ error: error.message || 'Lỗi lưu đăng ký tháng.' });
+  }
+});
+
+// POST /api/admin/subscriptions/manual-add - Admin thêm trực tiếp 1 thành viên đăng ký cố định tháng
+router.post('/subscriptions/manual-add', async (req, res) => {
+  try {
+    const { userId, monthYear, registeredSlots, paymentStatus = 'PAID', note, syncSessions = true } = req.body;
+    if (!userId || !monthYear || !Array.isArray(registeredSlots) || registeredSlots.length === 0) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ: thành viên, tháng và ít nhất 1 khung giờ đăng ký.' });
+    }
+
+    // Kiểm tra user có tồn tại và hợp lệ không
+    const userRes = await db.query(`
+      SELECT id, full_name, nickname, phone_zalo, role, status, is_blocked, deleted_at 
+      FROM users 
+      WHERE id = $1 AND deleted_at IS NULL
+    `, [userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy thông tin thành viên.' });
+    }
+    const user = userRes.rows[0];
+    if (user.role === 'candidate') {
+      return res.status(400).json({ error: 'Tài khoản là ứng viên (candidate), vui lòng duyệt thành viên trước khi đăng ký cố định.' });
+    }
+
+    const commitResult = await commitSubscriptions({
+      monthYear,
+      subscriptions: [{
+        userId,
+        registeredSlots,
+        paymentStatus,
+        note: note || 'Thêm thủ công bởi Admin'
+      }],
+      syncSessions,
+      adminUserId: req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: `Đã thêm thành công thành viên ${user.full_name} vào đăng ký cố định tháng ${monthYear}.`,
+      result: commitResult
+    });
+  } catch (error) {
+    console.error('Error manual adding subscription:', error);
+    res.status(400).json({ error: error.message || 'Lỗi thêm đăng ký cố định thủ công.' });
+  }
+});
+
+// GET /api/admin/subscriptions/stats - Xem thống kê và danh sách đăng ký cố định tháng
+router.get('/subscriptions/stats', async (req, res) => {
+  try {
+    let monthYear = req.query.month;
+    if (!monthYear) {
+      const now = new Date();
+      const vnYear = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric' });
+      const vnMonth = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', month: '2-digit' });
+      monthYear = `${vnYear}-${vnMonth}`;
+    }
+
+    const stats = await getMonthlySubscriptionStats(monthYear);
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Error getting subscription stats:', error);
+    res.status(500).json({ error: error.message || 'Lỗi lấy thống kê đăng ký tháng.' });
+  }
+});
+
+// POST /api/admin/subscriptions/sync-month - Đồng bộ lại lịch đăng ký tháng vào các buổi tập
+router.post('/subscriptions/sync-month', async (req, res) => {
+  try {
+    const { monthYear } = req.body;
+    if (!monthYear) {
+      return res.status(400).json({ error: 'Thiếu thông tin monthYear.' });
+    }
+
+    const syncResult = await syncMonthSessions(monthYear, db, req.user.id);
+    res.json({ success: true, syncStats: syncResult });
+  } catch (error) {
+    console.error('Error syncing month sessions:', error);
+    res.status(400).json({ error: error.message || 'Lỗi đồng bộ lịch tháng.' });
+  }
+});
+
+// POST /api/admin/subscriptions/reset-month - Xóa toàn bộ danh sách đăng ký cố định của một tháng
+router.post('/subscriptions/reset-month', async (req, res) => {
+  try {
+    const { monthYear, cleanupAttendances = true } = req.body;
+    if (!monthYear) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp tháng cần reset (monthYear).' });
+    }
+    const result = await resetMonthSubscriptions({
+      monthYear,
+      cleanupAttendances,
+      adminUserId: req.user.id
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error resetting month subscriptions:', error);
+    res.status(400).json({ error: error.message || 'Lỗi khi reset danh sách tháng.' });
+  }
+});
+
+// PUT /api/admin/subscriptions/:id - Chỉnh sửa ca và thông tin đăng ký cố định
+router.put('/subscriptions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { registeredSlots, paymentStatus, note, syncSessions = true } = req.body;
+    const result = await updateSingleSubscription({
+      subscriptionId: id,
+      registeredSlots,
+      paymentStatus,
+      note,
+      syncSessions,
+      adminUserId: req.user.id
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating subscription:', error);
+    res.status(400).json({ error: error.message || 'Lỗi cập nhật đăng ký cố định.' });
+  }
+});
+
+// DELETE /api/admin/subscriptions/:id - Xóa 1 bản ghi đăng ký cố định
+router.delete('/subscriptions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cleanupAttendances = req.query.cleanupAttendances !== 'false';
+    const result = await deleteSingleSubscription({
+      subscriptionId: id,
+      cleanupAttendances,
+      adminUserId: req.user.id
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting subscription:', error);
+    res.status(400).json({ error: error.message || 'Lỗi xóa đăng ký cố định.' });
+  }
+});
+
+// ==========================================
+// CLUB SESSION SLOTS CONFIGURATION APIS
+// ==========================================
+
+// GET /api/admin/subscriptions/slots - Lấy danh sách ca sinh hoạt của tháng (hoặc mặc định)
+router.get('/subscriptions/slots', async (req, res) => {
+  try {
+    let monthYear = req.query.month;
+    if (!monthYear) {
+      const now = new Date();
+      const vnYear = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric' });
+      const vnMonth = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', month: '2-digit' });
+      monthYear = `${vnYear}-${vnMonth}`;
+    }
+
+    const slotConfig = await getClubSlotsForMonth(monthYear);
+    res.json({ success: true, ...slotConfig });
+  } catch (error) {
+    console.error('Error fetching club slots:', error);
+    res.status(500).json({ error: error.message || 'Lỗi lấy danh sách ca sinh hoạt.' });
+  }
+});
+
+// POST /api/admin/subscriptions/slots - Lưu cấu hình ca sinh hoạt cho tháng
+router.post('/subscriptions/slots', async (req, res) => {
+  try {
+    const { monthYear, slots } = req.body;
+    if (!monthYear || !Array.isArray(slots)) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ monthYear và danh sách ca đánh (slots).' });
+    }
+
+    const updatedConfig = await saveClubSlotsForMonth({
+      monthYear,
+      slots,
+      adminId: req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: `Đã lưu cấu hình ${updatedConfig.slotsArray.length} ca sinh hoạt cho tháng ${monthYear}.`,
+      ...updatedConfig
+    });
+  } catch (error) {
+    console.error('Error saving club slots:', error);
+    res.status(400).json({ error: error.message || 'Lỗi lưu cấu hình ca sinh hoạt.' });
+  }
+});
+
+// POST /api/admin/subscriptions/slots/reset - Khôi phục cấu hình ca của tháng về mặc định
+router.post('/subscriptions/slots/reset', async (req, res) => {
+  try {
+    const { monthYear } = req.body;
+    if (!monthYear) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp monthYear cần khôi phục.' });
+    }
+
+    const resetConfig = await resetClubSlotsForMonth({
+      monthYear,
+      adminId: req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: `Đã khôi phục ca sinh hoạt tháng ${monthYear} về danh sách chuẩn của CLB.`,
+      ...resetConfig
+    });
+  } catch (error) {
+    console.error('Error resetting club slots:', error);
+    res.status(400).json({ error: error.message || 'Lỗi khôi phục cấu hình ca sinh hoạt.' });
   }
 });
 
@@ -512,7 +1004,15 @@ router.post('/sessions/:id/participants/manual-remove', async (req, res) => {
       [id, req.user.id, user_id, beforeStatus, reason]
     );
 
-    res.json({ success: true, message: 'Đã xóa thành viên khỏi danh sách buổi tập.' });
+    // Tự động kích hoạt hàng chờ Waitlist và gửi email thông báo cho người tiếp theo
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    const offeredList = await triggerWaitlistOffers(id);
+
+    res.json({
+      success: true,
+      message: 'Đã xóa thành viên khỏi danh sách buổi tập.',
+      offeredList
+    });
   } catch (error) {
     console.error('Error manually removing participant:', error);
     res.status(400).json({ error: error.message || 'Lỗi xóa thành viên.' });
@@ -640,15 +1140,15 @@ async function handleGenerateSessionQr(req, res) {
 // POST /api/admin/quests - Tạo nhiệm vụ mới
 router.post('/quests', async (req, res) => {
   try {
-    const { title, quest_type, xp_reward, coin_reward, action_type, target_count } = req.body;
+    const { title, description, quest_type, xp_reward, coin_reward, action_type, target_count } = req.body;
     if (!title || !quest_type || !xp_reward || !coin_reward || !action_type || !target_count) {
       return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ thông tin nhiệm vụ.' });
     }
 
     const result = await db.query(
-      `INSERT INTO quests (title, quest_type, xp_reward, coin_reward, action_type, target_count, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING *`,
-      [title, quest_type, xp_reward, coin_reward, action_type, target_count]
+      `INSERT INTO quests (title, description, quest_type, xp_reward, coin_reward, action_type, target_count, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *`,
+      [title, description || null, quest_type, parseInt(xp_reward) || 0, parseInt(coin_reward) || 0, action_type, parseInt(target_count) || 1]
     );
 
     res.status(201).json({ success: true, quest: result.rows[0] });
@@ -699,15 +1199,16 @@ router.put('/quests/:id/toggle', async (req, res) => {
 router.put('/quests/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, quest_type, xp_reward, coin_reward, action_type, target_count, is_active } = req.body;
+    const { title, description, quest_type, xp_reward, coin_reward, action_type, target_count, is_active } = req.body;
 
     const result = await db.query(
       `UPDATE quests
-       SET title = $1, quest_type = $2, xp_reward = $3, coin_reward = $4, action_type = $5, target_count = $6, is_active = $7
-       WHERE id = $8
+       SET title = $1, description = $2, quest_type = $3, xp_reward = $4, coin_reward = $5, action_type = $6, target_count = $7, is_active = $8
+       WHERE id = $9
        RETURNING *`,
       [
         title,
+        description !== undefined ? description : null,
         quest_type,
         parseInt(xp_reward) || 0,
         parseInt(coin_reward) || 0,
@@ -746,4 +1247,455 @@ router.delete('/quests/:id', async (req, res) => {
   }
 });
 
+// GET /api/admin/quests/:id/members - Lấy danh sách thành viên và trạng thái hoàn thành nhiệm vụ này
+router.get('/quests/:id/members', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const questRes = await db.query('SELECT * FROM quests WHERE id = $1', [id]);
+    if (questRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy nhiệm vụ.' });
+    }
+    const quest = questRes.rows[0];
+
+    const membersRes = await db.query(
+      `SELECT 
+         u.id, u.full_name, u.nickname, u.phone_zalo, u.avatar_url, u.role, u.level, u.xp, u.smash_coins,
+         COALESCE(uq.is_completed, false) as is_completed,
+         COALESCE(uq.is_claimed, false) as is_claimed,
+         COALESCE(uq.current_count, 0) as current_count,
+         uq.updated_at
+       FROM users u
+       LEFT JOIN user_quests uq ON uq.user_id = u.id AND uq.quest_id = $1
+       WHERE u.role IN ('member', 'admin', 'guest') AND u.full_name != 'Super Admin'
+       ORDER BY uq.is_claimed DESC, uq.is_completed DESC, u.full_name ASC`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      quest,
+      members: membersRes.rows
+    });
+  } catch (error) {
+    console.error('Error fetching quest members:', error);
+    res.status(500).json({ error: 'Lỗi khi tải danh sách thành viên cho nhiệm vụ.' });
+  }
+});
+
+// POST /api/admin/quests/:id/award - Trao thưởng hoặc mở khóa hoàn thành nhiệm vụ cho các thành viên được chọn
+router.post('/quests/:id/award', async (req, res) => {
+  const { id } = req.params;
+  const { user_ids, mode = 'direct' } = req.body;
+  // mode: 'direct' (trao quà và cộng thưởng ngay) | 'unlock' (mở khóa hoàn thành để thành viên tự nhận trên Profile)
+
+  if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0) {
+    return res.status(400).json({ error: 'Vui lòng chọn ít nhất một thành viên để trao quà.' });
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    const questRes = await client.query('SELECT * FROM quests WHERE id = $1', [id]);
+    if (questRes.rows.length === 0) {
+      throw new Error('Nhiệm vụ không tồn tại.');
+    }
+    const quest = questRes.rows[0];
+    const targetCount = quest.target_count || 1;
+    const xpReward = parseInt(quest.xp_reward, 10) || 0;
+    const coinReward = parseInt(quest.coin_reward, 10) || 0;
+
+    const { addXpToUser } = require('../utils/gamification');
+    const awardedUsers = [];
+
+    for (const userId of user_ids) {
+      const userCheck = await client.query('SELECT id, full_name, level, xp, smash_coins FROM users WHERE id = $1', [userId]);
+      if (userCheck.rows.length === 0) continue;
+      const user = userCheck.rows[0];
+
+      if (mode === 'direct') {
+        // Cộng trực tiếp XP & Xu
+        const levelUp = await addXpToUser(userId, xpReward, client);
+        if (coinReward > 0) {
+          await client.query('UPDATE users SET smash_coins = smash_coins + $1 WHERE id = $2', [coinReward, userId]);
+        }
+
+        // Cập nhật user_quests: is_completed = true, is_claimed = true
+        await client.query(
+          `INSERT INTO user_quests (user_id, quest_id, current_count, is_completed, is_claimed, updated_at)
+           VALUES ($1, $2, $3, true, true, CURRENT_TIMESTAMP)
+           ON CONFLICT (user_id, quest_id)
+           DO UPDATE SET
+             current_count = $3,
+             is_completed = true,
+             is_claimed = true,
+             updated_at = CURRENT_TIMESTAMP`,
+          [userId, id, targetCount]
+        );
+
+        awardedUsers.push({
+          id: user.id,
+          full_name: user.full_name,
+          leveled_up: levelUp?.leveledUp,
+          new_level: levelUp?.currentLevel
+        });
+      } else {
+        // Mở khóa hoàn thành để thành viên tự nhận thưởng trên Profile
+        await client.query(
+          `INSERT INTO user_quests (user_id, quest_id, current_count, is_completed, is_claimed, updated_at)
+           VALUES ($1, $2, $3, true, false, CURRENT_TIMESTAMP)
+           ON CONFLICT (user_id, quest_id)
+           DO UPDATE SET
+             current_count = $3,
+             is_completed = true,
+             is_claimed = false,
+             updated_at = CURRENT_TIMESTAMP`,
+          [userId, id, targetCount]
+        );
+
+        awardedUsers.push({
+          id: user.id,
+          full_name: user.full_name
+        });
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      success: true,
+      message: mode === 'direct'
+        ? `Đã trao quà trực tiếp thành công cho ${awardedUsers.length} thành viên (+${xpReward} XP, +${coinReward} Xu)!`
+        : `Đã mở khóa hoàn thành nhiệm vụ cho ${awardedUsers.length} thành viên!`,
+      awarded_count: awardedUsers.length,
+      awarded_users: awardedUsers,
+      quest: {
+        id: quest.id,
+        title: quest.title,
+        xp_reward: xpReward,
+        coin_reward: coinReward
+      }
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error awarding quest to members:', error);
+    res.status(500).json({ error: error.message || 'Lỗi hệ thống khi trao quà nhiệm vụ.' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/admin/quests/:id/revoke - Thu hồi / Reset tiến trình nhiệm vụ của một thành viên
+router.post('/quests/:id/revoke', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id } = req.body;
+    if (!user_id) {
+      return res.status(400).json({ error: 'Thiếu user_id.' });
+    }
+
+    await db.query(
+      `UPDATE user_quests
+       SET current_count = 0, is_completed = false, is_claimed = false, updated_at = CURRENT_TIMESTAMP
+       WHERE quest_id = $1 AND user_id = $2`,
+      [id, user_id]
+    );
+
+    res.json({ success: true, message: 'Đã thu hồi / đặt lại trạng thái nhiệm vụ cho thành viên.' });
+  } catch (error) {
+    console.error('Error revoking quest:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi thu hồi nhiệm vụ.' });
+  }
+});
+
+// ==========================================
+// MEMBER MANAGEMENT HUB - 360° APIs
+// ==========================================
+
+// GET /api/admin/members/:id/360/overview - Tab 1: Tổng quan 360
+router.get('/members/:id/360/overview', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberOverview(id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member 360 overview:', error);
+    res.status(error.message === 'Thành viên không tồn tại.' ? 404 : 500).json({ error: error.message || 'Lỗi tải tổng quan thành viên.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/attendance - Tab 3: Chuyên cần (Lazy Loaded)
+router.get('/members/:id/360/attendance', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberAttendanceDetails(id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member attendance details:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải thông tin chuyên cần.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/competitive - Tab 4: Thi đấu (Lazy Loaded)
+router.get('/members/:id/360/competitive', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberCompetitiveDetails(id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member competitive details:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải thông số thi đấu.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/gamification - Tab 5: Gamification & Xu (Lazy Loaded)
+router.get('/members/:id/360/gamification', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberGamificationDetails(id);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member gamification details:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải dữ liệu gamification.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/timeline - Tab 6: Dòng hoạt động (Lazy Loaded)
+router.get('/members/:id/360/timeline', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberActivityTimeline(id, limit);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member timeline:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải dòng hoạt động.' });
+  }
+});
+
+// GET /api/admin/members/:id/360/audit - Tab 7: Lịch sử kiểm toán (Lazy Loaded)
+router.get('/members/:id/360/audit', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const memberService = require('../services/memberManagementService');
+    const data = await memberService.getMemberAuditHistory(id, limit);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching member audit history:', error);
+    res.status(500).json({ error: error.message || 'Lỗi tải lịch sử kiểm toán.' });
+  }
+});
+
+// PUT /api/admin/members/:id/personal-info - Tab 2: Cập nhật thông tin thành viên (kèm audit log)
+router.put('/members/:id/personal-info', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, ...updates } = req.body;
+    const memberService = require('../services/memberManagementService');
+    const updatedUser = await memberService.updateMemberPersonalInfo({
+      userId: id,
+      adminId: req.user.id,
+      updates,
+      reason: reason || 'Quản trị viên cập nhật hồ sơ thành viên'
+    });
+    res.json({ success: true, message: 'Cập nhật thông tin thành viên thành công!', user: updatedUser });
+  } catch (error) {
+    console.error('Error updating member personal info:', error);
+    res.status(400).json({ error: error.message || 'Lỗi cập nhật thông tin thành viên.' });
+  }
+});
+
+// POST /api/admin/members/:id/coins/adjust - Điều chỉnh số dư Smash Coins (Transaction + Ledger + Audit)
+router.post('/members/:id/coins/adjust', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, reason } = req.body;
+    const changeVal = parseInt(amount, 10);
+    if (isNaN(changeVal) || changeVal === 0) {
+      return res.status(400).json({ error: 'Số xu điều chỉnh phải là số khác 0.' });
+    }
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Bắt buộc nhập lý do điều chỉnh số dư xu.' });
+    }
+    const memberService = require('../services/memberManagementService');
+    const result = await memberService.adjustUserCoins({
+      userId: id,
+      amount: changeVal,
+      source: 'MANUAL_ADMIN',
+      reason: reason.trim(),
+      adminId: req.user.id
+    });
+    res.json({ success: true, message: 'Điều chỉnh số dư xu thành công!', ...result });
+  } catch (error) {
+    console.error('Error adjusting member coins:', error);
+    res.status(400).json({ error: error.message || 'Lỗi điều chỉnh xu.' });
+  }
+});
+
+// POST /api/admin/members/:id/discipline - Phạt kỷ luật (Thẻ vàng, Thẻ đỏ, Cảnh cáo)
+router.post('/members/:id/discipline', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, reason, note, session_id, expires_at } = req.body;
+    if (!['WARNING', 'YELLOW', 'RED'].includes(type)) {
+      return res.status(400).json({ error: 'Loại kỷ luật không hợp lệ (WARNING, YELLOW, RED).' });
+    }
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Bắt buộc nhập lý do xử phạt kỷ luật.' });
+    }
+    const memberService = require('../services/memberManagementService');
+    const record = await memberService.issueDisciplineRecord({
+      userId: id,
+      adminId: req.user.id,
+      type,
+      reason: reason.trim(),
+      note: note || null,
+      sessionId: session_id || null,
+      expiresAt: expires_at || null
+    });
+    res.json({ success: true, message: `Đã phạt ${type === 'YELLOW' ? 'Thẻ vàng' : type === 'RED' ? 'Thẻ đỏ' : 'Cảnh cáo'} thành công!`, record });
+  } catch (error) {
+    console.error('Error issuing discipline record:', error);
+    res.status(400).json({ error: error.message || 'Lỗi xử phạt kỷ luật.' });
+  }
+});
+
+// PUT /api/admin/members/:id/discipline/:recordId/revoke - Gỡ bỏ / Xóa án kỷ luật (kèm lý do)
+router.put('/members/:id/discipline/:recordId/revoke', async (req, res) => {
+  try {
+    const { recordId } = req.params;
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Bắt buộc nhập lý do gỡ kỷ luật / xóa án phạt.' });
+    }
+    const memberService = require('../services/memberManagementService');
+    const record = await memberService.revokeDisciplineRecord({
+      recordId,
+      adminId: req.user.id,
+      reason: reason.trim()
+    });
+    res.json({ success: true, message: 'Đã gỡ án kỷ luật thành công!', record });
+  } catch (error) {
+    console.error('Error revoking discipline record:', error);
+    res.status(400).json({ error: error.message || 'Lỗi gỡ kỷ luật.' });
+  }
+});
+
+// POST /api/admin/members/:id/reset-password - Admin cấp lại mật khẩu hoặc gửi email reset
+router.post('/members/:id/reset-password', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { mode, custom_password } = req.body; // mode: 'direct' | 'send_email'
+
+    const userRes = await db.query('SELECT id, full_name, phone_zalo, email, role, is_blocked FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy thành viên.' });
+    }
+    const user = userRes.rows[0];
+
+    if (mode === 'send_email') {
+      if (!user.email) {
+        return res.status(400).json({ error: 'Thành viên này chưa có địa chỉ email trong hồ sơ.' });
+      }
+      const crypto = require('crypto');
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+      await db.query(
+        'UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL',
+        [user.id]
+      );
+      await db.query(
+        `INSERT INTO password_reset_tokens (user_id, token, otp_code, expires_at) VALUES ($1, $2, $3, $4)`,
+        [user.id, resetToken, otpCode, expiresAt]
+      );
+
+      const { sendPasswordResetEmail } = require('../utils/emailService');
+      const frontendUrl = process.env.FRONTEND_URL || 'https://smashteam.id.vn';
+      const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+      const sent = await sendPasswordResetEmail(user.email, user.full_name, otpCode, resetUrl);
+
+      if (!sent) {
+        return res.status(500).json({ error: 'Lỗi khi gửi email đặt lại mật khẩu.' });
+      }
+
+      return res.json({
+        success: true,
+        message: `Đã gửi email khôi phục mật khẩu (kèm mã OTP & link) tới ${user.email}.`
+      });
+    } else {
+      // Direct set password
+      const bcrypt = require('bcrypt');
+      let newPass = custom_password;
+      if (!newPass || newPass.trim().length === 0) {
+        const randNum = Math.floor(1000 + Math.random() * 9000);
+        newPass = `Smash@${randNum}`;
+      } else {
+        newPass = newPass.trim();
+        if (newPass.length < 6) {
+          return res.status(400).json({ error: 'Mật khẩu phải có tối thiểu 6 ký tự.' });
+        }
+      }
+
+      const saltRounds = 10;
+      const passwordHash = await bcrypt.hash(newPass, saltRounds);
+
+      await db.query('BEGIN');
+      await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, user.id]);
+      await db.query('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+      await db.query('COMMIT');
+
+      return res.json({
+        success: true,
+        message: `Đã cấp lại mật khẩu thành công cho ${user.full_name}!`,
+        new_password: newPass
+      });
+    }
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => {});
+    console.error('Error admin reset password:', error);
+    res.status(500).json({ error: 'Lỗi máy chủ khi đặt lại mật khẩu.' });
+  }
+});
+
+// GET /api/admin/inactivity-penalties/preview - Xem trước danh sách chuyên cần tháng và mức phạt dự kiến
+router.get('/inactivity-penalties/preview', async (req, res) => {
+  try {
+    const { month } = req.query; // format YYYY-MM
+    const { evaluateMonthlyInactivity } = require('../services/monthlyInactivityDisciplineService');
+    const result = await evaluateMonthlyInactivity({
+      monthYear: month || '2026-10',
+      dryRun: true
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error previewing inactivity penalties:', error);
+    res.status(400).json({ error: error.message || 'Lỗi khi xem trước chuyên cần tháng.' });
+  }
+});
+
+// POST /api/admin/inactivity-penalties/execute - Thực thi phạt kỷ luật chuyên cần tháng
+router.post('/inactivity-penalties/execute', async (req, res) => {
+  try {
+    const { month } = req.body; // format YYYY-MM
+    const { evaluateMonthlyInactivity } = require('../services/monthlyInactivityDisciplineService');
+    const result = await evaluateMonthlyInactivity({
+      monthYear: month || '2026-10',
+      dryRun: false,
+      adminId: req.user.id
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error executing inactivity penalties:', error);
+    res.status(400).json({ error: error.message || 'Lỗi khi thực thi xử phạt chuyên cần tháng.' });
+  }
+});
+
 module.exports = router;
+

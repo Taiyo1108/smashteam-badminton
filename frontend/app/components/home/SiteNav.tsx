@@ -76,12 +76,13 @@ function SiteNav() {
                 Đăng nhập
               </Link>
               <Link
-                href="/register"
-                className="flex items-center gap-2 h-10 pl-5 pr-1.5 rounded-full bg-black text-white text-sm font-semibold hover:bg-black/85 transition-colors"
+                href="/login?mode=register"
+                className="flex items-center gap-2 h-10 px-4 sm:pl-5 sm:pr-1.5 rounded-full bg-black text-white text-xs sm:text-sm font-semibold hover:bg-black/85 transition-colors whitespace-nowrap"
               >
-                Gia nhập ngay
-                <span className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center">
-                  <ArrowUpRight className="w-4 h-4" />
+                <span className="sm:hidden">Đăng ký</span>
+                <span className="hidden sm:inline">Đăng ký tài khoản vãng lai</span>
+                <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white text-black flex items-center justify-center shrink-0">
+                  <ArrowUpRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </span>
               </Link>
             </>

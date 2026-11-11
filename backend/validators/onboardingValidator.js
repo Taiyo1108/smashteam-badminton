@@ -1,0 +1,103 @@
+const { z } = require('zod');
+
+// Regex chuẩn số điện thoại di động Việt Nam: 10 chữ số, đầu số 03, 05, 07, 08, 09
+const VIETNAM_PHONE_REGEX = /^(03|05|07|08|09)[0-9]{8}$/;
+
+/**
+ * Chuẩn hóa số điện thoại:
+ * - Xóa khoảng trắng, dấu gạch ngang, dấu chấm
+ * - Chuyển đổi tiền tố quốc tế +84 hoặc 84 về đầu số 0
+ */
+function normalizeVietnamPhone(phone) {
+  if (!phone || typeof phone !== 'string') return '';
+  let cleaned = phone.trim().replace(/[^\d+]/g, '');
+  if (cleaned.startsWith('+84')) {
+    cleaned = '0' + cleaned.slice(3);
+  } else if (cleaned.startsWith('0084')) {
+    cleaned = '0' + cleaned.slice(4);
+  } else if (cleaned.startsWith('84') && cleaned.length === 11) {
+    cleaned = '0' + cleaned.slice(2);
+  }
+  return cleaned;
+}
+
+const onboardingSchema = z.object({
+  full_name: z
+    .string()
+    .trim()
+    .min(2, 'Họ và tên đầy đủ phải có ít nhất 2 ký tự.')
+    .max(50, 'Họ và tên đầy đủ không được vượt quá 50 ký tự.')
+    .optional()
+    .nullable(),
+  phone_zalo: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((val) => (val ? normalizeVietnamPhone(val) : ''))
+    .refine((val) => !val || VIETNAM_PHONE_REGEX.test(val), {
+      message: 'Số điện thoại không hợp lệ. Phải là số điện thoại Việt Nam 10 chữ số (đầu số 03, 05, 07, 08, 09).'
+    }),
+  nickname: z
+    .string()
+    .trim()
+    .max(50, 'Biệt danh không được vượt quá 50 ký tự.')
+    .optional()
+    .nullable(),
+  email: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .refine((val) => !val || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val), {
+      message: 'Địa chỉ email không đúng định dạng.'
+    }),
+  gender: z
+    .enum(['Nam', 'Nữ'])
+    .optional()
+    .nullable()
+    .default('Nam')
+    .transform((val) => (val === 'Nữ' ? 'Nữ' : 'Nam')),
+  avatar_url: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((val) => (val && typeof val === 'string' && val.trim() ? val.trim() : null))
+    .refine((val) => !val || val.startsWith('/') || val.startsWith('http://') || val.startsWith('https://'), {
+      message: 'Đường dẫn ảnh đại diện không hợp lệ.'
+    }),
+  honeypot: z
+    .string()
+    .optional()
+    .nullable(),
+  link_password: z
+    .string()
+    .optional()
+    .nullable()
+});
+
+/**
+ * Validate payload Onboarding
+ */
+function validateOnboarding(data) {
+  const result = onboardingSchema.safeParse(data);
+  if (!result.success) {
+    const firstError = result.error.errors[0]?.message || 'Dữ liệu không hợp lệ.';
+    return {
+      success: false,
+      error: firstError,
+      code: 'VALIDATION_ERROR',
+      details: result.error.flatten()
+    };
+  }
+
+  return {
+    success: true,
+    data: result.data
+  };
+}
+
+module.exports = {
+  normalizeVietnamPhone,
+  validateOnboarding,
+  VIETNAM_PHONE_REGEX
+};

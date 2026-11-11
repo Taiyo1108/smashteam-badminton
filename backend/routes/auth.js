@@ -3,51 +3,531 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { authenticateToken } = require('../middleware/auth');
+const { onboardingRateLimiter } = require('../middleware/rateLimiter');
+const { validateOnboarding } = require('../validators/onboardingValidator');
+const { OAuth2Client } = require('google-auth-library');
+const { checkBlacklist } = require('../services/guestDisciplineService');
+const { getUnacknowledgedInactivityWarning } = require('../services/monthlyInactivityDisciplineService');
 
-// POST /api/auth/login - Đăng nhập hệ thống (cho cả Admin và Member)
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '924372495544-vtcoadl8go2gf8oqqqhrr0s21fi10ecd.apps.googleusercontent.com';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+// POST /api/auth/login - Đăng nhập hệ thống (hỗ trợ Admin, Member và Guest qua SĐT hoặc Email)
 router.post('/login', async (req, res) => {
   try {
     const { phone_zalo, password } = req.body;
     
-    // Check if user exists and is admin or member
+    if (!phone_zalo || !password) {
+      return res.status(400).json({ error: 'Vui lòng điền đầy đủ số điện thoại hoặc email và mật khẩu.' });
+    }
+
+    const cleanIdentifier = String(phone_zalo).trim();
+
+    // Check if user exists by phone_zalo OR email and belongs to valid roles
     const userResult = await db.query(
-      'SELECT * FROM users WHERE phone_zalo = $1 AND role IN ($2, $3)',
-      [phone_zalo, 'admin', 'member']
+      `SELECT * FROM users 
+       WHERE (phone_zalo = $1 OR LOWER(email) = LOWER($1))
+         AND role IN ('admin', 'member', 'guest')`,
+      [cleanIdentifier]
     );
 
     if (userResult.rows.length === 0) {
-      return res.status(401).json({ error: 'Số điện thoại hoặc mật khẩu không chính xác.' });
+      return res.status(401).json({ error: 'Tài khoản hoặc mật khẩu không chính xác.' });
     }
 
     const user = userResult.rows[0];
 
     // Check if user is blocked
     if (user.is_blocked) {
+      if (user.role === 'guest') {
+        return res.status(403).json({ error: 'Tài khoản vãng lai của bạn đã bị khóa vĩnh viễn do vi phạm quy chế giữ chỗ của CLB (bị phạt Thẻ đỏ do 2 lần giữ chỗ không tham gia).' });
+      }
       return res.status(403).json({ error: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Ban chủ nhiệm.' });
     }
 
     // Check if account has password set (activated)
     if (!user.password_hash) {
-      return res.status(403).json({ error: 'Tài khoản thành viên chưa được kích hoạt. Vui lòng kích hoạt tài khoản của bạn trước.' });
+      return res.status(403).json({ 
+        error: 'Tài khoản thành viên chưa được kích hoạt mật khẩu. Vui lòng kích hoạt tài khoản của bạn trước.',
+        is_unactivated: true
+      });
     }
 
     // Validate password
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
-      return res.status(401).json({ error: 'Số điện thoại hoặc mật khẩu không chính xác.' });
+      return res.status(401).json({ error: 'Tài khoản hoặc mật khẩu không chính xác.' });
     }
 
-    // Generate JWT
+    // Generate JWT (7d for admin, 30d for member/guest)
+    const expiresIn = user.role === 'admin' ? '7d' : '30d';
+    const isCompleted = Boolean(user.is_profile_completed);
     const token = jwt.sign(
-      { id: user.id, role: user.role, name: user.full_name },
+      { 
+        id: user.id, 
+        role: user.role, 
+        name: user.full_name,
+        is_profile_completed: isCompleted
+      },
       process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn }
     );
 
-    res.json({ token, user: { id: user.id, name: user.full_name, role: user.role } });
+    const inactivityWarning = user.role === 'member' ? await getUnacknowledgedInactivityWarning(user.id) : null;
+
+    res.json({ 
+      token, 
+      user: { 
+        id: user.id, 
+        name: user.full_name, 
+        role: user.role,
+        email: user.email,
+        phone_zalo: user.phone_zalo,
+        avatar_url: user.avatar_url,
+        is_profile_completed: isCompleted
+      },
+      inactivity_warning: inactivityWarning
+    });
   } catch (error) {
     console.error('Error logging in:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/auth/register-guest - Đăng ký tài khoản vãng lai bằng Số điện thoại & Mật khẩu
+router.post('/register-guest', onboardingRateLimiter, async (req, res) => {
+  try {
+    const { full_name, phone_zalo, password, confirm_password } = req.body;
+
+    if (!full_name || !phone_zalo || !password || !confirm_password) {
+      return res.status(400).json({ error: 'Vui lòng điền đầy đủ Họ và tên, Số điện thoại, Mật khẩu và Xác nhận mật khẩu.' });
+    }
+
+    const cleanName = String(full_name).trim();
+    if (cleanName.length < 2 || cleanName.length > 50) {
+      return res.status(400).json({ error: 'Họ và Tên đầy đủ phải từ 2 đến 50 ký tự.' });
+    }
+
+    let cleanPhone = String(phone_zalo).replace(/[\s\.\-\(\)]/g, '');
+    if (cleanPhone.startsWith('+84')) {
+      cleanPhone = '0' + cleanPhone.slice(3);
+    } else if (cleanPhone.startsWith('84') && cleanPhone.length === 11) {
+      cleanPhone = '0' + cleanPhone.slice(2);
+    }
+
+    const phoneRegex = /^(03|05|07|08|09)[0-9]{8}$/;
+    if (!phoneRegex.test(cleanPhone)) {
+      return res.status(400).json({ error: 'Số điện thoại không hợp lệ (phải gồm 10 chữ số chuẩn Việt Nam, đầu số 03, 05, 07, 08, 09).' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Mật khẩu phải có độ dài tối thiểu là 6 ký tự.' });
+    }
+
+    if (password !== confirm_password) {
+      return res.status(400).json({ error: 'Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại.' });
+    }
+
+    // Kiểm tra xem số điện thoại có trong danh sách cấm vĩnh viễn không
+    const blacklistCheck = await checkBlacklist({ phone: cleanPhone });
+    if (blacklistCheck.isBanned) {
+      return res.status(403).json({ 
+        error: 'Số điện thoại này đã bị cấm vĩnh viễn do vi phạm quy định giữ chỗ của CLB (bị phạt Thẻ đỏ do 2 lần giữ chỗ không tham gia).',
+        code: 'GUEST_BANNED'
+      });
+    }
+
+    // Kiểm tra xem số điện thoại đã tồn tại trong DB chưa
+    const existingUser = await db.query(
+      'SELECT id FROM users WHERE phone_zalo = $1',
+      [cleanPhone]
+    );
+
+    if (existingUser.rows.length > 0) {
+      return res.status(409).json({ error: 'Số điện thoại này đã được đăng ký trên hệ thống. Vui lòng đăng nhập hoặc sử dụng số khác.' });
+    }
+
+    // Hash password
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    // Insert guest account với full_name, phone_zalo
+    const insertResult = await db.query(
+      `INSERT INTO users (
+        full_name, phone_zalo, password_hash, role,
+        elo_singles, elo_doubles, rating_points,
+        matches_singles, matches_doubles, matches_played,
+        is_profile_completed, status
+      ) VALUES (
+        $1, $2, $3, 'guest',
+        950, 950, 950,
+        0, 0, 0,
+        false, 'active'
+      ) RETURNING id, full_name, phone_zalo, email, role, is_profile_completed`,
+      [cleanName, cleanPhone, passwordHash]
+    );
+
+    const newUser = insertResult.rows[0];
+
+    // Issue JWT
+    const token = jwt.sign(
+      { 
+        id: newUser.id, 
+        role: newUser.role, 
+        name: newUser.full_name,
+        is_profile_completed: false
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    res.status(201).json({
+      message: 'Đăng ký tài khoản thành công.',
+      token,
+      user: {
+        id: newUser.id,
+        name: newUser.full_name,
+        phone_zalo: newUser.phone_zalo,
+        email: null,
+        role: newUser.role,
+        is_profile_completed: false
+      }
+    });
+  } catch (error) {
+    console.error('Error in register-guest:', error);
+    res.status(500).json({ error: 'Lỗi đăng ký tài khoản.' });
+  }
+});
+
+// POST /api/auth/google - Đăng nhập / Đăng ký chuẩn mật với Google OAuth 2.0 (Xác thực chữ ký số Google ID Token)
+router.post('/google', async (req, res) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential || typeof credential !== 'string') {
+      return res.status(400).json({ error: 'Mã xác thực Google (credential) là bắt buộc.' });
+    }
+
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (verifyErr) {
+      console.error('Google ID Token verification failed:', verifyErr.message);
+      return res.status(401).json({ error: 'Mã xác thực Google không hợp lệ hoặc đã hết hạn (Invalid Google Token).' });
+    }
+
+    if (!payload || !payload.email) {
+      return res.status(401).json({ error: 'Không thể trích xuất địa chỉ email từ Google Token.' });
+    }
+
+    if (!payload.email_verified) {
+      return res.status(401).json({ error: 'Địa chỉ email tài khoản Google chưa được xác thực.' });
+    }
+
+    const googleEmail = payload.email.toLowerCase().trim();
+    const googleName = payload.name || payload.given_name || 'Người chơi';
+    const googlePicture = payload.picture || null;
+
+    // Kiểm tra xem email có nằm trong danh sách cấm vĩnh viễn không
+    const blacklistCheck = await checkBlacklist({ email: googleEmail });
+    if (blacklistCheck.isBanned) {
+      return res.status(403).json({ 
+        error: 'Tài khoản Google này đã bị cấm vĩnh viễn do vi phạm quy định giữ chỗ của CLB (bị phạt Thẻ đỏ do 2 lần giữ chỗ không tham gia).',
+        code: 'GUEST_BANNED'
+      });
+    }
+
+    // Kiểm tra xem email đã tồn tại trong DB chưa
+    const userRes = await db.query(
+      'SELECT id, full_name, email, role, phone_zalo, avatar_url, is_blocked, is_profile_completed FROM users WHERE LOWER(email) = $1',
+      [googleEmail]
+    );
+
+    let user;
+    if (userRes.rows.length > 0) {
+      user = userRes.rows[0];
+
+      if (user.is_blocked) {
+        return res.status(403).json({ error: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Ban chủ nhiệm.' });
+      }
+
+      // Cập nhật avatar từ Google nếu user chưa có avatar
+      if (!user.avatar_url && googlePicture) {
+        await db.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [googlePicture, user.id]);
+        user.avatar_url = googlePicture;
+      }
+    } else {
+      // Người dùng mới -> Khởi tạo tài khoản Guest
+      const insertRes = await db.query(
+        `INSERT INTO users (
+          full_name, email, avatar_url, role,
+          elo_singles, elo_doubles, rating_points,
+          matches_singles, matches_doubles, matches_played,
+          is_profile_completed, status
+        ) VALUES (
+          $1, $2, $3, 'guest',
+          950, 950, 950,
+          0, 0, 0,
+          false, 'active'
+        ) RETURNING id, full_name, email, avatar_url, role, is_profile_completed`,
+        [googleName, googleEmail, googlePicture]
+      );
+      user = insertRes.rows[0];
+    }
+
+    const isCompleted = Boolean(user.is_profile_completed);
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        role: user.role, 
+        name: user.full_name,
+        is_profile_completed: isCompleted
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: user.role === 'admin' ? '7d' : '30d' }
+    );
+
+    const inactivityWarning = user.role === 'member' ? await getUnacknowledgedInactivityWarning(user.id) : null;
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.full_name,
+        email: user.email,
+        role: user.role,
+        phone_zalo: user.phone_zalo || null,
+        avatar_url: user.avatar_url,
+        is_profile_completed: isCompleted
+      },
+      inactivity_warning: inactivityWarning
+    });
+  } catch (error) {
+    console.error('Error in google auth:', error);
+    res.status(500).json({ error: 'Lỗi xác thực hệ thống với Google.' });
+  }
+});
+
+// POST /api/auth/onboarding - Hoàn tất hồ sơ Onboarding
+router.post('/onboarding', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // 1. Validate dữ liệu qua Zod schema & chống honeypot bot
+    const validation = validateOnboarding(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: validation.error, code: validation.code });
+    }
+
+    const { full_name, phone_zalo, nickname, email, gender, avatar_url } = validation.data;
+
+    // Lấy thông tin user hiện tại trong database
+    const userCheck = await db.query(
+      'SELECT id, full_name, phone_zalo, email, avatar_url, role, is_profile_completed FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy thông tin tài khoản.' });
+    }
+
+    const currentUser = userCheck.rows[0];
+
+    const finalFullName = (full_name && full_name.trim()) ? full_name.trim() : currentUser.full_name;
+    const finalPhone = (phone_zalo && phone_zalo.trim()) ? phone_zalo.trim() : currentUser.phone_zalo;
+    const finalNickname = (nickname && nickname.trim()) ? nickname.trim() : null;
+    const finalEmail = (email && email.trim()) ? email.trim().toLowerCase() : (currentUser.email || null);
+    const finalAvatar = avatar_url || currentUser.avatar_url || null;
+
+    if (!finalFullName) {
+      return res.status(400).json({ error: 'Họ và Tên đầy đủ là bắt buộc.' });
+    }
+
+    if (!finalPhone) {
+      return res.status(400).json({ error: 'Số điện thoại Zalo là bắt buộc để hoàn tất hồ sơ.' });
+    }
+
+    // 1.1. Kiểm tra blacklist cho số điện thoại và email
+    const blacklistCheck = await checkBlacklist({ phone: finalPhone, email: finalEmail });
+    if (blacklistCheck.isBanned) {
+      return res.status(403).json({
+        error: 'Số điện thoại hoặc Email này đã bị cấm vĩnh viễn do vi phạm quy định giữ chỗ của CLB.',
+        code: 'GUEST_BANNED'
+      });
+    }
+
+    // 2. Kiểm tra xem phone_zalo đã có người khác sử dụng chưa
+    const duplicatePhone = await db.query(
+      'SELECT id, full_name, email, role, avatar_url, gender, password_hash FROM users WHERE phone_zalo = $1 AND id != $2',
+      [finalPhone, userId]
+    );
+
+    if (duplicatePhone.rows.length > 0) {
+      const existingAccount = duplicatePhone.rows[0];
+      const currentGoogleEmail = currentUser.email ? currentUser.email.toLowerCase().trim() : (finalEmail || null);
+      const hasPassword = Boolean(existingAccount.password_hash);
+      const isExistingSameEmail = existingAccount.email && currentGoogleEmail && existingAccount.email.toLowerCase().trim() === currentGoogleEmail;
+
+      // Kịch bản TỰ ĐỘNG LIÊN KẾT (Auto-link):
+      // - Email Google trùng khớp 100% với email đã đăng ký của tài khoản cũ (Google OAuth đã xác thực chính chủ email)
+      // - HOẶC tài khoản cũ chưa từng đặt mật khẩu (ứng viên tuyển quân, dữ liệu import từ Excel/Sheets chỉ có số điện thoại)
+      const canAutoLinkWithoutPassword = Boolean(isExistingSameEmail || (!hasPassword && currentGoogleEmail));
+
+      // 2. Hoặc tài khoản cũ có mật khẩu, và người dùng đã nhập link_password chính xác
+      const { link_password } = req.body;
+      let passwordVerified = false;
+      if (!canAutoLinkWithoutPassword && link_password && existingAccount.password_hash) {
+        passwordVerified = await bcrypt.compare(String(link_password), existingAccount.password_hash);
+        if (!passwordVerified) {
+          return res.status(400).json({
+            error: 'Mật khẩu tài khoản liên kết không chính xác. Vui lòng kiểm tra lại.',
+            code: 'INVALID_LINK_PASSWORD',
+            phone: finalPhone
+          });
+        }
+      }
+
+      if (canAutoLinkWithoutPassword || passwordVerified) {
+        let client;
+        try {
+          client = await db.connect();
+          await client.query('BEGIN');
+
+          // 1. Giải phóng email khỏi tài khoản tạm thời để không bị xung đột ràng buộc UNIQUE users_email_key
+          await client.query('DELETE FROM users WHERE id = $1', [userId]);
+
+          // 2. Cập nhật hồ sơ tài khoản thành viên cũ với email Google và thông tin mới
+          const updateRes = await client.query(
+            `UPDATE users 
+             SET email = $1,
+                 full_name = COALESCE(NULLIF($2, ''), full_name),
+                 nickname = COALESCE($3, nickname),
+                 gender = COALESCE($4, gender),
+                 avatar_url = COALESCE($5, avatar_url),
+                 is_profile_completed = true
+             WHERE id = $6
+             RETURNING id, full_name, nickname, phone_zalo, email, role, avatar_url, gender, is_profile_completed`,
+            [currentGoogleEmail, finalFullName, finalNickname, gender, finalAvatar, existingAccount.id]
+          );
+
+          await client.query('COMMIT');
+
+          const mergedUser = updateRes.rows[0];
+          const freshToken = jwt.sign(
+            {
+              id: mergedUser.id,
+              role: mergedUser.role,
+              name: mergedUser.full_name,
+              is_profile_completed: true
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: mergedUser.role === 'admin' ? '7d' : '30d' }
+          );
+
+          return res.json({
+            success: true,
+            message: 'Đã tự động liên kết thành công tài khoản Google với hồ sơ của bạn!',
+            token: freshToken,
+            user: {
+              id: mergedUser.id,
+              name: mergedUser.full_name,
+              nickname: mergedUser.nickname,
+              phone_zalo: mergedUser.phone_zalo,
+              email: mergedUser.email,
+              role: mergedUser.role,
+              avatar_url: mergedUser.avatar_url,
+              gender: mergedUser.gender,
+              is_profile_completed: true
+            }
+          });
+        } catch (mergeErr) {
+          if (client) await client.query('ROLLBACK');
+          console.error('Error during auto-link account in onboarding:', mergeErr);
+          throw mergeErr;
+        } finally {
+          if (client) client.release();
+        }
+      }
+
+      return res.status(400).json({
+        error: 'Số điện thoại Zalo này đã có tài khoản trên hệ thống. Vui lòng nhập mật khẩu tài khoản để liên kết với Google, hoặc đổi sang số khác.',
+        code: 'PHONE_REQUIRES_PASSWORD',
+        phone: finalPhone
+      });
+    }
+
+    // 3. Kiểm tra xem email đã có người khác sử dụng chưa (nếu có email)
+    if (finalEmail) {
+      const duplicateEmail = await db.query(
+        'SELECT id FROM users WHERE LOWER(email) = $1 AND id != $2',
+        [finalEmail, userId]
+      );
+
+      if (duplicateEmail.rows.length > 0) {
+        return res.status(400).json({
+          error: 'Địa chỉ email này đã được sử dụng bởi một tài khoản khác. Vui lòng sử dụng email khác.',
+          code: 'EMAIL_ALREADY_EXISTS'
+        });
+      }
+    }
+
+    // 4. Cập nhật thông tin Onboarding vào DB
+    const updateRes = await db.query(
+      `UPDATE users 
+       SET full_name = $1, 
+           phone_zalo = $2, 
+           nickname = $3,
+           email = $4,
+           gender = $5, 
+           avatar_url = COALESCE($6, avatar_url),
+           is_profile_completed = true
+       WHERE id = $7
+       RETURNING id, full_name, nickname, phone_zalo, email, role, avatar_url, gender, is_profile_completed`,
+      [finalFullName, finalPhone, finalNickname, finalEmail, gender, finalAvatar, userId]
+    );
+
+    if (updateRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
+    }
+
+    const updatedUser = updateRes.rows[0];
+
+    // 5. Cấp lại token JWT mới mang cờ is_profile_completed: true
+    const freshToken = jwt.sign(
+      {
+        id: updatedUser.id,
+        role: updatedUser.role,
+        name: updatedUser.full_name,
+        is_profile_completed: true
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: updatedUser.role === 'admin' ? '7d' : '30d' }
+    );
+
+    res.json({
+      success: true,
+      message: 'Hoàn tất thiết lập thông tin cá nhân thành công!',
+      token: freshToken,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.full_name,
+        nickname: updatedUser.nickname,
+        phone_zalo: updatedUser.phone_zalo,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        avatar_url: updatedUser.avatar_url,
+        gender: updatedUser.gender,
+        is_profile_completed: true
+      }
+    });
+  } catch (error) {
+    console.error('Error in onboarding:', error);
+    res.status(500).json({ error: 'Lỗi cập nhật hồ sơ onboarding.' });
   }
 });
 
@@ -139,4 +619,227 @@ router.post('/claim-account/activate', async (req, res) => {
   }
 });
 
+// Helper che email
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '';
+  const [local, domain] = email.split('@');
+  if (local.length <= 2) {
+    return `${local[0]}***@${domain}`;
+  }
+  return `${local[0]}***${local[local.length - 1]}@${domain}`;
+}
+
+// POST /api/auth/forgot-password - Gửi mã OTP hoặc link đặt lại mật khẩu
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { identifier } = req.body;
+
+    if (!identifier || !String(identifier).trim()) {
+      return res.status(400).json({ error: 'Vui lòng nhập số điện thoại Zalo hoặc email của bạn.' });
+    }
+
+    const cleanId = String(identifier).trim();
+
+    // Tìm kiếm user theo phone_zalo hoặc email
+    const userResult = await db.query(
+      `SELECT id, full_name, phone_zalo, email, role, is_blocked, password_hash
+       FROM users
+       WHERE (phone_zalo = $1 OR LOWER(email) = LOWER($1))
+         AND role IN ('member', 'admin')`,
+      [cleanId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy tài khoản nào khớp với thông tin đã nhập.' });
+    }
+
+    const user = userResult.rows[0];
+
+    if (user.is_blocked) {
+      return res.status(403).json({ error: 'Tài khoản của bạn đang bị khóa. Vui lòng liên hệ Ban Chủ Nhiệm CLB.' });
+    }
+
+    if (!user.password_hash) {
+      return res.status(400).json({
+        error: 'Tài khoản của bạn chưa được kích hoạt mật khẩu lần đầu. Vui lòng vào trang "Kích hoạt tài khoản" để thiết lập mật khẩu.',
+        is_unactivated: true
+      });
+    }
+
+    if (!user.email) {
+      return res.status(400).json({
+        error: 'Tài khoản chưa cập nhật email trên hệ thống nên không thể nhận mã xác thực tự động. Vui lòng liên hệ Admin/Ban Chủ Nhiệm CLB để được cấp lại mật khẩu.'
+      });
+    }
+
+    // Tạo token và OTP
+    const crypto = require('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 phút
+
+    // Vô hiệu hóa các mã reset cũ chưa dùng của user này
+    await db.query(
+      'UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL',
+      [user.id]
+    );
+
+    // Lưu mã mới vào DB
+    await db.query(
+      `INSERT INTO password_reset_tokens (user_id, token, otp_code, expires_at)
+       VALUES ($1, $2, $3, $4)`,
+      [user.id, resetToken, otpCode, expiresAt]
+    );
+
+    // Gửi email
+    const { sendPasswordResetEmail } = require('../utils/emailService');
+    const frontendUrl = process.env.FRONTEND_URL || 'https://smashteam.id.vn';
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+    const emailSent = await sendPasswordResetEmail(user.email, user.full_name, otpCode, resetUrl);
+    if (!emailSent) {
+      return res.status(500).json({
+        error: 'Không thể gửi email lúc này. Vui lòng kiểm tra lại địa chỉ email hoặc liên hệ Admin CLB.'
+      });
+    }
+
+    const masked = maskEmail(user.email);
+    res.json({
+      success: true,
+      message: `Mã OTP 6 số đã được gửi tới email ${masked}. Vui lòng kiểm tra hộp thư (cả mục Spam nếu cần).`,
+      masked_email: masked,
+      identifier: user.phone_zalo
+    });
+  } catch (error) {
+    console.error('Error in forgot-password:', error);
+    res.status(500).json({ error: 'Lỗi máy chủ khi xử lý yêu cầu quên mật khẩu.' });
+  }
+});
+
+// GET /api/auth/reset-password/verify - Kiểm tra tính hợp lệ của token link
+router.get('/reset-password/verify', async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({ valid: false, error: 'Thiếu mã token xác thực.' });
+    }
+
+    const recordRes = await db.query(
+      `SELECT prt.id, prt.expires_at, u.full_name, u.email, u.phone_zalo
+       FROM password_reset_tokens prt
+       JOIN users u ON prt.user_id = u.id
+       WHERE prt.token = $1 AND prt.used_at IS NULL AND prt.expires_at > CURRENT_TIMESTAMP`,
+      [token]
+    );
+
+    if (recordRes.rows.length === 0) {
+      return res.status(400).json({
+        valid: false,
+        error: 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn (sau 15 phút).'
+      });
+    }
+
+    const rec = recordRes.rows[0];
+    res.json({
+      valid: true,
+      full_name: rec.full_name,
+      masked_email: maskEmail(rec.email),
+      phone_zalo: rec.phone_zalo
+    });
+  } catch (error) {
+    console.error('Error in reset-password/verify:', error);
+    res.status(500).json({ valid: false, error: 'Lỗi xác minh token.' });
+  }
+});
+
+// POST /api/auth/reset-password - Đặt lại mật khẩu mới
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, otp_code, identifier, new_password } = req.body;
+
+    if (!new_password || new_password.length < 6) {
+      return res.status(400).json({ error: 'Mật khẩu mới phải có tối thiểu 6 ký tự.' });
+    }
+
+    let tokenRecord = null;
+
+    if (token) {
+      // Cách 1: Xác thực qua Token trong Link email
+      const recordRes = await db.query(
+        `SELECT prt.*, u.id as user_id, u.full_name, u.phone_zalo
+         FROM password_reset_tokens prt
+         JOIN users u ON prt.user_id = u.id
+         WHERE prt.token = $1 AND prt.used_at IS NULL AND prt.expires_at > CURRENT_TIMESTAMP`,
+        [token]
+      );
+      if (recordRes.rows.length > 0) {
+        tokenRecord = recordRes.rows[0];
+      }
+    } else if (otp_code && identifier) {
+      // Cách 2: Xác thực qua Mã OTP 6 số + SĐT/Email
+      const cleanId = String(identifier).trim();
+      const cleanOtp = String(otp_code).trim();
+
+      const userRes = await db.query(
+        `SELECT id, full_name, phone_zalo
+         FROM users
+         WHERE (phone_zalo = $1 OR LOWER(email) = LOWER($1))
+           AND role IN ('member', 'admin')`,
+        [cleanId]
+      );
+
+      if (userRes.rows.length > 0) {
+        const userId = userRes.rows[0].id;
+        const recordRes = await db.query(
+          `SELECT prt.*, u.id as user_id, u.full_name, u.phone_zalo
+           FROM password_reset_tokens prt
+           JOIN users u ON prt.user_id = u.id
+           WHERE prt.user_id = $1 AND prt.otp_code = $2 AND prt.used_at IS NULL AND prt.expires_at > CURRENT_TIMESTAMP
+           ORDER BY prt.created_at DESC LIMIT 1`,
+          [userId, cleanOtp]
+        );
+        if (recordRes.rows.length > 0) {
+          tokenRecord = recordRes.rows[0];
+        }
+      }
+    } else {
+      return res.status(400).json({ error: 'Vui lòng cung cấp mã OTP hoặc đường link xác thực hợp lệ.' });
+    }
+
+    if (!tokenRecord) {
+      return res.status(400).json({
+        error: 'Mã xác nhận OTP hoặc liên kết đặt lại mật khẩu không chính xác hoặc đã hết hạn.'
+      });
+    }
+
+    // Hash mật khẩu mới
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(new_password, saltRounds);
+
+    // Cập nhật mật khẩu và đánh dấu token đã dùng
+    await db.query('BEGIN');
+    await db.query(
+      'UPDATE users SET password_hash = $1 WHERE id = $2',
+      [passwordHash, tokenRecord.user_id]
+    );
+    await db.query(
+      'UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1',
+      [tokenRecord.id]
+    );
+    await db.query('COMMIT');
+
+    res.json({
+      success: true,
+      message: 'Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay bằng mật khẩu mới.',
+      phone_zalo: tokenRecord.phone_zalo
+    });
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => {});
+    console.error('Error in reset-password:', error);
+    res.status(500).json({ error: 'Lỗi máy chủ khi đặt lại mật khẩu.' });
+  }
+});
+
 module.exports = router;
+

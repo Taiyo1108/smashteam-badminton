@@ -16,6 +16,9 @@ export interface Player {
   win_rate_doubles: number;
   streak_singles: number;
   streak_doubles: number;
+  grind_matches_count?: number;
+  grind_loss_count?: number;
+  has_active_hope_star?: boolean;
   checked_in_at?: string | null;
 }
 
@@ -24,6 +27,7 @@ export interface EloPreviewData {
   team2Elo: number;
   winProb1: number;
   winProb2: number;
+  baseDelta: number;
   p1Diff: number;
   p1pDiff: number;
   p2Diff: number;
@@ -33,6 +37,19 @@ export interface EloPreviewData {
   p2New: number;
   p2pNew: number;
   eloExchanged: number;
+  isWinBoost1?: boolean;
+  isLossShield1?: boolean;
+  isWinBoost2?: boolean;
+  isLossShield2?: boolean;
+  hasHopeStar1?: boolean;
+  itemBonus1?: number;
+  hasHopeStar2?: boolean;
+  itemBonus2?: number;
+  hasHopeStar1p?: boolean;
+  itemBonus1p?: number;
+  hasHopeStar2p?: boolean;
+  itemBonus2p?: number;
+  team1Won?: boolean;
 }
 
 export interface CourtSlot {

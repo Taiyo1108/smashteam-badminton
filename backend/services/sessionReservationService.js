@@ -129,6 +129,15 @@ async function reserveSession(sessionId, userId) {
       throw new Error('Buổi tập này đã bị đóng.');
     }
 
+    // Kiểm tra xem tài khoản có bị khóa hoặc phạt thẻ đỏ không
+    const userRoleRes = await client.query(
+      `SELECT id, role, is_blocked, status FROM users WHERE id = $1::uuid;`,
+      [userId]
+    );
+    if (userRoleRes.rows.length > 0 && userRoleRes.rows[0].is_blocked) {
+      throw new Error('Tài khoản của bạn đã bị khóa vĩnh viễn do vi phạm quy chế giữ chỗ của CLB (bị phạt Thẻ đỏ). Không thể tiếp tục đăng ký giữ chỗ.');
+    }
+
     const now = new Date();
     const resOpen = session.reservation_open_at ? new Date(session.reservation_open_at) : new Date(session.date_time.getTime() - 3 * 86400000);
     const resDeadline = session.reservation_deadline ? new Date(session.reservation_deadline) : new Date(session.date_time.getTime() - 2 * 3600000);
@@ -169,6 +178,39 @@ async function reserveSession(sessionId, userId) {
       const err = new Error('Buổi tập đã đủ số lượng chỗ (Hết slot). Vui lòng tham gia danh sách chờ (Waitlist).');
       err.code = 'SESSION_FULL';
       throw err;
+    }
+
+    // 3.1. KIỂM TRA ĐẶC QUYỀN HÀNG CHỜ (WAITLIST PRIORITY ENFORCEMENT)
+    // Kiểm tra xem user hiện tại có đang được OFFERED hợp lệ không
+    const userOfferRes = await client.query(
+      `SELECT * FROM session_waitlist
+       WHERE session_id = $1::uuid AND user_id = $2::uuid AND status = 'OFFERED' AND offer_expires_at > CURRENT_TIMESTAMP;`,
+      [sessionId, userId]
+    );
+    const isUserOffered = userOfferRes.rows.length > 0;
+
+    if (!isUserOffered) {
+      // User KHÔNG phải người được cấp offer.
+      // Kiểm tra xem số slot trống hiện tại có đang bị giữ cho danh sách chờ không:
+      const wlStatsRes = await client.query(
+        `SELECT 
+           COUNT(*) FILTER (WHERE status = 'OFFERED' AND (offer_expires_at IS NULL OR offer_expires_at > CURRENT_TIMESTAMP)) as active_offers,
+           COUNT(*) FILTER (WHERE status = 'WAITING') as waiting_count
+         FROM session_waitlist
+         WHERE session_id = $1::uuid;`,
+        [sessionId]
+      );
+      const activeOffers = parseInt(wlStatsRes.rows[0].active_offers || 0, 10);
+      const waitingCount = parseInt(wlStatsRes.rows[0].waiting_count || 0, 10);
+      const rawAvailable = capacity - activeCount;
+
+      // Nếu số slot còn lại nhỏ hơn hoặc bằng số người đang chờ / được offer,
+      // người ngoài không được phép đăng ký trực tiếp cướp chỗ!
+      if (rawAvailable <= (activeOffers + waitingCount)) {
+        const err = new Error('Suất trống hiện đang được bảo lưu ưu tiên cho thành viên trong Danh sách chờ (Waitlist). Vui lòng tham gia Hàng chờ!');
+        err.code = 'SESSION_FULL';
+        throw err;
+      }
     }
 
     // 4. Ghi nhận reservation với status = 'RESERVED'
@@ -262,7 +304,7 @@ async function joinWaitlist(sessionId, userId) {
     );
     const nextPosition = parseInt(maxPosRes.rows[0].max_pos, 10) + 1;
 
-    // 5. Thêm hoặc cập nhật vào session_waitlist
+    // 5. Thêm hoặc cập nhật vào session_waitlist (Reset created_at để người vào lại xếp sau theo chuẩn FIFO)
     const insertRes = await client.query(
       `INSERT INTO session_waitlist (
         session_id, user_id, position, status, created_at, updated_at
@@ -270,22 +312,39 @@ async function joinWaitlist(sessionId, userId) {
       VALUES ($1::uuid, $2::uuid, $3, 'WAITING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT (session_id, user_id)
       DO UPDATE SET
-        position = EXCLUDED.position,
         status = 'WAITING',
         offered_at = NULL,
         offer_expires_at = NULL,
         confirmed_at = NULL,
+        created_at = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *;`,
       [sessionId, userId, nextPosition]
     );
 
+    // Chuẩn hóa lại số thứ tự position liên tục theo đúng thứ tự thời gian vào hàng chờ (created_at ASC)
+    const renumberRes = await client.query(
+      `WITH numbered AS (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) as new_pos
+         FROM session_waitlist
+         WHERE session_id = $1::uuid AND status = 'WAITING'
+       )
+       UPDATE session_waitlist w
+       SET position = numbered.new_pos, updated_at = CURRENT_TIMESTAMP
+       FROM numbered
+       WHERE w.id = numbered.id
+       RETURNING w.*;`,
+      [sessionId]
+    );
+
+    const userWl = renumberRes.rows.find(r => r.user_id === userId) || insertRes.rows[0];
+
     await client.query('COMMIT');
 
     return {
       success: true,
-      message: `Bạn đã tham gia danh sách chờ (Vị trí #${nextPosition}). Khi có slot trống, hệ thống sẽ tự động thông báo cho bạn!`,
-      waitlist: insertRes.rows[0]
+      message: `Bạn đã tham gia danh sách chờ (Vị trí #${userWl.position}). Khi có slot trống, hệ thống sẽ tự động thông báo cho bạn!`,
+      waitlist: userWl
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -354,15 +413,19 @@ async function cancelReservation(sessionId, userId, reason = 'Thành viên tự 
       [reason, sessionId, userId]
     );
 
-    // 5. Tự động tìm kiếm và offer slot cho người đầu tiên trong Waitlist (nếu có)
-    const offerResult = await triggerWaitlistOfferInternal(client, session);
+    // 5. Tự động tìm kiếm và cấp quyền offer slot cho người tiếp theo trong Waitlist (nếu có)
+    const offeredList = await triggerWaitlistOffers(sessionId, client);
 
     await client.query('COMMIT');
+
+    // 6. Gửi email thông báo SAU KHI transaction đã được COMMIT an toàn
+    const tStart = session.session_start ? new Date(session.session_start) : new Date(session.date_time);
+    dispatchWaitlistOfferEmails(offeredList, session, tStart);
 
     return {
       success: true,
       message: 'Đã hủy giữ chỗ thành công. Slot của bạn đã được giải phóng.',
-      offeredToWaitlist: offerResult
+      offeredToWaitlist: offeredList && offeredList.length > 0 ? offeredList[0] : null
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -418,65 +481,216 @@ async function requestLateCancel(sessionId, userId, reason) {
 }
 
 /**
- * Tự động offer slot cho người đứng đầu Waitlist (hàm nội bộ chạy trong transaction)
+ * Dispatch email thông báo cấp slot cho thành viên Waitlist (chạy bất đồng bộ, sau khi transaction đã COMMIT an toàn)
+ */
+function dispatchWaitlistOfferEmails(offeredList, session, tStart) {
+  if (!offeredList || offeredList.length === 0) return;
+  setImmediate(() => {
+    const { sendWaitlistSlotOfferEmail } = require('../utils/emailService');
+    for (const offeredUser of offeredList) {
+      if (offeredUser.email) {
+        console.log(`[Waitlist Offer] Gửi email cấp slot cho ${offeredUser.email} (${offeredUser.fullName}) buổi "${session.title}"...`);
+        sendWaitlistSlotOfferEmail({
+          toEmail: offeredUser.email,
+          userName: offeredUser.fullName,
+          sessionTitle: session.title,
+          sessionDate: tStart,
+          sessionLocation: session.location,
+          offerExpiresAt: offeredUser.offerExpiresAt,
+          offerMinutes: offeredUser.offerMinutes,
+          sessionId: session.id
+        }).catch(err => {
+          console.error(`[Waitlist Offer] Lỗi khi gửi email tới ${offeredUser.email}:`, err);
+        });
+      } else {
+        console.warn(`[Waitlist Offer] Bỏ qua gửi email cho ${offeredUser.fullName} (ID: ${offeredUser.userId}) do tài khoản chưa cập nhật email.`);
+      }
+    }
+  });
+}
+
+/**
+ * Tự động tìm và cấp offer cho các thành viên trong Waitlist FIFO khi có slot trống
+ * Hỗ trợ cấp đồng thời nhiều slot nếu có nhiều suất bị hủy cùng lúc.
+ * 
+ * @param {string} sessionId 
+ * @param {object|null} existingClient - Transaction client nếu đang nằm trong transaction cha
+ * @returns {Promise<Array>} Danh sách các user được cấp offer
+ */
+async function triggerWaitlistOffers(sessionId, existingClient = null) {
+  const client = existingClient || (await db.connect());
+  const shouldManageTransaction = !existingClient;
+
+  try {
+    if (shouldManageTransaction) {
+      await client.query('BEGIN');
+    }
+
+    // 1. Khóa và lấy thông tin session
+    const sessionRes = await client.query(
+      `SELECT id, title, capacity, session_start, session_end, date_time, location, waitlist_offer_duration_minutes, is_closed
+       FROM sessions
+       WHERE id = $1::uuid
+       FOR UPDATE;`,
+      [sessionId]
+    );
+
+    if (sessionRes.rows.length === 0) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    const session = sessionRes.rows[0];
+    if (session.is_closed) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    const now = new Date();
+    const tStart = session.session_start ? new Date(session.session_start) : new Date(session.date_time);
+    const sessionEnd = session.session_end ? new Date(session.session_end) : new Date(tStart.getTime() + 2 * 3600000);
+
+    // Nếu buổi tập đã kết thúc hoặc chỉ còn dưới 10 phút, không cần offer nữa
+    if (now.getTime() + 10 * 60000 >= sessionEnd.getTime()) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    // 1.1. Tự động chuyển các OFFER đã quá hạn sang EXPIRED ngay lập tức
+    await client.query(
+      `UPDATE session_waitlist
+       SET status = 'EXPIRED', updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND status = 'OFFERED' AND offer_expires_at <= CURRENT_TIMESTAMP;`,
+      [sessionId]
+    );
+
+    // 1.2. Tự động chuyển thành CLAIMED nếu bất kỳ thành viên nào trong Waitlist đã có mặt chính thức trong danh sách buổi tập
+    await client.query(
+      `UPDATE session_waitlist w
+       SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       FROM attendances a
+       WHERE w.session_id = $1::uuid
+         AND w.user_id = a.user_id
+         AND a.session_id = $1::uuid
+         AND a.status = ANY($2::varchar[])
+         AND w.status IN ('WAITING', 'OFFERED');`,
+      [sessionId, SLOT_OCCUPYING_STATUSES]
+    );
+
+    // 1.3. Cập nhật lại số thứ tự position liên tục cho các bạn đang WAITING (FIFO chuẩn tuyệt đối theo created_at)
+    await client.query(
+      `WITH numbered AS (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) as new_pos
+         FROM session_waitlist
+         WHERE session_id = $1::uuid AND status = 'WAITING'
+       )
+       UPDATE session_waitlist w
+       SET position = numbered.new_pos, updated_at = CURRENT_TIMESTAMP
+       FROM numbered
+       WHERE w.id = numbered.id;`,
+      [sessionId]
+    );
+
+    // 2. Đếm số slot đang chiếm giữ
+    const countRes = await client.query(
+      `SELECT count(*) as active_count
+       FROM attendances
+       WHERE session_id = $1::uuid AND status = ANY($2::varchar[]);`,
+      [sessionId, SLOT_OCCUPYING_STATUSES]
+    );
+    const activeCount = parseInt(countRes.rows[0].active_count, 10);
+    const capacity = session.capacity || 40;
+    const rawAvailableSlots = Math.max(0, capacity - activeCount);
+
+    if (rawAvailableSlots <= 0) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    // 3. Đếm số người hiện đang giữ OFFER chưa hết hạn
+    const activeOfferRes = await client.query(
+      `SELECT id, user_id FROM session_waitlist
+       WHERE session_id = $1::uuid AND status = 'OFFERED' AND offer_expires_at > CURRENT_TIMESTAMP;`,
+      [sessionId]
+    );
+    const currentOfferedCount = activeOfferRes.rows.length;
+    const slotsToOffer = Math.max(0, rawAvailableSlots - currentOfferedCount);
+
+    if (slotsToOffer <= 0) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    // 4. Lấy danh sách `slotsToOffer` người tiếp theo đang WAITING theo chuẩn FIFO created_at
+    const nextUsersRes = await client.query(
+      `SELECT w.id, w.user_id, w.position, u.full_name, u.email, u.phone_zalo
+       FROM session_waitlist w
+       JOIN users u ON w.user_id = u.id
+       WHERE w.session_id = $1::uuid AND w.status = 'WAITING'
+       ORDER BY w.created_at ASC
+       LIMIT $2
+       FOR UPDATE OF w;`,
+      [sessionId, slotsToOffer]
+    );
+
+    if (nextUsersRes.rows.length === 0) {
+      if (shouldManageTransaction) await client.query('COMMIT');
+      return [];
+    }
+
+    const offerMinutes = session.waitlist_offer_duration_minutes || 10;
+    const offerExpiresAt = new Date(Date.now() + offerMinutes * 60000);
+    const offeredList = [];
+
+    for (const userRow of nextUsersRes.rows) {
+      await client.query(
+        `UPDATE session_waitlist
+         SET status = 'OFFERED',
+             offered_at = CURRENT_TIMESTAMP,
+             offer_expires_at = $1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2::uuid;`,
+        [offerExpiresAt, userRow.id]
+      );
+
+      offeredList.push({
+        waitlistId: userRow.id,
+        userId: userRow.user_id,
+        fullName: userRow.full_name,
+        email: userRow.email,
+        phoneZalo: userRow.phone_zalo,
+        position: userRow.position,
+        offerExpiresAt,
+        offerMinutes
+      });
+    }
+
+    if (shouldManageTransaction) {
+      await client.query('COMMIT');
+      // Gửi email sau khi transaction chính thức COMMIT thành công
+      dispatchWaitlistOfferEmails(offeredList, session, tStart);
+    }
+
+    return offeredList;
+  } catch (error) {
+    if (shouldManageTransaction) {
+      await client.query('ROLLBACK');
+    }
+    console.error('[triggerWaitlistOffers] Error:', error);
+    throw error;
+  } finally {
+    if (shouldManageTransaction) {
+      client.release();
+    }
+  }
+}
+
+/**
+ * Tự động offer slot cho người đứng đầu Waitlist (hàm nội bộ tương thích ngược)
  */
 async function triggerWaitlistOfferInternal(client, session) {
-  const now = new Date();
-  const sessionEnd = session.session_end ? new Date(session.session_end) : new Date(session.date_time.getTime() + 2 * 3600000);
-
-  // Nếu buổi tập đã kết thúc hoặc chỉ còn dưới 10 phút, không cần offer nữa
-  if (now.getTime() + 10 * 60000 >= sessionEnd.getTime()) {
-    return null;
-  }
-
-  // 1. Kiểm tra xem hiện có ai đang ở trạng thái OFFERED chưa hết hạn không
-  const activeOfferRes = await client.query(
-    `SELECT * FROM session_waitlist
-     WHERE session_id = $1::uuid AND status = 'OFFERED' AND offer_expires_at > CURRENT_TIMESTAMP;`,
-    [session.id]
-  );
-  if (activeOfferRes.rows.length > 0) {
-    return null; // Đã có người đang giữ offer
-  }
-
-  // 2. Tìm người đầu tiên trong waitlist có status = 'WAITING'
-  const nextUserRes = await client.query(
-    `SELECT w.*, u.full_name, u.email
-     FROM session_waitlist w
-     JOIN users u ON w.user_id = u.id
-     WHERE w.session_id = $1::uuid AND w.status = 'WAITING'
-     ORDER BY w.position ASC
-     LIMIT 1
-     FOR UPDATE;`,
-    [session.id]
-  );
-
-  if (nextUserRes.rows.length === 0) {
-    return null; // Waitlist rỗng
-  }
-
-  const nextUser = nextUserRes.rows[0];
-  const offerMinutes = session.waitlist_offer_duration_minutes || 10;
-  const offerExpiresAt = new Date(Date.now() + offerMinutes * 60000);
-
-  // 3. Cập nhật thành OFFERED
-  await client.query(
-    `UPDATE session_waitlist
-     SET status = 'OFFERED',
-         offered_at = CURRENT_TIMESTAMP,
-         offer_expires_at = $1,
-         updated_at = CURRENT_TIMESTAMP
-     WHERE id = $2::uuid;`,
-    [offerExpiresAt, nextUser.id]
-  );
-
-  return {
-    userId: nextUser.user_id,
-    fullName: nextUser.full_name,
-    email: nextUser.email,
-    position: nextUser.position,
-    offerExpiresAt
-  };
+  const offers = await triggerWaitlistOffers(session.id, client);
+  return offers && offers.length > 0 ? offers[0] : null;
 }
 
 /**
@@ -522,6 +736,8 @@ async function claimWaitlistOffer(sessionId, userId) {
         [wl.id]
       );
       await client.query('COMMIT');
+      // Kích hoạt ngay slot cho người kế tiếp
+      triggerWaitlistOffers(sessionId).catch(e => console.error('[claimWaitlistOffer] Auto offer next error:', e));
       throw new Error('Thời gian giữ slot của bạn đã hết hạn. Hệ thống đã chuyển cơ hội cho người tiếp theo.');
     }
 
@@ -712,6 +928,22 @@ async function processQrCheckIn({
     await client.query('UPDATE users SET smash_coins = smash_coins + 10 WHERE id = $1', [userId]);
     await trackActivity(userId, 'check_in');
 
+    // 8. Tự động loại khỏi hàng chờ (đánh dấu CLAIMED) nếu user đang trong waitlist
+    await client.query(
+      `UPDATE session_waitlist
+       SET status = 'CLAIMED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1::uuid AND user_id = $2::uuid AND status IN ('WAITING', 'OFFERED');`,
+      [sessionId, userId]
+    );
+
+    // 8.1. Tự động kiểm tra và gỡ Thẻ vàng cho khách vãng lai nếu đã tham gia đủ 5 buổi tập tiếp theo
+    try {
+      const { checkAndRevokeGuestPenalty } = require('./guestDisciplineService');
+      await checkAndRevokeGuestPenalty(userId, client);
+    } catch (revokeErr) {
+      console.error('Error auto-revoking guest penalty during check-in:', revokeErr);
+    }
+
     await client.query('COMMIT');
 
     return {
@@ -732,7 +964,7 @@ async function processQrCheckIn({
 }
 
 /**
- * Thành viên hoặc Admin thực hiện CHECK-OUT buổi tập
+ * Thành viên (rời sớm từ trang cá nhân) hoặc Admin thực hiện CHECK-OUT buổi tập
  */
 async function processQrCheckOut({
   sessionId,
@@ -751,9 +983,7 @@ async function processQrCheckOut({
       `SELECT s.*, 
               s.date_time::text AS date_time_str,
               s.session_start::text AS session_start_str,
-              s.session_end::text AS session_end_str,
-              s.checkout_open_at::text AS checkout_open_at_str,
-              s.checkout_close_at::text AS checkout_close_at_str
+              s.session_end::text AS session_end_str
        FROM sessions s
        WHERE s.id = $1::uuid
        FOR UPDATE;`,
@@ -776,48 +1006,12 @@ async function processQrCheckOut({
     );
 
     if (activeMatchRes.rows.length > 0) {
-      throw new Error('Thành viên này đang có trận đấu chưa kết thúc trên sân (Match Desk). Vui lòng hoàn thành hoặc hủy trận đấu trước khi Check-out.');
+      throw new Error('Bạn đang có trận đấu chưa kết thúc trên sân (Match Desk). Vui lòng hoàn thành hoặc báo Admin/Trọng tài kết thúc trận trước khi Check-out.');
     }
 
     const isAdmin = Boolean(adminId);
 
-    // 3. Xác thực QR token Check-out (nếu client gọi bằng mã QR)
-    const rawCode = (clientTokenOrCode || '').trim().toUpperCase();
-    if (rawCode && !isAdmin) {
-      const matchCheckoutSecret = session.qr_checkout_secret_token && rawCode === session.qr_checkout_secret_token.toUpperCase();
-      const matchCheckinSecret = session.qr_secret_token && rawCode === session.qr_secret_token.toUpperCase();
-      const matchCheckinQr = session.qr_code && rawCode === session.qr_code.toUpperCase();
-
-      if (matchCheckinSecret || matchCheckinQr) {
-        throw new Error('Mã này là mã QR Check-in (Vào sân), không phải mã QR Check-out (Rời sân). Vui lòng quét đúng mã QR Check-out của sân.');
-      }
-
-      if (!matchCheckoutSecret && !session.qr_checkout_secret_token?.toUpperCase().includes(rawCode)) {
-        throw new Error('Mã QR Check-out không khớp với buổi tập này hoặc không hợp lệ.');
-      }
-    } else if (!isAdmin) {
-      throw new Error('Bạn cần phải quét mã QR tại sân để Check-out.');
-    }
-
-    // 4. Kiểm tra khung giờ check-out (Time Window)
-    const now = new Date();
-    const tStart = session.session_start ? new Date(session.session_start) : new Date(session.date_time);
-    const tEnd = session.session_end ? new Date(session.session_end) : new Date(tStart.getTime() + 2 * 3600000);
-    const checkoutOpen = session.checkout_open_at ? new Date(session.checkout_open_at) : new Date(tStart.getTime() + 30 * 60000);
-    const checkoutClose = session.checkout_close_at ? new Date(session.checkout_close_at) : new Date(tEnd.getTime() + 60 * 60000);
-
-    if (!isAdmin && now < checkoutOpen) {
-      throw new Error(
-        `Cổng Check-out mở từ ${checkoutOpen.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày ${checkoutOpen.toLocaleDateString('vi-VN')}. Bạn chưa thể Check-out lúc này.`
-      );
-    }
-    if (!isAdmin && now > checkoutClose) {
-      throw new Error(
-        `Cổng Check-out của buổi tập đã đóng lúc ${checkoutClose.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}.`
-      );
-    }
-
-    // 5. Kiểm tra trạng thái attendance của user
+    // 3. Kiểm tra trạng thái attendance của user
     const attRes = await client.query(
       `SELECT * FROM attendances WHERE session_id = $1::uuid AND user_id = $2::uuid FOR UPDATE;`,
       [sessionId, userId]
@@ -845,7 +1039,7 @@ async function processQrCheckOut({
 
     // Nếu chưa từng Check-in
     if (att.status === 'RESERVED' || att.status === 'CONFIRMED') {
-      throw new Error('Bạn chưa quét mã Check-in tại sân nên không thể thực hiện Check-out.');
+      throw new Error('Bạn chưa Check-in tại sân nên không thể thực hiện Check-out.');
     }
 
     if (att.status === 'CANCELLED' || att.status === 'NO_SHOW') {
@@ -857,25 +1051,25 @@ async function processQrCheckOut({
       throw new Error(`Trạng thái hiện tại (${att.status}) không hợp lệ để Check-out.`);
     }
 
-    // 6. Thực hiện check-out
+    // 4. Thực hiện check-out: Cập nhật status thành CHECKED_OUT (tự động loại khỏi danh sách xếp trận)
     const effectiveOutTime = checkoutTime ? new Date(checkoutTime) : new Date();
     const checkInTime = att.checked_in_at ? new Date(att.checked_in_at) : new Date(att.created_at);
     const durationMinutes = Math.max(1, Math.round((effectiveOutTime.getTime() - checkInTime.getTime()) / 60000));
-    const method = isAdmin ? 'admin' : (rawCode ? 'qr' : 'manual');
+    const method = isAdmin ? 'admin' : 'profile_early';
 
     await client.query(
       `UPDATE attendances
        SET status = 'CHECKED_OUT',
            checked_out_at = $1,
            checkout_method = $2,
-           checkout_status = 'completed',
+           checkout_status = 'early',
            duration_minutes = $3,
            updated_at = CURRENT_TIMESTAMP
        WHERE session_id = $4::uuid AND user_id = $5::uuid;`,
       [effectiveOutTime, method, durationMinutes, sessionId, userId]
     );
 
-    // 7. Ghi audit log nếu admin can thiệp
+    // 5. Ghi audit log nếu admin can thiệp
     if (isAdmin) {
       await client.query(
         `INSERT INTO session_audit_logs (
@@ -889,11 +1083,13 @@ async function processQrCheckOut({
 
     return {
       success: true,
-      message: 'Check-out thành công! Cảm ơn bạn đã tham gia buổi tập.',
+      message: isAdmin 
+        ? 'Admin đã ghi nhận Check-out thành công cho thành viên.' 
+        : 'Check-out thành công! Bạn đã rời buổi tập và được tự động loại khỏi danh sách xếp trận.',
       checked_in_at: checkInTime,
       checked_out_at: effectiveOutTime,
       duration_minutes: durationMinutes,
-      checkout_status: 'completed',
+      checkout_status: 'early',
       method
     };
   } catch (error) {
@@ -946,15 +1142,20 @@ async function adminApproveLateCancel(sessionId, targetUserId, adminId, reason =
       [sessionId, adminId, targetUserId, beforeStatus, reason]
     );
 
-    // Tự động offer cho Waitlist
-    const offerResult = await triggerWaitlistOfferInternal(client, sessionRes.rows[0]);
+    // Tự động tìm kiếm và offer cho Waitlist
+    const offeredList = await triggerWaitlistOffers(sessionId, client);
 
     await client.query('COMMIT');
+
+    // Gửi email sau khi transaction đã COMMIT an toàn
+    const sRow = sessionRes.rows[0];
+    const tStart = sRow.session_start ? new Date(sRow.session_start) : new Date(sRow.date_time);
+    dispatchWaitlistOfferEmails(offeredList, sRow, tStart);
 
     return {
       success: true,
       message: 'Đã phê duyệt hủy muộn và giải phóng slot thành công.',
-      offeredToWaitlist: offerResult
+      offeredToWaitlist: offeredList && offeredList.length > 0 ? offeredList[0] : null
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -1066,8 +1267,12 @@ module.exports = {
   cancelReservation,
   requestLateCancel,
   claimWaitlistOffer,
+  triggerWaitlistOffers,
+  triggerWaitlistOfferInternal,
+  dispatchWaitlistOfferEmails,
   processQrCheckIn,
   processQrCheckOut,
+  processCheckOut: processQrCheckOut,
   adminApproveLateCancel,
   adminRejectLateCancel,
   getAdminSessionDashboard

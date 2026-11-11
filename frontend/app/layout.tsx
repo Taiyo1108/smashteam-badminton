@@ -3,10 +3,11 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import BgmPlayer from "./components/BgmPlayer";
 import PwaInstallPrompt from "./components/PwaInstallPrompt";
+import NotificationCenter from "./components/notifications/NotificationCenter";
 
 const inter = Inter({
   variable: "--font-inter",
-  subsets: ["latin"],
+  subsets: ["latin", "vietnamese"],
   display: "swap",
 });
 
@@ -54,8 +55,23 @@ export default function RootLayout({
       lang="vi"
       className={`${inter.variable} font-sans h-full antialiased`}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var s=localStorage.getItem("site_settings_cache");if(s)window.__INITIAL_SITE_SETTINGS__=JSON.parse(s);}catch(e){}`,
+          }}
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Be+Vietnam+Pro:wght@700;800;900&family=Kanit:wght@700;800;900&family=Montserrat:wght@700;800;900&family=Oswald:wght@600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-full flex flex-col">
-        {children}
+        <NotificationCenter>
+          {children}
+        </NotificationCenter>
         <BgmPlayer />
         <PwaInstallPrompt />
       </body>

@@ -67,10 +67,25 @@ router.put('/:key', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/settings - Cập nhật cấu hình key-value qua body (yêu cầu Admin)
+// PUT /api/settings - Cập nhật cấu hình key-value (yêu cầu Admin, hỗ trợ 1 key hoặc nhiều key)
 router.put('/', authenticateToken, isAdmin, async (req, res) => {
   try {
-    const { key, value } = req.body;
+    const { key, value, settings } = req.body;
+
+    if (settings && typeof settings === 'object') {
+      const keys = Object.keys(settings);
+      for (const k of keys) {
+        await db.query(
+          `INSERT INTO site_settings (key, value, updated_at)
+           VALUES ($1, $2, CURRENT_TIMESTAMP)
+           ON CONFLICT (key)
+           DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+          [k, String(settings[k] ?? '')]
+        );
+      }
+      return res.json({ message: 'Cập nhật cấu hình thành công' });
+    }
+
     if (!key || value === undefined) {
       return res.status(400).json({ error: 'Key and value are required' });
     }
@@ -111,6 +126,22 @@ router.post('/upload-cover', authenticateToken, isAdmin, upload.single('image'),
   } catch (error) {
     console.error('Error uploading cover photo:', error);
     res.status(500).json({ error: error?.message || 'Internal server error' });
+  }
+});
+
+
+// POST /api/settings/upload-sponsor - Tải ảnh logo nhà tài trợ lên Cloudinary (yêu cầu Admin)
+router.post('/upload-sponsor', authenticateToken, isAdmin, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Không tìm thấy tệp hình ảnh để tải lên' });
+    }
+
+    const logoUrl = req.file.path;
+    res.json({ url: logoUrl });
+  } catch (error) {
+    console.error('Error uploading sponsor logo:', error);
+    res.status(500).json({ error: 'Lỗi tải ảnh logo nhà tài trợ' });
   }
 });
 

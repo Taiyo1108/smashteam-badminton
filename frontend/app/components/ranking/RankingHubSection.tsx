@@ -13,7 +13,7 @@ import EloExplainModal from "./EloExplainModal";
 
 export default function RankingHubSection() {
   const [mode, setMode] = useState<'singles' | 'doubles'>('doubles');
-  const [filter, setFilter] = useState<'all' | 'official' | 'provisional'>('all');
+  const [filter, setFilter] = useState<'all' | 'official' | 'provisional'>('official');
   const [searchQuery, setSearchQuery] = useState('');
   const [hubData, setHubData] = useState<RankingHubResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,18 +138,8 @@ export default function RankingHubSection() {
             </button>
           </div>
 
-          {/* Filter Switcher: All vs Official vs Provisional */}
+          {/* Filter Switcher: Official (Default) vs All vs Provisional */}
           <div className="flex p-1 bg-purple-50/60 rounded-2xl border border-purple-100">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
-                filter === 'all'
-                  ? "bg-primary text-white shadow-xs"
-                  : "text-purple-700 hover:text-purple-950"
-              }`}
-            >
-              Tất cả ({hubData?.totalPlayers || 0})
-            </button>
             <button
               onClick={() => setFilter('official')}
               className={`px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
@@ -161,6 +151,16 @@ export default function RankingHubSection() {
               Chính thức ({hubData?.establishedCount || 0})
             </button>
             <button
+              onClick={() => setFilter('all')}
+              className={`px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
+                filter === 'all'
+                  ? "bg-primary text-white shadow-xs"
+                  : "text-purple-700 hover:text-purple-950"
+              }`}
+            >
+              Tất cả ({hubData?.totalPlayers || 0})
+            </button>
+            <button
               onClick={() => setFilter('provisional')}
               className={`px-3 py-1.5 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
                 filter === 'provisional'
@@ -168,7 +168,7 @@ export default function RankingHubSection() {
                   : "text-purple-700 hover:text-purple-950"
               }`}
             >
-              Tạm thời ({hubData?.provisionalCount || 0})
+              Chờ xếp hạng ({hubData?.provisionalCount || 0})
             </button>
           </div>
         </div>
@@ -190,6 +190,42 @@ export default function RankingHubSection() {
       {/* Main Content Area */}
       {hubData && (
         <>
+          {/* BANNER TIẾN ĐỘ PHÂN HẠNG (NẾU USER CHƯA ĐỦ 3 TRẬN) */}
+          {hubData.myPosition && (hubData.myPosition.isProvisional || (hubData.myPosition.matches ?? 0) < 3) && (
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-500/15 via-purple-600/15 to-amber-500/15 border-2 border-amber-400/50 shadow-lg shadow-amber-500/10 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center text-slate-950 font-black text-xl shadow-md shrink-0">
+                  ⚡
+                </div>
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-900 border border-amber-400/40 text-[10px] font-black uppercase tracking-wider mb-1">
+                    Trạng Thái Phân Hạng
+                  </div>
+                  <h4 className="text-sm sm:text-base font-black text-slate-900">
+                    Đang phân hạng: Hoàn thành thêm {Math.max(0, 3 - (hubData.myPosition.matches || 0))} trận để xuất hiện trên BXH
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Điểm Elo khởi điểm là 950. Cần tối thiểu 3 trận đấu xếp hạng để hệ thống ghi nhận vị trí chính thức.
+                  </p>
+                </div>
+              </div>
+
+              {/* Thanh tiến độ x/3 trận */}
+              <div className="shrink-0 w-full sm:w-48 bg-white/80 p-3 rounded-2xl border border-amber-300/40 shadow-xs">
+                <div className="flex justify-between items-center text-xs font-black mb-1.5">
+                  <span className="text-slate-600 text-[11px]">Tiến độ phân hạng</span>
+                  <span className="text-amber-600 font-black">{Math.min(3, hubData.myPosition.matches || 0)}/3 trận</span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, ((hubData.myPosition.matches || 0) / 3) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 1. SPOTLIGHT BAR (ON FIRE, CLIMBER, RISING, MOST ACTIVE) */}
           <PlayerSpotlightBar
             spotlight={hubData.spotlight}
@@ -222,23 +258,23 @@ export default function RankingHubSection() {
               <span>Hệ Thống Phân Cấp Bậc ELO SmashTeam:</span>
             </div>
             <div className="flex flex-wrap gap-2 pt-0.5">
-              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-500 to-purple-600 text-white font-black shadow-xs">
-                Challenger: 1800+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 text-white font-black shadow-sm border border-red-400">
+                Thách Đấu: 1800+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold shadow-xs">
-                Diamond: 1600+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white font-black shadow-sm border border-cyan-300">
+                Kim Cương: 1600+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-teal-600 text-white font-bold shadow-xs">
-                Platinum: 1400+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 text-white font-black shadow-sm border border-emerald-300">
+                Bạch Kim: 1400+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-amber-500 text-white font-bold shadow-xs">
-                Gold: 1200+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-black shadow-sm border border-yellow-300">
+                Vàng: 1200+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-slate-300 text-slate-800 font-bold shadow-xs">
-                Silver: 1100+
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-200 via-white to-slate-300 text-slate-900 font-black shadow-sm border border-slate-300">
+                Bạc: 1000+
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-amber-900/20 text-amber-900 font-bold shadow-xs">
-                Bronze: &lt; 1100
+              <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-700 via-orange-800 to-amber-900 text-amber-50 font-black shadow-sm border border-amber-600">
+                Đồng: &lt; 1000
               </span>
             </div>
           </div>

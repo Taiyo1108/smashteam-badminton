@@ -309,9 +309,6 @@ export default function QRScannerModal({
                     {scanResult.academic_info || "Thành viên chính thức"}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/10 text-slate-300 font-bold">
-                      {scanResult.badminton_level}
-                    </span>
                     {scanResult.phone_zalo && (
                       <span className="text-[10px] text-slate-400 font-mono">
                         Zalo: {scanResult.phone_zalo}
