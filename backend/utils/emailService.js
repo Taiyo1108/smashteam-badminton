@@ -664,6 +664,12 @@ const sendWaitlistSlotOfferEmail = async ({
 }) => {
   try {
     if (!toEmail) return false;
+    const cleanToEmail = String(toEmail).trim().toLowerCase();
+    if (!cleanToEmail || !cleanToEmail.includes('@') || cleanToEmail.includes('live_test_')) {
+      console.warn(`[EmailService] Bỏ qua gửi email do địa chỉ không hợp lệ hoặc là test address: ${toEmail}`);
+      return false;
+    }
+
     const resend = getResendClient();
     if (!resend) {
       console.warn('[EmailService] Bỏ qua gửi email Waitlist do chưa cấu hình RESEND_API_KEY.');
@@ -671,7 +677,7 @@ const sendWaitlistSlotOfferEmail = async ({
     }
 
     const hostUrl = getFrontendUrl();
-    const claimUrl = `${hostUrl}`;
+    const claimUrl = sessionId ? `${hostUrl}?session_id=${sessionId}#sessions` : `${hostUrl}`;
 
     const formattedExpires = offerExpiresAt instanceof Date 
       ? offerExpiresAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) + ' ngày ' + offerExpiresAt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })
@@ -746,7 +752,7 @@ const sendWaitlistSlotOfferEmail = async ({
 
     const { data, error } = await resend.emails.send({
       from: getFromEmail(),
-      to: [toEmail],
+      to: [cleanToEmail],
       subject,
       html
     });
@@ -754,7 +760,7 @@ const sendWaitlistSlotOfferEmail = async ({
     if (error) {
       console.error('[EmailService] Lỗi Resend khi gửi email Waitlist Offer:', error);
       await logSentEmail({
-        recipient_email: toEmail,
+        recipient_email: cleanToEmail,
         subject,
         email_type: 'waitlist_offer',
         status: 'failed',
@@ -763,9 +769,9 @@ const sendWaitlistSlotOfferEmail = async ({
       return false;
     }
 
-    console.log(`[EmailService] Đã gửi email Waitlist Offer thành công tới ${toEmail} (ID: ${data?.id})`);
+    console.log(`[EmailService] Đã gửi email Waitlist Offer thành công tới ${cleanToEmail} (ID: ${data?.id})`);
     await logSentEmail({
-      recipient_email: toEmail,
+      recipient_email: cleanToEmail,
       subject,
       email_type: 'waitlist_offer',
       status: 'sent',

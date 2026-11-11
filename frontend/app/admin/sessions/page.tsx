@@ -6,7 +6,7 @@ import {
   Calendar, MapPin, Clock, Plus, Loader2, X, Download, Users, 
   CheckCircle, ChevronRight, UserCheck, AlertTriangle, ShieldCheck, 
   Hourglass, Search, RefreshCw, Edit3, Trash2, Check, UserPlus, 
-  FileText, QrCode, Copy, ExternalLink, ShieldAlert, LogOut
+  FileText, QrCode, Copy, ExternalLink, ShieldAlert, LogOut, Zap
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { QRCodeCanvas } from "qrcode.react";
@@ -39,6 +39,7 @@ export default function AdminSessionsPage() {
   const [isRejectLateCancelModalOpen, setIsRejectLateCancelModalOpen] = useState(false);
   const [rejectTargetUser, setRejectTargetUser] = useState<any>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [isTriggeringOffers, setIsTriggeringOffers] = useState(false);
 
   // Admin Check-out Override Modal
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
@@ -587,6 +588,33 @@ export default function AdminSessionsPage() {
       alert("Lỗi kết nối.");
     } finally {
       setActionLoadingId(null);
+    }
+  };
+
+  // Manually Trigger Waitlist Offers & Emails
+  const handleTriggerWaitlistOffers = async () => {
+    if (!selectedSession) return;
+    setIsTriggeringOffers(true);
+    try {
+      const token = localStorage.getItem("admin_token");
+      const res = await fetch(`${API_URL}/api/admin/sessions/${selectedSession.id}/waitlist/trigger-offers`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || "Đã kích hoạt kiểm tra và cấp slot cho hàng chờ.");
+        fetchDashboard(selectedSession.id);
+      } else {
+        alert(data.error || "Lỗi khi kích hoạt cấp slot hàng chờ.");
+      }
+    } catch (e: any) {
+      alert(e.message || "Lỗi kết nối.");
+    } finally {
+      setIsTriggeringOffers(false);
     }
   };
 
@@ -1207,8 +1235,23 @@ export default function AdminSessionsPage() {
               {/* TAB CONTENT: WAITLIST FIFO */}
               {activeTab === "waitlist" && (
                 <div className="space-y-4">
-                  <div className="p-3.5 rounded-2xl bg-purple-50 border border-purple-100 text-xs text-purple-900 leading-relaxed">
-                    ℹ️ <strong>Cơ chế Hàng chờ FIFO:</strong> Khi một thành viên hủy chỗ, hệ thống sẽ tự động gửi thông báo và giữ slot riêng cho người ở vị trí hàng chờ tiếp theo trong vòng <strong>{selectedSession.waitlist_offer_duration_minutes || 10} phút</strong>. Nếu quá thời gian không xác nhận, lượt sẽ tự động chuyển tiếp cho người kế tiếp.
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-purple-50 border border-purple-100 text-xs text-purple-900 leading-relaxed">
+                    <div className="flex-1 min-w-[280px]">
+                      ℹ️ <strong>Cơ chế Hàng chờ FIFO:</strong> Khi một thành viên hủy chỗ, hệ thống sẽ tự động gửi email và giữ slot riêng cho người ở vị trí hàng chờ tiếp theo trong vòng <strong>{selectedSession.waitlist_offer_duration_minutes || 10} phút</strong>. Nếu quá thời gian không xác nhận, lượt sẽ tự động chuyển tiếp cho người kế tiếp.
+                    </div>
+                    <button
+                      onClick={handleTriggerWaitlistOffers}
+                      disabled={isTriggeringOffers}
+                      className="shrink-0 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
+                      title="Quét lại slot trống thực tế và kích hoạt cấp slot + gửi email ngay cho thành viên đang chờ"
+                    >
+                      {isTriggeringOffers ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Zap className="w-3.5 h-3.5 text-slate-950 fill-current" />
+                      )}
+                      ⚡ Kích hoạt cấp slot & Gửi email ngay
+                    </button>
                   </div>
 
                   {waitlist.length === 0 ? (

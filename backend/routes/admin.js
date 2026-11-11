@@ -677,15 +677,33 @@ router.post('/sessions/:id/waitlist/remove', async (req, res) => {
     );
 
     const { triggerWaitlistOffers } = require('../services/sessionReservationService');
-    let offeredList = [];
-    if (wasOffered) {
-      offeredList = await triggerWaitlistOffers(id);
-    }
+    // Luôn kích hoạt triggerWaitlistOffers để re-number lại hàng chờ và cấp slot nếu có
+    const offeredList = await triggerWaitlistOffers(id);
 
     res.json({ success: true, message: 'Đã xóa khỏi hàng chờ thành công.', offeredList });
   } catch (error) {
     console.error('Error removing from waitlist:', error);
     res.status(400).json({ error: error.message || 'Lỗi xóa khỏi hàng chờ.' });
+  }
+});
+
+// POST /api/admin/sessions/:id/waitlist/trigger-offers - Admin chủ động kích hoạt cấp slot và gửi email ngay cho hàng chờ
+router.post('/sessions/:id/waitlist/trigger-offers', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    const offeredList = await triggerWaitlistOffers(id);
+
+    res.json({
+      success: true,
+      message: offeredList.length > 0 
+        ? `Đã kích hoạt cấp slot và gửi email thành công cho ${offeredList.length} thành viên trong hàng chờ!`
+        : `Đã kiểm tra hàng chờ: Hiện không có slot trống khả dụng hoặc không còn ai đang chờ.`,
+      offeredList
+    });
+  } catch (error) {
+    console.error('Error triggering waitlist offers manually:', error);
+    res.status(500).json({ error: error.message || 'Lỗi khi kích hoạt cấp slot cho hàng chờ.' });
   }
 });
 

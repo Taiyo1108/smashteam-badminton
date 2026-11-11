@@ -203,10 +203,9 @@ router.post('/:id/waitlist/leave', authenticateToken, async (req, res) => {
       [id, userId]
     );
 
-    if (wasOffered) {
-      const { triggerWaitlistOffers } = require('../services/sessionReservationService');
-      triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist upon leave:', e));
-    }
+    // Luôn kích hoạt triggerWaitlistOffers để re-number lại vị trí chuẩn FIFO và cấp slot trống tiếp theo (nếu có)
+    const { triggerWaitlistOffers } = require('../services/sessionReservationService');
+    triggerWaitlistOffers(id).catch(e => console.error('Error triggering waitlist upon leave:', e));
 
     res.json({ success: true, message: 'Bạn đã rời khỏi danh sách chờ.' });
   } catch (error) {

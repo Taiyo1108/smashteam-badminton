@@ -304,7 +304,7 @@ async function joinWaitlist(sessionId, userId) {
     );
     const nextPosition = parseInt(maxPosRes.rows[0].max_pos, 10) + 1;
 
-    // 5. Thêm hoặc cập nhật vào session_waitlist
+    // 5. Thêm hoặc cập nhật vào session_waitlist (Reset created_at để người vào lại xếp sau theo chuẩn FIFO)
     const insertRes = await client.query(
       `INSERT INTO session_waitlist (
         session_id, user_id, position, status, created_at, updated_at
@@ -312,22 +312,39 @@ async function joinWaitlist(sessionId, userId) {
       VALUES ($1::uuid, $2::uuid, $3, 'WAITING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT (session_id, user_id)
       DO UPDATE SET
-        position = EXCLUDED.position,
         status = 'WAITING',
         offered_at = NULL,
         offer_expires_at = NULL,
         confirmed_at = NULL,
+        created_at = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *;`,
       [sessionId, userId, nextPosition]
     );
 
+    // Chuẩn hóa lại số thứ tự position liên tục theo đúng thứ tự thời gian vào hàng chờ (created_at ASC)
+    const renumberRes = await client.query(
+      `WITH numbered AS (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) as new_pos
+         FROM session_waitlist
+         WHERE session_id = $1::uuid AND status = 'WAITING'
+       )
+       UPDATE session_waitlist w
+       SET position = numbered.new_pos, updated_at = CURRENT_TIMESTAMP
+       FROM numbered
+       WHERE w.id = numbered.id
+       RETURNING w.*;`,
+      [sessionId]
+    );
+
+    const userWl = renumberRes.rows.find(r => r.user_id === userId) || insertRes.rows[0];
+
     await client.query('COMMIT');
 
     return {
       success: true,
-      message: `Bạn đã tham gia danh sách chờ (Vị trí #${nextPosition}). Khi có slot trống, hệ thống sẽ tự động thông báo cho bạn!`,
-      waitlist: insertRes.rows[0]
+      message: `Bạn đã tham gia danh sách chờ (Vị trí #${userWl.position}). Khi có slot trống, hệ thống sẽ tự động thông báo cho bạn!`,
+      waitlist: userWl
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -396,15 +413,19 @@ async function cancelReservation(sessionId, userId, reason = 'Thành viên tự 
       [reason, sessionId, userId]
     );
 
-    // 5. Tự động tìm kiếm và offer slot cho người đầu tiên trong Waitlist (nếu có)
-    const offerResult = await triggerWaitlistOfferInternal(client, session);
+    // 5. Tự động tìm kiếm và cấp quyền offer slot cho người tiếp theo trong Waitlist (nếu có)
+    const offeredList = await triggerWaitlistOffers(sessionId, client);
 
     await client.query('COMMIT');
+
+    // 6. Gửi email thông báo SAU KHI transaction đã được COMMIT an toàn
+    const tStart = session.session_start ? new Date(session.session_start) : new Date(session.date_time);
+    dispatchWaitlistOfferEmails(offeredList, session, tStart);
 
     return {
       success: true,
       message: 'Đã hủy giữ chỗ thành công. Slot của bạn đã được giải phóng.',
-      offeredToWaitlist: offerResult
+      offeredToWaitlist: offeredList && offeredList.length > 0 ? offeredList[0] : null
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -457,6 +478,35 @@ async function requestLateCancel(sessionId, userId, reason) {
   } finally {
     client.release();
   }
+}
+
+/**
+ * Dispatch email thông báo cấp slot cho thành viên Waitlist (chạy bất đồng bộ, sau khi transaction đã COMMIT an toàn)
+ */
+function dispatchWaitlistOfferEmails(offeredList, session, tStart) {
+  if (!offeredList || offeredList.length === 0) return;
+  setImmediate(() => {
+    const { sendWaitlistSlotOfferEmail } = require('../utils/emailService');
+    for (const offeredUser of offeredList) {
+      if (offeredUser.email) {
+        console.log(`[Waitlist Offer] Gửi email cấp slot cho ${offeredUser.email} (${offeredUser.fullName}) buổi "${session.title}"...`);
+        sendWaitlistSlotOfferEmail({
+          toEmail: offeredUser.email,
+          userName: offeredUser.fullName,
+          sessionTitle: session.title,
+          sessionDate: tStart,
+          sessionLocation: session.location,
+          offerExpiresAt: offeredUser.offerExpiresAt,
+          offerMinutes: offeredUser.offerMinutes,
+          sessionId: session.id
+        }).catch(err => {
+          console.error(`[Waitlist Offer] Lỗi khi gửi email tới ${offeredUser.email}:`, err);
+        });
+      } else {
+        console.warn(`[Waitlist Offer] Bỏ qua gửi email cho ${offeredUser.fullName} (ID: ${offeredUser.userId}) do tài khoản chưa cập nhật email.`);
+      }
+    }
+  });
 }
 
 /**
@@ -527,10 +577,10 @@ async function triggerWaitlistOffers(sessionId, existingClient = null) {
       [sessionId, SLOT_OCCUPYING_STATUSES]
     );
 
-    // 1.3. Cập nhật lại số thứ tự position liên tục cho các bạn đang WAITING (FIFO chuẩn)
+    // 1.3. Cập nhật lại số thứ tự position liên tục cho các bạn đang WAITING (FIFO chuẩn tuyệt đối theo created_at)
     await client.query(
       `WITH numbered AS (
-         SELECT id, ROW_NUMBER() OVER (ORDER BY position ASC, created_at ASC) as new_pos
+         SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) as new_pos
          FROM session_waitlist
          WHERE session_id = $1::uuid AND status = 'WAITING'
        )
@@ -571,15 +621,15 @@ async function triggerWaitlistOffers(sessionId, existingClient = null) {
       return [];
     }
 
-    // 4. Lấy danh sách `slotsToOffer` người tiếp theo đang WAITING theo FIFO
+    // 4. Lấy danh sách `slotsToOffer` người tiếp theo đang WAITING theo chuẩn FIFO created_at
     const nextUsersRes = await client.query(
       `SELECT w.id, w.user_id, w.position, u.full_name, u.email, u.phone_zalo
        FROM session_waitlist w
        JOIN users u ON w.user_id = u.id
        WHERE w.session_id = $1::uuid AND w.status = 'WAITING'
-       ORDER BY w.position ASC, w.created_at ASC
+       ORDER BY w.created_at ASC
        LIMIT $2
-       FOR UPDATE;`,
+       FOR UPDATE OF w;`,
       [sessionId, slotsToOffer]
     );
 
@@ -617,30 +667,8 @@ async function triggerWaitlistOffers(sessionId, existingClient = null) {
 
     if (shouldManageTransaction) {
       await client.query('COMMIT');
-    }
-
-    // 5. Gửi email thông báo bất đồng bộ sau khi commit
-    if (offeredList.length > 0) {
-      setImmediate(() => {
-        const { sendWaitlistSlotOfferEmail } = require('../utils/emailService');
-        for (const offeredUser of offeredList) {
-          if (offeredUser.email) {
-            console.log(`[Waitlist Offer] Gửi email cấp slot cho ${offeredUser.email} (${offeredUser.fullName}) buổi "${session.title}"...`);
-            sendWaitlistSlotOfferEmail({
-              toEmail: offeredUser.email,
-              userName: offeredUser.fullName,
-              sessionTitle: session.title,
-              sessionDate: tStart,
-              sessionLocation: session.location,
-              offerExpiresAt: offeredUser.offerExpiresAt,
-              offerMinutes: offeredUser.offerMinutes,
-              sessionId: session.id
-            }).catch(err => {
-              console.error(`[Waitlist Offer] Lỗi khi gửi email tới ${offeredUser.email}:`, err);
-            });
-          }
-        }
-      });
+      // Gửi email sau khi transaction chính thức COMMIT thành công
+      dispatchWaitlistOfferEmails(offeredList, session, tStart);
     }
 
     return offeredList;
@@ -1114,15 +1142,20 @@ async function adminApproveLateCancel(sessionId, targetUserId, adminId, reason =
       [sessionId, adminId, targetUserId, beforeStatus, reason]
     );
 
-    // Tự động offer cho Waitlist
-    const offerResult = await triggerWaitlistOfferInternal(client, sessionRes.rows[0]);
+    // Tự động tìm kiếm và offer cho Waitlist
+    const offeredList = await triggerWaitlistOffers(sessionId, client);
 
     await client.query('COMMIT');
+
+    // Gửi email sau khi transaction đã COMMIT an toàn
+    const sRow = sessionRes.rows[0];
+    const tStart = sRow.session_start ? new Date(sRow.session_start) : new Date(sRow.date_time);
+    dispatchWaitlistOfferEmails(offeredList, sRow, tStart);
 
     return {
       success: true,
       message: 'Đã phê duyệt hủy muộn và giải phóng slot thành công.',
-      offeredToWaitlist: offerResult
+      offeredToWaitlist: offeredList && offeredList.length > 0 ? offeredList[0] : null
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -1235,6 +1268,8 @@ module.exports = {
   requestLateCancel,
   claimWaitlistOffer,
   triggerWaitlistOffers,
+  triggerWaitlistOfferInternal,
+  dispatchWaitlistOfferEmails,
   processQrCheckIn,
   processQrCheckOut,
   processCheckOut: processQrCheckOut,
