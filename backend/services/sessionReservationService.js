@@ -1,6 +1,7 @@
 const db = require('../db');
 const { addXpToUser, trackActivity } = require('../utils/gamification');
 const { getSessionCapacity, SLOT_OCCUPYING_STATUSES } = require('./sessionCapacityService');
+const { checkBlacklist } = require('./guestDisciplineService');
 
 /**
  * Lấy thông tin chi tiết buổi tập, số liệu slots, timing và trạng thái của user
@@ -258,23 +259,11 @@ async function reserveSession(sessionId, userId) {
 
 /**
  * Tham gia hàng chờ Waitlist (FIFO) khi buổi tập đã đầy
- * - Tự động cập nhật email nếu user cung cấp
+ * - Chỉ lưu email khi tài khoản CHƯA có email (không bao giờ ghi đè email đang dùng),
+ *   và chỉ sau khi mọi điều kiện tham gia đã hợp lệ, trong cùng transaction với việc vào hàng chờ
  * - Tự động kích hoạt cấp slot ngay lập tức nếu session đang có sẵn slot trống
  */
 async function joinWaitlist(sessionId, userId, email = null) {
-  // 0. Nếu có email truyền lên, cập nhật cho user độc lập TRƯỚC transaction (bảng users không có cột updated_at)
-  if (email && typeof email === 'string' && email.includes('@')) {
-    const cleanEmail = email.trim().toLowerCase();
-    try {
-      await db.query(
-        `UPDATE users SET email = $1 WHERE id = $2::uuid;`,
-        [cleanEmail, userId]
-      );
-    } catch (emailErr) {
-      console.warn('[joinWaitlist] Không thể cập nhật email cho user (có thể do trùng email):', emailErr.message);
-    }
-  }
-
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -290,6 +279,12 @@ async function joinWaitlist(sessionId, userId, email = null) {
     }
 
     const session = sessionRes.rows[0];
+
+    // 1.1. Không cho vào hàng chờ của buổi đã đóng hoặc đã kết thúc (sẽ không bao giờ được cấp slot)
+    const sessionEnd = session.session_end || session.date_time;
+    if (session.is_closed || (sessionEnd && new Date(sessionEnd) <= new Date())) {
+      throw new Error('Buổi tập này đã đóng hoặc đã kết thúc, không thể tham gia danh sách chờ.');
+    }
 
     // 2. Kiểm tra xem user đã có reservation active chưa
     const existingRes = await client.query(
@@ -308,6 +303,31 @@ async function joinWaitlist(sessionId, userId, email = null) {
 
     if (wlCheck.rows.length > 0 && ['WAITING', 'OFFERED'].includes(wlCheck.rows[0].status)) {
       throw new Error(`Bạn đang ở trong danh sách chờ (Vị trí #${wlCheck.rows[0].position}).`);
+    }
+
+    // 3.1. Lưu email (nếu cần) - chỉ khi tài khoản chưa có email, kèm blacklist + trùng email (không phân biệt hoa thường)
+    const curUserRes = await client.query(`SELECT email FROM users WHERE id = $1::uuid FOR UPDATE;`, [userId]);
+    if (curUserRes.rows.length === 0) {
+      throw new Error('Không tìm thấy tài khoản.');
+    }
+    const hasEmailAlready = Boolean((curUserRes.rows[0].email || '').trim());
+    if (!hasEmailAlready && typeof email === 'string' && email.trim()) {
+      const cleanEmail = email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 254) {
+        throw new Error('Địa chỉ email không hợp lệ.');
+      }
+      const blacklist = await checkBlacklist({ email: cleanEmail, client });
+      if (blacklist.isBanned) {
+        throw new Error('Email này đã bị cấm do vi phạm quy định giữ chỗ của CLB.');
+      }
+      const dup = await client.query(
+        `SELECT id FROM users WHERE LOWER(email) = $1 AND id <> $2::uuid LIMIT 1;`,
+        [cleanEmail, userId]
+      );
+      if (dup.rows.length > 0) {
+        throw new Error('Email này đã được sử dụng bởi một tài khoản khác. Vui lòng dùng email khác.');
+      }
+      await client.query(`UPDATE users SET email = $1 WHERE id = $2::uuid;`, [cleanEmail, userId]);
     }
 
     // 4. Lấy vị trí FIFO tiếp theo
@@ -340,9 +360,9 @@ async function joinWaitlist(sessionId, userId, email = null) {
     // Chuẩn hóa lại số thứ tự position liên tục theo đúng thứ tự thời gian vào hàng chờ (created_at ASC)
     const renumberRes = await client.query(
       `WITH numbered AS (
-         SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) as new_pos
+         SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) as new_pos
          FROM session_waitlist
-         WHERE session_id = $1::uuid AND status = 'WAITING'
+         WHERE session_id = $1::uuid AND status IN ('WAITING', 'OFFERED')
        )
        UPDATE session_waitlist w
        SET position = numbered.new_pos, updated_at = CURRENT_TIMESTAMP
@@ -352,7 +372,7 @@ async function joinWaitlist(sessionId, userId, email = null) {
       [sessionId]
     );
 
-    const userWl = renumberRes.rows.find(r => r.user_id === userId) || insertRes.rows[0];
+    const userWl = renumberRes.rows.find(r => String(r.user_id) === String(userId)) || insertRes.rows[0];
 
     // Lấy email hiện tại của user để kiểm tra
     const uRes = await client.query(`SELECT email, full_name FROM users WHERE id = $1::uuid;`, [userId]);
@@ -601,12 +621,12 @@ async function triggerWaitlistOffers(sessionId, existingClient = null) {
       [sessionId, SLOT_OCCUPYING_STATUSES]
     );
 
-    // 1.3. Cập nhật lại số thứ tự position liên tục cho các bạn đang WAITING (FIFO chuẩn tuyệt đối theo created_at)
+    // 1.3. Cập nhật lại số thứ tự position liên tục cho các bạn đang WAITING/OFFERED (FIFO chuẩn tuyệt đối theo created_at)
     await client.query(
       `WITH numbered AS (
-         SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) as new_pos
+         SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) as new_pos
          FROM session_waitlist
-         WHERE session_id = $1::uuid AND status = 'WAITING'
+         WHERE session_id = $1::uuid AND status IN ('WAITING', 'OFFERED')
        )
        UPDATE session_waitlist w
        SET position = numbered.new_pos, updated_at = CURRENT_TIMESTAMP

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { formatVietnamDate } from "@/app/utils/date";
+import { getAuthToken } from "@/app/utils/auth";
 
 interface SessionReservationWidgetProps {
   session: {
@@ -304,13 +305,14 @@ export default function SessionReservationWidget({
       return;
     }
 
-    executeJoinWaitlist(existingEmail);
+    // Tài khoản đã có email -> không gửi lại email từ localStorage (có thể cũ), server giữ nguyên email hiện tại
+    executeJoinWaitlist();
   };
 
   const executeJoinWaitlist = async (emailToSubmit?: string) => {
     setLoadingAction("join_waitlist");
     try {
-      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+      const token = getAuthToken();
       const res = await fetch(`${API_URL}/api/sessions/${session.id}/waitlist/join`, {
         method: "POST",
         headers: {
@@ -321,12 +323,13 @@ export default function SessionReservationWidget({
       });
       const data = await res.json();
       if (res.ok) {
-        if (emailToSubmit) {
+        // Chỉ cập nhật cache khi server xác nhận đã lưu email
+        if (data.email) {
           try {
             const uStr = localStorage.getItem("user");
             if (uStr) {
               const u = JSON.parse(uStr);
-              u.email = emailToSubmit;
+              u.email = data.email;
               localStorage.setItem("user", JSON.stringify(u));
             }
           } catch {}

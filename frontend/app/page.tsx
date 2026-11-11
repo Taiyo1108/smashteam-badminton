@@ -26,6 +26,7 @@ import { formatVietnamDate } from "@/app/utils/date";
 import { format } from "date-fns";
 import NotificationBell from "@/app/components/notifications/NotificationBell";
 import SessionReservationWidget from "@/app/components/SessionReservationWidget";
+import { getAuthToken, isTokenExpired } from "@/app/utils/auth";
 import InactivityWarningModal, { InactivityWarningData } from "@/app/components/InactivityWarningModal";
 
 // ===== Giới thiệu & Liên hệ động từ site_settings (admin chỉnh ở Quản lý nội dung) =====
@@ -201,7 +202,9 @@ export default function Home() {
 
   // Load initial user state and profile
   useEffect(() => {
-    const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
+    const storedToken = getAuthToken();
+    // Token hết hạn -> coi như chưa đăng nhập (tránh hiện UI đã đăng nhập rồi 401 khi thao tác)
+    const token = storedToken && !isTokenExpired(storedToken) ? storedToken : null;
     const role = localStorage.getItem("user_role");
     if (token) {
       setIsLoggedIn(true);
@@ -313,7 +316,7 @@ export default function Home() {
   }, []);
 
   const fetchSessions = () => {
-    const token = typeof window !== "undefined" ? (localStorage.getItem("admin_token") || localStorage.getItem("token")) : null;
+    const token = getAuthToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -366,9 +369,9 @@ export default function Home() {
   }, [leaderboardType]);
 
   const handleRsvp = async (sessionId: number, status: "going" | "absent") => {
-    const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
-    if (!token) {
-      router.push("/login?redirect=/");
+    const token = getAuthToken();
+    if (!token || isTokenExpired(token)) {
+      router.push(token ? "/login?expired=1&redirect=/" : "/login?redirect=/");
       return;
     }
 
