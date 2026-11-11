@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   Calendar, Clock, MapPin, Users, Check, X, AlertCircle,
   Loader2, QrCode, ArrowRight, ShieldCheck, Hourglass, CheckCircle2,
-  AlertTriangle, Send, LogOut
+  AlertTriangle, Send, LogOut, Mail
 } from "lucide-react";
 import { API_URL } from "@/app/config";
 import { formatVietnamDate } from "@/app/utils/date";
@@ -89,6 +89,10 @@ export default function SessionReservationWidget({
   const [isGuestCommitmentModalOpen, setIsGuestCommitmentModalOpen] = useState(false);
   const [hasAgreedGuestRule, setHasAgreedGuestRule] = useState(false);
   const [pendingAction, setPendingAction] = useState<"reserve" | "claim_offer" | null>(null);
+
+  // Waitlist Email Modal (Nhắc nhở cập nhật email nếu tài khoản chưa có email)
+  const [isWaitlistEmailModalOpen, setIsWaitlistEmailModalOpen] = useState(false);
+  const [waitlistEmailInput, setWaitlistEmailInput] = useState("");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -221,7 +225,7 @@ export default function SessionReservationWidget({
     if (!confirm("Bạn có chắc chắn muốn hủy giữ chỗ cho buổi tập này không?")) return;
     setLoadingAction("cancel");
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/sessions/${session.id}/reserve/cancel`, {
         method: "POST",
         headers: {
@@ -252,7 +256,7 @@ export default function SessionReservationWidget({
     }
     setIsSubmittingLateCancel(true);
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/sessions/${session.id}/reserve/request-late-cancel`, {
         method: "POST",
         headers: {
@@ -277,25 +281,58 @@ export default function SessionReservationWidget({
     }
   };
 
-  // Handler: Join Waitlist
-  const handleJoinWaitlist = async () => {
+  // Handler: Join Waitlist Click
+  const handleJoinWaitlist = () => {
     if (!isLoggedIn) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+      router.push(`/login?redirect=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/")}`);
       return;
     }
+
+    let existingEmail = "";
+    try {
+      const uStr = localStorage.getItem("user");
+      if (uStr) {
+        const u = JSON.parse(uStr);
+        existingEmail = (u.email || "").trim();
+      }
+    } catch {}
+
+    if (!existingEmail) {
+      // User chưa cập nhật Email -> Mở popup nhập email để đảm bảo nhận được thư cấp slot!
+      setWaitlistEmailInput("");
+      setIsWaitlistEmailModalOpen(true);
+      return;
+    }
+
+    executeJoinWaitlist(existingEmail);
+  };
+
+  const executeJoinWaitlist = async (emailToSubmit?: string) => {
     setLoadingAction("join_waitlist");
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/sessions/${session.id}/waitlist/join`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
-        }
+        },
+        body: JSON.stringify({ email: emailToSubmit || undefined })
       });
       const data = await res.json();
       if (res.ok) {
-        showToast(`Bạn đã vào hàng chờ ở vị trí #${data.position}. Khi có người hủy, hệ thống sẽ báo bạn!`);
+        if (emailToSubmit) {
+          try {
+            const uStr = localStorage.getItem("user");
+            if (uStr) {
+              const u = JSON.parse(uStr);
+              u.email = emailToSubmit;
+              localStorage.setItem("user", JSON.stringify(u));
+            }
+          } catch {}
+        }
+        setIsWaitlistEmailModalOpen(false);
+        showToast(data.message || `Bạn đã vào hàng chờ ở vị trí #${data.waitlist?.position || 1}!`);
         if (onActionSuccess) onActionSuccess();
       } else {
         showToast(data.error || "Không thể tham gia hàng chờ.", "error");
@@ -312,7 +349,7 @@ export default function SessionReservationWidget({
     if (!confirm("Bạn có chắc muốn rút khỏi danh sách chờ buổi tập này không?")) return;
     setLoadingAction("leave_waitlist");
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/sessions/${session.id}/waitlist/leave`, {
         method: "POST",
         headers: {
@@ -348,7 +385,7 @@ export default function SessionReservationWidget({
   const executeClaimOffer = async () => {
     setLoadingAction("claim_offer");
     try {
-      const token = localStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/sessions/${session.id}/waitlist/claim`, {
         method: "POST",
         headers: {
@@ -967,6 +1004,78 @@ export default function SessionReservationWidget({
                 <span>Tôi Cam Kết & Xác Nhận</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* WAITLIST EMAIL PROMPT MODAL */}
+      {isWaitlistEmailModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-purple-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400 shrink-0">
+                <Mail className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-white">Email Nhận Thông Báo Slot</h3>
+                <p className="text-xs text-slate-400">Đảm bảo bạn nhận được thư khi có người nhường chỗ</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Tài khoản của bạn hiện chưa có địa chỉ Email. Khi có người hủy slot, hệ thống sẽ gửi email chứa đường link xác nhận giữ chỗ riêng cho bạn.
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!waitlistEmailInput.trim() || !waitlistEmailInput.includes("@")) {
+                  showToast("Vui lòng nhập địa chỉ email hợp lệ.", "error");
+                  return;
+                }
+                executeJoinWaitlist(waitlistEmailInput.trim().toLowerCase());
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  Địa chỉ Email của bạn:
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={waitlistEmailInput}
+                  onChange={(e) => setWaitlistEmailInput(e.target.value)}
+                  placeholder="vidu@gmail.com"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm placeholder:text-slate-500 focus:outline-none focus:border-purple-500 transition-colors"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => executeJoinWaitlist()}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Bỏ qua & Vào chờ
+                </button>
+                <button
+                  type="submit"
+                  disabled={loadingAction === "join_waitlist"}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg shadow-purple-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                >
+                  {loadingAction === "join_waitlist" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Lưu & Vào hàng chờ
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

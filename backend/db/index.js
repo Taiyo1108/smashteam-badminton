@@ -6,9 +6,9 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   // Force IPv4 DNS resolution to prevent ENETUNREACH errors on IPv6-incompatible hosts like Render
   family: 4,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  max: 10,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 5000,
 });
 
 // Catch errors on idle clients to prevent crashing the Node process when remote poolers (e.g. Supabase) drop idle sockets

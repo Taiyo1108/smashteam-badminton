@@ -258,15 +258,30 @@ async function reserveSession(sessionId, userId) {
 
 /**
  * Tham gia hàng chờ Waitlist (FIFO) khi buổi tập đã đầy
+ * - Tự động cập nhật email nếu user cung cấp
+ * - Tự động kích hoạt cấp slot ngay lập tức nếu session đang có sẵn slot trống
  */
-async function joinWaitlist(sessionId, userId) {
+async function joinWaitlist(sessionId, userId, email = null) {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
 
+    // 0. Nếu có email truyền lên, cập nhật cho user
+    if (email && typeof email === 'string' && email.includes('@')) {
+      const cleanEmail = email.trim().toLowerCase();
+      try {
+        await client.query(
+          `UPDATE users SET email = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2::uuid;`,
+          [cleanEmail, userId]
+        );
+      } catch (emailErr) {
+        console.warn('[joinWaitlist] Không thể cập nhật email cho user (có thể do trùng):', emailErr.message);
+      }
+    }
+
     // 1. Kiểm tra session
     const sessionRes = await client.query(
-      `SELECT id, title, capacity, session_end FROM sessions WHERE id = $1::uuid FOR UPDATE;`,
+      `SELECT id, title, capacity, session_start, session_end, location, date_time, is_closed FROM sessions WHERE id = $1::uuid FOR UPDATE;`,
       [sessionId]
     );
 
@@ -339,12 +354,21 @@ async function joinWaitlist(sessionId, userId) {
 
     const userWl = renumberRes.rows.find(r => r.user_id === userId) || insertRes.rows[0];
 
+    // Lấy email hiện tại của user để kiểm tra
+    const uRes = await client.query(`SELECT email, full_name FROM users WHERE id = $1::uuid;`, [userId]);
+    const userEmail = uRes.rows[0]?.email || null;
+
     await client.query('COMMIT');
+
+    // Tự động kiểm tra và offer slot ngay lập tức nếu session đang có sẵn slot trống
+    triggerWaitlistOffers(sessionId).catch(e => console.error('[joinWaitlist] Auto triggerWaitlistOffers error:', e));
 
     return {
       success: true,
-      message: `Bạn đã tham gia danh sách chờ (Vị trí #${userWl.position}). Khi có slot trống, hệ thống sẽ tự động thông báo cho bạn!`,
-      waitlist: userWl
+      message: `Bạn đã tham gia danh sách chờ (Vị trí #${userWl.position}). ${userEmail ? 'Khi có slot trống, hệ thống sẽ tự động gửi email thông báo cho bạn!' : '⚠️ Tài khoản chưa có Email. Vui lòng cập nhật email để nhận thông báo nhận slot!'}`,
+      waitlist: userWl,
+      hasEmail: Boolean(userEmail),
+      email: userEmail
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -366,7 +390,7 @@ async function cancelReservation(sessionId, userId, reason = 'Thành viên tự 
 
     // 1. Khóa row session
     const sessionRes = await client.query(
-      `SELECT id, title, reservation_deadline, date_time, waitlist_offer_duration_minutes, session_end
+      `SELECT id, title, reservation_deadline, date_time, session_start, session_end, location, waitlist_offer_duration_minutes
        FROM sessions WHERE id = $1::uuid FOR UPDATE;`,
       [sessionId]
     );
