@@ -193,7 +193,7 @@ export default function Home() {
 
   // Load initial user state and profile
   useEffect(() => {
-    const token = localStorage.getItem("admin_token");
+    const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
     const role = localStorage.getItem("user_role");
     if (token) {
       setIsLoggedIn(true);
@@ -305,7 +305,7 @@ export default function Home() {
   }, []);
 
   const fetchSessions = () => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+    const token = typeof window !== "undefined" ? (localStorage.getItem("admin_token") || localStorage.getItem("token")) : null;
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -358,7 +358,7 @@ export default function Home() {
   }, [leaderboardType]);
 
   const handleRsvp = async (sessionId: number, status: "going" | "absent") => {
-    const token = localStorage.getItem("admin_token");
+    const token = localStorage.getItem("admin_token") || localStorage.getItem("token");
     if (!token) {
       router.push("/login?redirect=/");
       return;

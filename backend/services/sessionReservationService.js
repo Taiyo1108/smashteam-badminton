@@ -262,22 +262,22 @@ async function reserveSession(sessionId, userId) {
  * - Tự động kích hoạt cấp slot ngay lập tức nếu session đang có sẵn slot trống
  */
 async function joinWaitlist(sessionId, userId, email = null) {
+  // 0. Nếu có email truyền lên, cập nhật cho user độc lập TRƯỚC transaction (bảng users không có cột updated_at)
+  if (email && typeof email === 'string' && email.includes('@')) {
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      await db.query(
+        `UPDATE users SET email = $1 WHERE id = $2::uuid;`,
+        [cleanEmail, userId]
+      );
+    } catch (emailErr) {
+      console.warn('[joinWaitlist] Không thể cập nhật email cho user (có thể do trùng email):', emailErr.message);
+    }
+  }
+
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-
-    // 0. Nếu có email truyền lên, cập nhật cho user
-    if (email && typeof email === 'string' && email.includes('@')) {
-      const cleanEmail = email.trim().toLowerCase();
-      try {
-        await client.query(
-          `UPDATE users SET email = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2::uuid;`,
-          [cleanEmail, userId]
-        );
-      } catch (emailErr) {
-        console.warn('[joinWaitlist] Không thể cập nhật email cho user (có thể do trùng):', emailErr.message);
-      }
-    }
 
     // 1. Kiểm tra session
     const sessionRes = await client.query(
