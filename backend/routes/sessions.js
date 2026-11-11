@@ -176,7 +176,8 @@ router.post('/:id/waitlist/join', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const result = await joinWaitlist(id, userId);
+    const { email } = req.body || {};
+    const result = await joinWaitlist(id, userId, email);
     res.json(result);
   } catch (error) {
     console.error('Error joining waitlist:', error);

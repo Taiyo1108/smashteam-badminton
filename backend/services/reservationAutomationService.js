@@ -52,6 +52,9 @@ async function processAutoConfirmations() {
  */
 async function processWaitlistExpirations() {
   const client = await db.connect();
+  const affectedSessionIds = new Set();
+  let expiredCount = 0;
+
   try {
     // 1. Tìm các waitlist item đã hết hạn
     const expiredRes = await client.query(
@@ -60,9 +63,6 @@ async function processWaitlistExpirations() {
        JOIN sessions s ON w.session_id = s.id
        WHERE w.status = 'OFFERED' AND w.offer_expires_at < CURRENT_TIMESTAMP;`
     );
-
-    let expiredCount = 0;
-    const affectedSessionIds = new Set();
 
     for (const item of expiredRes.rows) {
       await client.query('BEGIN');
@@ -77,26 +77,26 @@ async function processWaitlistExpirations() {
       expiredCount++;
       affectedSessionIds.add(item.session_id);
     }
-
-    // 2. Với mỗi session có người hết hạn, tự động cấp quyền và gửi email cho người tiếp theo trong Waitlist FIFO
-    if (affectedSessionIds.size > 0) {
-      const { triggerWaitlistOffers } = require('./sessionReservationService');
-      for (const sessId of affectedSessionIds) {
-        try {
-          await triggerWaitlistOffers(sessId);
-        } catch (err) {
-          console.error(`[Automation] Error triggering waitlist offer for session ${sessId}:`, err);
-        }
-      }
-    }
-
-    return expiredCount;
   } catch (error) {
     console.error('[Automation] Error processing waitlist expirations:', error);
-    return 0;
   } finally {
     client.release();
   }
+
+  // 2. Với mỗi session có người hết hạn, tự động cấp quyền và gửi email cho người tiếp theo trong Waitlist FIFO
+  // Thực hiện SAU KHI client ban đầu đã release an toàn
+  if (affectedSessionIds.size > 0) {
+    const { triggerWaitlistOffers } = require('./sessionReservationService');
+    for (const sessId of affectedSessionIds) {
+      try {
+        await triggerWaitlistOffers(sessId);
+      } catch (err) {
+        console.error(`[Automation] Error triggering waitlist offer for session ${sessId}:`, err);
+      }
+    }
+  }
+
+  return expiredCount;
 }
 
 /**
@@ -226,6 +226,8 @@ async function processMissingCheckouts() {
  */
 async function processAvailableWaitlistSlots() {
   const client = await db.connect();
+  let sessionsToProcess = [];
+
   try {
     // Tìm các session chưa kết thúc, chưa đóng, và đang có người trong session_waitlist với status = 'WAITING'
     const waitingSessionsRes = await client.query(
@@ -236,33 +238,33 @@ async function processAvailableWaitlistSlots() {
          AND (s.is_closed IS FALSE OR s.is_closed IS NULL)
          AND (s.session_end > CURRENT_TIMESTAMP OR (s.session_end IS NULL AND s.date_time > CURRENT_TIMESTAMP - INTERVAL '3 hours'));`
     );
-
-    if (waitingSessionsRes.rows.length === 0) {
-      return 0;
-    }
-
-    const { triggerWaitlistOffers } = require('./sessionReservationService');
-    let totalOffered = 0;
-
-    for (const session of waitingSessionsRes.rows) {
-      try {
-        const offers = await triggerWaitlistOffers(session.id);
-        if (offers && offers.length > 0) {
-          totalOffered += offers.length;
-          console.log(`[Automation] Auto-offered ${offers.length} waitlist slot(s) for session "${session.title}" (${session.id})`);
-        }
-      } catch (err) {
-        console.error(`[Automation] Error processing available waitlist slots for session ${session.id}:`, err);
-      }
-    }
-
-    return totalOffered;
+    sessionsToProcess = waitingSessionsRes.rows;
   } catch (error) {
-    console.error('[Automation] Error in processAvailableWaitlistSlots:', error);
-    return 0;
+    console.error('[Automation] Error in processAvailableWaitlistSlots query:', error);
   } finally {
     client.release();
   }
+
+  if (sessionsToProcess.length === 0) {
+    return 0;
+  }
+
+  const { triggerWaitlistOffers } = require('./sessionReservationService');
+  let totalOffered = 0;
+
+  for (const session of sessionsToProcess) {
+    try {
+      const offers = await triggerWaitlistOffers(session.id);
+      if (offers && offers.length > 0) {
+        totalOffered += offers.length;
+        console.log(`[Automation] Auto-offered ${offers.length} waitlist slot(s) for session "${session.title}" (${session.id})`);
+      }
+    } catch (err) {
+      console.error(`[Automation] Error processing available waitlist slots for session ${session.id}:`, err);
+    }
+  }
+
+  return totalOffered;
 }
 
 /**
