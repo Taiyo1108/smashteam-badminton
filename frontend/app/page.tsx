@@ -191,6 +191,14 @@ export default function Home() {
     showToast("Đã đăng xuất tài khoản thành công.");
   };
 
+  // Deep link từ email (VD: /?tab=schedule khi được cấp suất waitlist)
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab === "schedule" || tab === "leaderboard" || tab === "media") {
+      setActiveTab(tab);
+    }
+  }, []);
+
   // Load initial user state and profile
   useEffect(() => {
     const token = localStorage.getItem("admin_token");

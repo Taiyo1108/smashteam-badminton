@@ -7,9 +7,27 @@ const getResendClient = () => {
   return new Resend(process.env.RESEND_API_KEY);
 };
 
+// Địa chỉ gửi email hàng loạt (broadcast / thông báo chung)
 const getFromEmail = () => {
   return process.env.RESEND_FROM_EMAIL || 'SMASH TEAM <clb@smashteam.id.vn>';
 };
+
+// Địa chỉ gửi email giao dịch 1-1 (waitlist, OTP...). Tách riêng khỏi broadcast để Gmail
+// không gộp chung "danh tiếng" của địa chỉ gửi hàng loạt → giảm khả năng bị xếp vào tab Quảng cáo.
+const getTransactionalFromEmail = () => {
+  return process.env.RESEND_TRANSACTIONAL_FROM_EMAIL || 'SmashTeam <thongbao@smashteam.id.vn>';
+};
+
+// Địa chỉ nhận phản hồi thật (thư "no-reply" bị Gmail đánh giá kém hơn với thư giao dịch)
+const getReplyToEmail = () => {
+  return process.env.RESEND_REPLY_TO_EMAIL || undefined;
+};
+
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
 
 const getFrontendUrl = () => {
   return process.env.FRONTEND_URL || 'https://smashteam.id.vn';
@@ -310,7 +328,7 @@ const sendWelcomeEmail = async (toEmail, userName, stars, eloPoints) => {
 
     console.log(`[EmailService] Bắt đầu gửi email chào mừng tới: ${toEmail}...`);
     const { data, error } = await resend.emails.send({
-      from: getFromEmail(),
+      from: getTransactionalFromEmail(),
       to: [toEmail],
       subject,
       html
@@ -616,7 +634,7 @@ const sendPasswordResetEmail = async (toEmail, userName, otpCode, resetUrl) => {
 
     console.log(`[EmailService] Bắt đầu gửi email đặt lại mật khẩu tới: ${toEmail}...`);
     const { data, error } = await resend.emails.send({
-      from: getFromEmail(),
+      from: getTransactionalFromEmail(),
       to: [toEmail],
       subject,
       html
@@ -677,84 +695,84 @@ const sendWaitlistSlotOfferEmail = async ({
     }
 
     const hostUrl = getFrontendUrl();
-    const claimUrl = sessionId ? `${hostUrl}?session_id=${sessionId}#sessions` : `${hostUrl}`;
+    const claimUrl = sessionId
+      ? `${hostUrl}/?tab=schedule&session_id=${encodeURIComponent(sessionId)}`
+      : `${hostUrl}/?tab=schedule`;
 
-    const formattedExpires = offerExpiresAt instanceof Date 
-      ? offerExpiresAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) + ' ngày ' + offerExpiresAt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })
-      : String(offerExpiresAt);
+    const tz = 'Asia/Ho_Chi_Minh';
+    const toDate = (v) => (v instanceof Date ? v : (v ? new Date(v) : null));
+    const expiresDate = toDate(offerExpiresAt);
+    const sessionDateObj = toDate(sessionDate);
+    const isValid = (d) => d && !Number.isNaN(d.getTime());
 
-    const formattedSessionDate = sessionDate instanceof Date
-      ? sessionDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) + ' - ' + sessionDate.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' })
-      : String(sessionDate || 'Buổi tập sắp tới');
+    const expiresTime = isValid(expiresDate)
+      ? expiresDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: tz })
+      : null;
+    const formattedExpires = isValid(expiresDate)
+      ? `${expiresTime} ngày ${expiresDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', timeZone: tz }).replace(/-/g, '/')}`
+      : String(offerExpiresAt || '');
+    const formattedSessionDate = isValid(sessionDateObj)
+      ? `${sessionDateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: tz })}, ${sessionDateObj.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: tz })}`
+      : String(sessionDate || 'buổi tập sắp tới');
 
-    const subject = `🏸 [SMASH TEAM] Có suất trống dành riêng cho bạn: ${sessionTitle || 'Buổi tập CLB'}`;
+    const name = userName || 'bạn';
+    const title = sessionTitle || 'Buổi tập CLB';
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${subject}</title>
-      </head>
-      <body style="margin: 0; padding: 20px; background-color: #06050c; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        <div style="background-color: #0c0a1a; padding: 36px 24px; text-align: center; color: #f8fafc; border-radius: 20px; max-width: 580px; margin: 0 auto; border: 1px solid #7A22E0; box-shadow: 0 10px 30px rgba(122, 34, 224, 0.25);">
-          
-          <!-- Badge -->
-          <div style="margin-bottom: 20px;">
-            <span style="display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000000; padding: 6px 16px; border-radius: 50px; font-size: 11px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase;">
-              ⚡ ƯU TIÊN HÀNG CHỜ (WAITLIST FIFO)
-            </span>
-          </div>
+    // Tiêu đề kiểu thư cá nhân/giao dịch: không emoji, không [TAG] viết hoa, nêu rõ hạn xác nhận.
+    // (Gmail dùng các tín hiệu này để phân loại vào tab Chính thay vì Quảng cáo.)
+    const subject = expiresTime
+      ? `${name}, bạn có suất tham gia "${title}" - xác nhận trước ${expiresTime}`
+      : `${name}, bạn có suất tham gia "${title}"`;
 
-          <h1 style="color: #ffffff; font-size: 24px; font-weight: 900; margin: 0 0 12px 0; line-height: 1.3;">
-            ĐÃ CÓ SUẤT TRỐNG DÀNH CHO BẠN!
-          </h1>
-          <p style="font-size: 14px; color: #cbd5e1; margin: 0 0 24px 0;">
-            Chào <strong style="color: #f59e0b;">${userName || 'bạn'}</strong>, một vị trí trong buổi tập vừa được giải phóng. Bạn là thành viên tiếp theo trong danh sách chờ được cấp suất tham gia này!
-          </p>
-          
-          <!-- Session Box -->
-          <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 14px; text-align: left; margin-bottom: 24px;">
-            <p style="margin: 6px 0; color: #f8fafc; font-size: 15px; font-weight: 800;">🏸 ${sessionTitle || 'Buổi sinh hoạt CLB'}</p>
-            <p style="margin: 6px 0; color: #94a3b8; font-size: 13px;">🕒 <strong>Thời gian:</strong> <span style="color: #e2e8f0;">${formattedSessionDate}</span></p>
-            ${sessionLocation ? `<p style="margin: 6px 0; color: #94a3b8; font-size: 13px;">📍 <strong>Địa điểm:</strong> <span style="color: #e2e8f0;">${sessionLocation}</span></p>` : ''}
-          </div>
+    const text = [
+      `Chào ${name},`,
+      '',
+      `Một suất trong buổi "${title}" vừa trống và bạn là người tiếp theo trong danh sách chờ.`,
+      '',
+      `Thời gian: ${formattedSessionDate}`,
+      sessionLocation ? `Địa điểm: ${sessionLocation}` : null,
+      '',
+      `Suất được giữ cho bạn trong ${offerMinutes} phút, đến ${formattedExpires}.`,
+      'Sau thời gian này suất sẽ tự động chuyển cho người kế tiếp.',
+      '',
+      `Xác nhận tại: ${claimUrl}`,
+      '(Đăng nhập, mở tab Lịch đánh và bấm "Xác nhận nhận chỗ".)',
+      '',
+      'Nếu bạn không đi được, cứ bỏ qua thư này.',
+      '',
+      'SmashTeam Badminton'
+    ].filter((line) => line !== null).join('\n');
 
-          <!-- Countdown / Expiry Box -->
-          <div style="background: rgba(245, 158, 11, 0.1); border: 1px dashed #f59e0b; padding: 16px; border-radius: 14px; margin-bottom: 28px; text-align: center;">
-            <p style="margin: 0; font-size: 13px; color: #fcd34d; font-weight: 700;">
-              ⏳ Thời gian giữ suất: <span style="font-size: 16px; color: #ffffff; font-weight: 900;">${offerMinutes} phút</span>
-            </p>
-            <p style="margin: 6px 0 0 0; font-size: 12px; color: #cbd5e1;">
-              Hạn chót xác nhận: <strong style="color: #f59e0b;">${formattedExpires}</strong>
-            </p>
-            <p style="margin: 6px 0 0 0; font-size: 11px; color: #94a3b8;">
-              (Sau thời gian này nếu bạn không xác nhận, suất sẽ tự động chuyển cho người tiếp theo)
-            </p>
-          </div>
+    const e = escapeHtml;
+    // HTML tối giản, nền sáng, không gradient/badge/nút marketing - trông như thư cá nhân.
+    const html = `<!DOCTYPE html>
+<html lang="vi">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${e(subject)}</title></head>
+<body style="margin:0;padding:24px 16px;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#1f2937;font-size:15px;line-height:1.6;">
+  <div style="max-width:560px;margin:0 auto;">
+    <p style="margin:0 0 14px 0;">Chào ${e(name)},</p>
+    <p style="margin:0 0 14px 0;">Một suất trong buổi <strong>${e(title)}</strong> vừa trống và bạn là người tiếp theo trong danh sách chờ.</p>
+    <p style="margin:0 0 4px 0;">Thời gian: ${e(formattedSessionDate)}</p>
+    ${sessionLocation ? `<p style="margin:0 0 4px 0;">Địa điểm: ${e(sessionLocation)}</p>` : ''}
+    <p style="margin:14px 0;">Suất được giữ cho bạn trong <strong>${e(offerMinutes)} phút</strong>, đến <strong>${e(formattedExpires)}</strong>. Sau thời gian này suất sẽ tự động chuyển cho người kế tiếp.</p>
+    <p style="margin:0 0 14px 0;"><a href="${e(claimUrl)}" style="color:#6d28d9;font-weight:bold;">Xác nhận nhận chỗ</a> (đăng nhập, mở tab Lịch đánh và bấm "Xác nhận nhận chỗ").</p>
+    <p style="margin:0 0 14px 0;">Nếu bạn không đi được, cứ bỏ qua thư này.</p>
+    <p style="margin:24px 0 0 0;color:#6b7280;font-size:13px;">SmashTeam Badminton</p>
+  </div>
+</body>
+</html>`;
 
-          <!-- Call to Action -->
-          <div style="margin: 10px 0 25px 0;">
-            <a href="${claimUrl}" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000000; padding: 14px 34px; text-decoration: none; border-radius: 50px; font-weight: 900; font-size: 14px; display: inline-block; box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4); letter-spacing: 0.5px; text-transform: uppercase;">
-              👉 VÀO XÁC NHẬN NHẬN CHỖ NGAY
-            </a>
-          </div>
-          
-          <p style="font-size: 12px; color: #64748b; margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 18px; line-height: 1.5;">
-            Đây là email tự động từ hệ thống Quản lý Sân tập SmashTeam Badminton.<br/>
-            Vui lòng đăng nhập vào website để bấm &ldquo;Xác nhận nhận chỗ ngay&rdquo;.
-          </p>
-        </div>
-      </body>
-      </html>
-    `;
-
+    const replyTo = getReplyToEmail();
     const { data, error } = await resend.emails.send({
-      from: getFromEmail(),
+      from: getTransactionalFromEmail(),
       to: [cleanToEmail],
       subject,
-      html
+      html,
+      text,
+      ...(replyTo ? { replyTo } : {}),
+      // Không dùng chung thread giữa các lần cấp suất khác nhau
+      headers: { 'X-Entity-Ref-ID': `waitlist-${sessionId || 'na'}-${Date.now()}` },
+      tags: [{ name: 'category', value: 'waitlist_offer' }]
     });
 
     if (error) {
